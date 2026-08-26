@@ -77,6 +77,7 @@ from .process_trial import (
     trial_case_payload,
     trial_case_queryset,
 )
+from .security import security_preflight_payload
 from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
 from .tasks import (
     mark_job_failed,
@@ -122,6 +123,14 @@ class SystemInfoView(APIView):
                 "api_version": "v1",
             }
         )
+
+
+class SecurityPreflightView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        return Response(security_preflight_payload(request._request))
 
 
 def _hmi_extraction_queryset():

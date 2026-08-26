@@ -1,4 +1,5 @@
 import type { ArtifactVersion, CADJob, CADModelResult } from "./cad";
+import { apiFetch } from "./client";
 
 export type ReviewResultState =
   | "PASS"
@@ -95,7 +96,7 @@ export async function createDesignReview(
   query: CADModelResult,
   context: Record<string, number>,
 ): Promise<DesignReviewAccepted> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/design-reviews`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/design-reviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
@@ -111,7 +112,7 @@ export async function createDesignReview(
 }
 
 export async function fetchDesignReviewJob(jobId: string): Promise<DesignReviewJob> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));
@@ -127,7 +128,7 @@ export async function createFindingDecision(
     approvedBy: string;
   },
 ): Promise<ReviewDecision> {
-  const response = await fetch(
+  const response = await apiFetch(
     `${apiBaseUrl}/api/v1/design-reviews/${reviewId}/findings/${findingId}/decisions`,
     {
       method: "POST",

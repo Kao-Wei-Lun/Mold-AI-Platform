@@ -1,0 +1,98 @@
+name: mold-ai-platform
+
+services:
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_WEB_DOMAIN: ${PUBLIC_WEB_DOMAIN:?Set PUBLIC_WEB_DOMAIN}
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      web:
+        condition: service_started
+    networks: [frontend]
+
+  db:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  qdrant:
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    command: ["./scripts/start-api-production.sh"]
+    volumes: !override
+      - runtime-data:/data
+    ports: !reset []
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; request=urllib.request.Request('http://localhost:8000/api/v1/health/live', headers={'X-Forwarded-Proto':'https'}); urllib.request.urlopen(request, timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !override
+      - runtime-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-cad:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !override
+      - runtime-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mcp-gateway:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !reset []
+    environment:
+      PLATFORM_API_TOKEN: ${DEMO_API_TOKEN:?Set DEMO_API_TOKEN}
+
+  web:
+    build:
+      context: ./apps/web
+      target: production
+    restart: unless-stopped
+    command: ["nginx", "-g", "daemon off;"]
+    volumes: !reset []
+    ports: !reset []
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:

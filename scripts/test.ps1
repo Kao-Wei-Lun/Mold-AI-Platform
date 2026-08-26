@@ -50,6 +50,9 @@ Push-Location -LiteralPath $repoRoot
 try {
     docker compose config --quiet
     Assert-LastExitCode "Docker Compose validation"
+    docker compose -f compose.yaml -f compose.release.yaml `
+        --env-file release.env.example config --quiet
+    Assert-LastExitCode "Release Docker Compose validation"
 }
 finally {
     Pop-Location

@@ -1724,6 +1724,84 @@ button:disabled {
   background: #fff;
 }
 
+.access-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  margin: 1.5rem 0;
+  border: 1px solid #cbd9d7;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  background: #f3f9f8;
+}
+
+.access-panel h2,
+.access-panel p {
+  margin: 0.2rem 0 0;
+}
+
+.access-panel p {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  color: #667487;
+  font-size: 0.75rem;
+}
+
+.access-state {
+  border-radius: 99px;
+  padding: 0.25rem 0.5rem;
+  font-weight: 800;
+}
+
+.access-state.connected {
+  color: #17613e;
+  background: #d9f2e4;
+}
+
+.access-state.locked {
+  color: #7b5600;
+  background: #fff0bf;
+}
+
+.access-form {
+  display: flex;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.access-form label {
+  display: grid;
+  gap: 0.3rem;
+  color: #556175;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.access-form input {
+  width: min(300px, 48vw);
+  border: 1px solid #b9c8ca;
+  border-radius: 8px;
+  padding: 0.65rem;
+}
+
+.release-preflight {
+  grid-column: 1 / -1;
+  color: #566478;
+  font-size: 0.72rem;
+}
+
+.release-preflight summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.release-preflight ul {
+  columns: 2;
+  margin-bottom: 0;
+}
+
 .hmi-input-bar,
 .hmi-export-bar,
 .hmi-preview-card,
@@ -1970,6 +2048,15 @@ button:disabled {
   .hmi-export-bar,
   .hmi-preview-card,
   .hmi-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .access-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .access-form {
     align-items: stretch;
     flex-direction: column;
   }

@@ -4,13 +4,13 @@ import { computed, onBeforeUnmount, ref } from "vue";
 import {
   exportHMI,
   fetchDemoHMI,
-  hmiResourceUrl,
   reviewHMI,
   uploadHMI,
   type HMIExport,
   type HMIExtraction,
   type HMIField,
 } from "../api/hmi";
+import { downloadProtectedArtifact } from "../api/client";
 
 const selectedFile = ref<File | null>(null);
 const previewUrl = ref("");
@@ -104,6 +104,16 @@ async function createExport(): Promise<void> {
     error.value = caught instanceof Error ? caught.message : "Workbook export failed.";
   } finally {
     exporting.value = false;
+  }
+}
+
+async function downloadExport(): Promise<void> {
+  if (!exported.value) return;
+  error.value = null;
+  try {
+    await downloadProtectedArtifact(exported.value.download_url, "reviewed-hmi-parameters.xlsx");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : "Workbook download failed.";
   }
 }
 
@@ -235,9 +245,9 @@ onBeforeUnmount(() => {
         >
           {{ exporting ? "Generating..." : "Generate XLSX" }}
         </button>
-        <a v-if="exported" class="download-link" :href="hmiResourceUrl(exported.download_url)">
+        <button v-if="exported" type="button" class="download-link" @click="downloadExport">
           Download {{ exported.template_version }}
-        </a>
+        </button>
       </div>
 
       <div class="hmi-lineage">

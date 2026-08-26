@@ -25,6 +25,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "platform_core.security.DemoAccessMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -92,6 +93,28 @@ MAX_HMI_UPLOAD_BYTES = int(os.getenv("MAX_HMI_UPLOAD_BYTES", str(10 * 1024 * 102
 DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_CAD_UPLOAD_BYTES + (1024 * 1024)
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
+DEMO_AUTH_MODE = os.getenv("DEMO_AUTH_MODE", "disabled").lower()
+DEMO_API_TOKEN = os.getenv("DEMO_API_TOKEN", "")
+DEMO_API_TOKEN_SCOPES = {
+    scope.strip()
+    for scope in os.getenv("DEMO_API_TOKEN_SCOPES", "public-demo:read,public-demo:write").split(",")
+    if scope.strip()
+}
+DEMO_API_ACTOR_ID = os.getenv("DEMO_API_ACTOR_ID", "demo-access-key")
+
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
+if TRUST_PROXY_HEADERS:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "false").lower() == "true"
+SESSION_COOKIE_SECURE = os.getenv("DJANGO_COOKIE_SECURE", "false").lower() == "true"
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+SECURE_HSTS_PRELOAD = False
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
@@ -106,6 +129,9 @@ REST_FRAMEWORK = {
 APP_NAME = "Mold AI Platform"
 APP_ENV = os.getenv("APP_ENV", "development")
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+PUBLIC_WEB_BASE_URL = os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
+PUBLIC_MCP_BASE_URL = os.getenv("PUBLIC_MCP_BASE_URL", "")
+SECURE_MCP_TUNNEL_ID = os.getenv("SECURE_MCP_TUNNEL_ID", "")
 ASSISTANT_LLM_PROVIDER = os.getenv("ASSISTANT_LLM_PROVIDER", "disabled")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")

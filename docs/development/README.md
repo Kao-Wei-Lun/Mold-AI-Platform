@@ -52,6 +52,12 @@ versioned reviewed-parameter XLSX exports with audit/lineage data. See
 [stage-09-machine-ui-excel.md](stage-09-machine-ui-excel.md) for the fixed-profile boundary and
 Enterprise replacement path.
 
+Stage 10 adds controlled Demo bearer access, authenticated artifact delivery, security and MCP
+preflight contracts, a TLS production Compose overlay, release validation scripts, and a current
+official ChatGPT/Secure MCP Tunnel runbook without claiming external account or OAuth completion.
+See [stage-10-demo-release-hardening.md](stage-10-demo-release-hardening.md) for deployment and
+remaining operator checks.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -76,6 +82,8 @@ services.
 - Django admin: <http://localhost:8000/admin/>
 - MCP Gateway (local preflight only): <http://localhost:8001/mcp>
 - MCP Gateway liveness: <http://localhost:8001/health/live>
+- Security preflight: <http://localhost:8000/api/v1/security/preflight>
+- MCP preflight: <http://localhost:8001/preflight>
 
 The database, Redis, and Qdrant ports are intentionally not published to the Windows host.
 
@@ -113,18 +121,19 @@ Verify the running container stack, including an actual Celery task round trip:
 
 ## Secrets and external access
 
-The values in `.env.example` are development placeholders. Before external access:
+The values in `.env.example` are development placeholders. For controlled external access, use
+`release.env.example` and the Stage 10 runbook. Before external access:
 
 - replace `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`;
 - set explicit allowed hosts and CORS origins;
-- terminate TLS at an authenticated gateway;
+- terminate TLS at the provided Caddy gateway and enable required Demo authentication;
 - do not publish PostgreSQL, Redis, Qdrant, or Docker daemon ports;
 - never commit `.env` or LLM API keys.
 
 The local MCP endpoint intentionally has no user authentication and is restricted to the approved
 public Demo data scope. Do not forward it to the Internet. ChatGPT testing requires a controlled
 public HTTPS endpoint or Secure MCP Tunnel plus the account/workspace and authorization preflight
-described in Stage 6.
+described in Stages 6 and 10.
 
 ## Implemented similarity pipeline
 

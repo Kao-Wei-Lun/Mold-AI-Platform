@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
 from typing import Any
 
@@ -13,6 +14,16 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+
+def _is_placeholder(value: str) -> bool:
+    lowered = value.lower()
+    return "change_me" in lowered or "change-me" in lowered
+
+
+def _configured_secret(value: str) -> bool:
+    return len(value) >= 32 and not _is_placeholder(value)
 
 
 class ToolResponse(BaseModel):
@@ -32,6 +43,7 @@ class PlatformAPIClient:
         base_url: str | None = None,
         public_web_base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        api_token: str | None = None,
     ) -> None:
         self.base_url = (
             base_url or os.getenv("PLATFORM_API_BASE_URL", "http://api:8000/api/v1")
@@ -40,6 +52,7 @@ class PlatformAPIClient:
             public_web_base_url or os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
         ).rstrip("/")
         self.transport = transport
+        self.api_token = api_token if api_token is not None else os.getenv("PLATFORM_API_TOKEN", "")
 
     async def request(
         self, method: str, path: str, *, payload: dict[str, Any] | None = None
@@ -47,11 +60,14 @@ class PlatformAPIClient:
         timeout = httpx.Timeout(15.0, connect=3.0)
         async with httpx.AsyncClient(timeout=timeout, transport=self.transport) as client:
             try:
+                headers = {"Accept": "application/json", "X-Mold-AI-Client": "mcp-gateway"}
+                if self.api_token:
+                    headers["Authorization"] = f"Bearer {self.api_token}"
                 response = await client.request(
                     method,
                     f"{self.base_url}/{path.lstrip('/')}",
                     json=payload,
-                    headers={"Accept": "application/json", "X-Mold-AI-Client": "mcp-gateway"},
+                    headers=headers,
                 )
             except httpx.HTTPError as exc:
                 raise PlatformAPIError("The Mold AI capability API is unavailable.") from exc
@@ -311,6 +327,7 @@ async def search_knowledge(
 
 
 async def health(_: Request) -> JSONResponse:
+    auth_mode = os.getenv("MCP_AUTH_MODE", "none").lower()
     return JSONResponse(
         {
             "status": "ok",
@@ -318,9 +335,141 @@ async def health(_: Request) -> JSONResponse:
             "transport": "streamable-http",
             "endpoint": "/mcp",
             "data_scope": "public-demo",
-            "authentication": "not-configured-local-only",
+            "authentication": auth_mode,
         }
     )
+
+
+def mcp_preflight_payload() -> dict[str, object]:
+    auth_mode = os.getenv("MCP_AUTH_MODE", "none").lower()
+    bearer_token = os.getenv("MCP_BEARER_TOKEN", "")
+    bearer_configured = _configured_secret(bearer_token)
+    api_auth_required = os.getenv("DEMO_AUTH_MODE", "disabled").lower() == "required"
+    platform_api_token_configured = _configured_secret(os.getenv("PLATFORM_API_TOKEN", ""))
+    public_base_url = os.getenv("PUBLIC_MCP_BASE_URL", "")
+    tunnel_id = os.getenv("SECURE_MCP_TUNNEL_ID", "")
+    public_https = public_base_url.startswith("https://")
+    tunnel_configured = bool(tunnel_id) and not _is_placeholder(tunnel_id)
+    mode_valid = auth_mode in {"none", "bearer", "oauth"}
+    oauth_implemented = False
+    connection_path = (
+        "secure_mcp_tunnel"
+        if tunnel_configured
+        else ("public_https" if public_https else "local_only")
+    )
+    chatgpt_ready = (
+        tunnel_configured
+        and auth_mode == "none"
+        and (not api_auth_required or platform_api_token_configured)
+    )
+    return {
+        "schema_version": "1.0",
+        "service": "mcp-gateway",
+        "transport": "streamable-http",
+        "endpoint": "/mcp",
+        "tool_count": 5,
+        "data_scope": "public-demo",
+        "authentication": {
+            "mode": auth_mode,
+            "mode_valid": mode_valid,
+            "bearer_configured": bearer_configured,
+            "oauth_implemented": oauth_implemented,
+            "platform_api_token_configured": platform_api_token_configured,
+        },
+        "connection": {
+            "path": connection_path,
+            "public_https_configured": public_https,
+            "secure_tunnel_configured": tunnel_configured,
+        },
+        "server_side_chatgpt_preflight_ready": chatgpt_ready,
+        "openai_account_workspace_validation": "pending_external_check",
+        "inspector_ready": auth_mode == "none" or (auth_mode == "bearer" and bearer_configured),
+        "limitations": [
+            "Bearer mode is for controlled MCP Inspector or custom-client testing only.",
+            "Public ChatGPT user authentication requires OAuth 2.1 and is not implemented.",
+            "Tunnel readiness still depends on OpenAI organization and workspace association.",
+        ],
+    }
+
+
+async def preflight(_: Request) -> JSONResponse:
+    return JSONResponse(mcp_preflight_payload())
+
+
+class MCPAccessMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") not in {"/mcp", "/mcp/"}:
+            await self.app(scope, receive, send)
+            return
+
+        auth_mode = os.getenv("MCP_AUTH_MODE", "none").lower()
+        if auth_mode == "none":
+            await self.app(scope, receive, send)
+            return
+        if auth_mode == "oauth":
+            await self._error(
+                scope,
+                receive,
+                send,
+                "MCP_OAUTH_NOT_IMPLEMENTED",
+                "OAuth mode is not available until an approved identity provider is configured.",
+                503,
+            )
+            return
+        configured_token = os.getenv("MCP_BEARER_TOKEN", "")
+        if auth_mode != "bearer" or not _configured_secret(configured_token):
+            await self._error(
+                scope,
+                receive,
+                send,
+                "MCP_AUTH_CONFIGURATION_ERROR",
+                "MCP authentication is misconfigured.",
+                503,
+            )
+            return
+
+        headers = {key.decode().lower(): value.decode() for key, value in scope.get("headers", [])}
+        authorization = headers.get("authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if (
+            not separator
+            or scheme.lower() != "bearer"
+            or not secrets.compare_digest(token, configured_token)
+        ):
+            await self._error(
+                scope,
+                receive,
+                send,
+                "MCP_AUTH_TOKEN_INVALID",
+                "A valid MCP bearer token is required.",
+                401,
+                authenticate=True,
+            )
+            return
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    async def _error(
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        code: str,
+        message: str,
+        status: int,
+        *,
+        authenticate: bool = False,
+    ) -> None:
+        response = JSONResponse(
+            {"error": {"code": code, "message": message, "retryable": False}},
+            status_code=status,
+            headers={"Cache-Control": "no-store"},
+        )
+        if authenticate:
+            response.headers["WWW-Authenticate"] = 'Bearer realm="mold-ai-mcp"'
+        await response(scope, receive, send)
 
 
 def create_app():
@@ -348,13 +497,14 @@ def create_app():
         ),
     )
     app.routes.append(Route("/health/live", health, methods=["GET"]))
-    return app
+    app.routes.append(Route("/preflight", preflight, methods=["GET"]))
+    return MCPAccessMiddleware(app)
 
 
 def main() -> None:
     uvicorn.run(
         create_app(),
-        host="0.0.0.0",
+        host=os.getenv("MCP_BIND_HOST", "0.0.0.0"),
         port=int(os.getenv("MCP_PORT", "8001")),
         log_level=os.getenv("MCP_LOG_LEVEL", "info").lower(),
     )

@@ -5,6 +5,7 @@ import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import type { CADModelResult } from "./api/cad";
 import type { AssistantContext, UIAction } from "./api/assistant";
 import AssistantPanel from "./components/AssistantPanel.vue";
+import AccessPanel from "./components/AccessPanel.vue";
 import CAEWorkspace from "./components/CAEWorkspace.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
@@ -24,6 +25,7 @@ const assistantContext = ref<AssistantContext>({
   ui_locale: "zh-TW",
 });
 const pendingUIAction = ref<UIAction | null>(null);
+const accessReady = ref(false);
 
 function executeUIAction(action: UIAction): void {
   pendingUIAction.value = action;
@@ -87,18 +89,25 @@ onMounted(refreshHealth);
         </ul>
       </section>
 
-      <CadWorkspace @ready="activeCAD = $event" />
+      <AccessPanel @ready="accessReady = $event" />
+
+      <CadWorkspace v-if="accessReady" @ready="activeCAD = $event" />
       <SimilarityWorkspace
+        v-if="accessReady"
         :query="activeCAD"
         :ui-action="pendingUIAction"
         @context-change="assistantContext = $event"
       />
-      <DesignReviewWorkspace :query="activeCAD" />
-      <KnowledgeWorkspace />
-      <ProcessTrialWorkspace />
-      <CAEWorkspace />
-      <HMIWorkspace />
+      <DesignReviewWorkspace v-if="accessReady" :query="activeCAD" />
+      <KnowledgeWorkspace v-if="accessReady" />
+      <ProcessTrialWorkspace v-if="accessReady" />
+      <CAEWorkspace v-if="accessReady" />
+      <HMIWorkspace v-if="accessReady" />
     </main>
-    <AssistantPanel :context="assistantContext" @execute-action="executeUIAction" />
+    <AssistantPanel
+      v-if="accessReady"
+      :context="assistantContext"
+      @execute-action="executeUIAction"
+    />
   </div>
 </template>

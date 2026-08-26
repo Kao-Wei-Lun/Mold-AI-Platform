@@ -141,9 +141,10 @@ describe("HMIWorkspace", () => {
 
     await button(wrapper, "Generate XLSX").trigger("click");
     await flushPromises();
-    const link = wrapper.get(".download-link");
-    expect(link.text()).toContain("reviewed-parameters@1.0.0");
-    expect(link.attributes("href")).toBe("/api/v1/artifact-versions/xlsx-1/download");
+    const downloadButton = wrapper.get(".download-link");
+    expect(downloadButton.text()).toContain("reviewed-parameters@1.0.0");
+    expect(downloadButton.element.tagName).toBe("BUTTON");
+    expect(downloadButton.attributes("href")).toBeUndefined();
   });
 
   it("surfaces extraction errors without inventing results", async () => {

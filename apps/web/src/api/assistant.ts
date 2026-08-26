@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type AssistantContext = {
   context_version: "1.0";
   page:
@@ -77,7 +79,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 export async function fetchAssistantCapabilities(): Promise<AssistantCapabilities> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/assistant/capabilities`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/assistant/capabilities`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));
@@ -88,7 +90,7 @@ export async function sendAssistantMessage(
   message: string,
   context: AssistantContext,
 ): Promise<AssistantResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/assistant/messages`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/assistant/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ schema_version: "1.0", message, context }),

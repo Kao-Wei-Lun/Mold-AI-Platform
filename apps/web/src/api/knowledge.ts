@@ -1,4 +1,5 @@
 import type { CADJob } from "./cad";
+import { apiFetch } from "./client";
 
 export type KnowledgeDocument = {
   document_id: string;
@@ -101,7 +102,7 @@ export async function uploadKnowledge(
   body.append("authority_level", metadata.authorityLevel);
   body.append("language", metadata.language);
   body.append("idempotency_key", `web-knowledge-${Date.now()}-${file.name}-${file.size}`);
-  const response = await fetch(`${apiBaseUrl}/api/v1/knowledge-documents`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-documents`, {
     method: "POST",
     body,
   });
@@ -110,7 +111,7 @@ export async function uploadKnowledge(
 }
 
 export async function fetchKnowledgeJob(jobId: string): Promise<KnowledgeJob> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));
@@ -118,7 +119,7 @@ export async function fetchKnowledgeJob(jobId: string): Promise<KnowledgeJob> {
 }
 
 export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/knowledge-documents`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-documents`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));
@@ -130,7 +131,7 @@ export async function searchKnowledge(
   query: string,
   filters: { documentTypes: string[]; authorityLevels: string[]; topK: number },
 ): Promise<KnowledgeSearchResult> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/knowledge-searches`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-searches`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({

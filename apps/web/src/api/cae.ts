@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type CAEResult = {
   result_id: string;
   metric_code: string;
@@ -110,13 +112,13 @@ export async function fetchCAEFixtureStatus(): Promise<{
     official_solver_api_connected: false;
   };
 }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/cae/demo-fixtures`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cae/demo-fixtures`);
   if (!response.ok) throw new Error(await errorMessage(response));
   return await response.json();
 }
 
 export async function seedCAEFixtures(): Promise<{ created: number; existing: number }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/cae/demo-fixtures`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cae/demo-fixtures`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: "{}",
@@ -126,7 +128,7 @@ export async function seedCAEFixtures(): Promise<{ created: number; existing: nu
 }
 
 export async function fetchCAEStudies(): Promise<CAEStudy[]> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/cae-studies`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cae-studies`);
   if (!response.ok) throw new Error(await errorMessage(response));
   const payload = (await response.json()) as { items: CAEStudy[] };
   return Array.isArray(payload.items) ? payload.items : [];
@@ -136,7 +138,7 @@ export async function compareCAERuns(
   baselineRunId: string,
   candidateRunId: string,
 ): Promise<CAEComparison> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/cae-comparisons`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cae-comparisons`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({

@@ -37,7 +37,7 @@ const indexedDocument = {
 describe("KnowledgeWorkspace", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("retrieves extractive evidence with a clickable versioned citation", async () => {
+  it("retrieves extractive evidence with a protected versioned citation", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [indexedDocument] }))
@@ -94,9 +94,9 @@ describe("KnowledgeWorkspace", () => {
     expect(wrapper.text()).toContain("Found 1 authorized source passages");
     expect(wrapper.text()).toContain("Rib thickness should be reviewed");
     expect(wrapper.text()).toContain("section:Rib Design,paragraphs:1-1");
-    const citation = wrapper.get(".knowledge-evidence a");
-    expect(citation.attributes("href")).toBe("/api/v1/artifact-versions/version-1/download");
-    expect(citation.attributes("target")).toBe("_blank");
+    const citation = wrapper.get(".citation-download");
+    expect(citation.element.tagName).toBe("BUTTON");
+    expect(citation.attributes("href")).toBeUndefined();
     expect(wrapper.text()).toContain("No LLM synthesis");
   });
 

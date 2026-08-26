@@ -35,6 +35,11 @@ if ($live.status -ne "ok") {
     throw "API liveness check failed."
 }
 
+$securityPreflight = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/security/preflight"
+if ($securityPreflight.auth.mode -ne "disabled" -or $securityPreflight.production_ready) {
+    throw "Local security preflight did not preserve the explicit development boundary."
+}
+
 $web = Invoke-WebRequest -Uri "http://localhost:5173" -UseBasicParsing
 if ($web.StatusCode -ne 200 -or -not $web.Content.Contains("Mold AI Platform")) {
     throw "Web UI smoke check failed."
@@ -682,6 +687,11 @@ $mcpLive = Invoke-RestMethod -Uri "http://localhost:8001/health/live"
 if ($mcpLive.status -ne "ok" -or $mcpLive.transport -ne "streamable-http") {
     throw "MCP Gateway liveness check failed."
 }
+$mcpPreflight = Invoke-RestMethod -Uri "http://localhost:8001/preflight"
+if ($mcpPreflight.authentication.oauth_implemented -or `
+    $mcpPreflight.openai_account_workspace_validation -ne "pending_external_check") {
+    throw "MCP preflight overstated OAuth or external ChatGPT readiness."
+}
 $mcpResult = docker compose exec -T api python scripts/mcp_smoke.py
 if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovered") {
     throw "MCP protocol discovery/call smoke check failed."
@@ -689,4 +699,4 @@ if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovere
 
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; CAE=ok; HMI/Excel=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Security=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; CAE=ok; HMI/Excel=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"

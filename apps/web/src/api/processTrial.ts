@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type Measurement = {
   value: number;
   unit: string;
@@ -121,13 +123,13 @@ export async function fetchProcessFixtureStatus(): Promise<{
   loaded_case_count: number;
   connector: { status: string; source_type: string; source_version: string; record_count: number };
 }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/process-trial/demo-fixtures`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/process-trial/demo-fixtures`);
   if (!response.ok) throw new Error(await errorMessage(response));
   return await response.json();
 }
 
 export async function seedProcessFixtures(): Promise<{ created: number; existing: number }> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/process-trial/demo-fixtures`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/process-trial/demo-fixtures`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: "{}",
@@ -137,7 +139,7 @@ export async function seedProcessFixtures(): Promise<{ created: number; existing
 }
 
 export async function fetchTrialCases(): Promise<TrialCase[]> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/trial-cases`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/trial-cases`);
   if (!response.ok) throw new Error(await errorMessage(response));
   const payload = (await response.json()) as { items: TrialCase[] };
   return Array.isArray(payload.items) ? payload.items : [];
@@ -154,7 +156,7 @@ export async function searchProcessCases(query: ProcessQuery): Promise<ProcessSe
   if (query.meltTemperature !== null) {
     parameters.melt_temperature_c = { value: query.meltTemperature, unit: "degC" };
   }
-  const response = await fetch(`${apiBaseUrl}/api/v1/process-case-searches`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/process-case-searches`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({

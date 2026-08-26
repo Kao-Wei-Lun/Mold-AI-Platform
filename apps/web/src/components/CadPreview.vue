@@ -15,6 +15,8 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
+import { apiFetch } from "../api/client";
+
 const props = defineProps<{ source: string; accent?: "default" | "warning" | "pass" }>();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -65,7 +67,7 @@ function toggleTransparency(): void {
   }
 }
 
-function loadModel(source: string): void {
+async function loadModel(source: string): Promise<void> {
   if (!scene || !camera || !controls) return;
   loading.value = true;
   error.value = null;
@@ -75,32 +77,30 @@ function loadModel(source: string): void {
     if (mesh.material instanceof MeshStandardMaterial) mesh.material.dispose();
   }
 
-  new STLLoader().load(
-    source,
-    (geometry) => {
-      geometry.computeVertexNormals();
-      const colors = { default: 0x3f72ef, warning: 0xd95b3d, pass: 0x16845b };
-      const material = new MeshStandardMaterial({
-        color: colors[props.accent || "default"],
-        roughness: 0.42,
-        metalness: 0.08,
-      });
-      mesh = new Mesh(geometry, material);
-      scene?.add(mesh);
+  try {
+    const response = await apiFetch(source, { headers: { Accept: "model/stl" } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geometry = new STLLoader().parse(await response.arrayBuffer());
+    geometry.computeVertexNormals();
+    const colors = { default: 0x3f72ef, warning: 0xd95b3d, pass: 0x16845b };
+    const material = new MeshStandardMaterial({
+      color: colors[props.accent || "default"],
+      roughness: 0.42,
+      metalness: 0.08,
+    });
+    mesh = new Mesh(geometry, material);
+    scene?.add(mesh);
 
-      const bounds = new Box3().setFromObject(mesh);
-      const size = bounds.getSize(new Vector3());
-      bounds.getCenter(modelCenter);
-      modelDistance = Math.max(size.x, size.y, size.z, 1) * 1.8;
-      applyView();
-      loading.value = false;
-    },
-    undefined,
-    () => {
-      error.value = "Preview geometry could not be loaded.";
-      loading.value = false;
-    },
-  );
+    const bounds = new Box3().setFromObject(mesh);
+    const size = bounds.getSize(new Vector3());
+    bounds.getCenter(modelCenter);
+    modelDistance = Math.max(size.x, size.y, size.z, 1) * 1.8;
+    applyView();
+    loading.value = false;
+  } catch {
+    error.value = "Preview geometry could not be loaded with the current Demo session.";
+    loading.value = false;
+  }
 }
 
 onMounted(() => {

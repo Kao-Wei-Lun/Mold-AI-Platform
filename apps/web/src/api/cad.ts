@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type ArtifactVersion = {
   artifact_version_id: string;
   original_filename: string;
@@ -105,7 +107,7 @@ export async function uploadCAD(
   if (metadata.productType.trim()) body.append("product_type", metadata.productType.trim());
   if (metadata.materialCode.trim()) body.append("material_code", metadata.materialCode.trim());
 
-  const response = await fetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
     method: "POST",
     body,
   });
@@ -114,7 +116,7 @@ export async function uploadCAD(
 }
 
 export async function fetchCADJob(jobId: string): Promise<CADJob> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));
@@ -122,7 +124,7 @@ export async function fetchCADJob(jobId: string): Promise<CADJob> {
 }
 
 export async function fetchRecentCAD(): Promise<CADArtifactSummary[]> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));

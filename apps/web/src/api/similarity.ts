@@ -1,4 +1,5 @@
 import type { CADJob, CADModelResult } from "./cad";
+import { apiFetch } from "./client";
 
 export type SimilarityEvidence = {
   type: string;
@@ -72,7 +73,7 @@ export async function createSimilaritySearch(
   filters: { datasetIds: string[]; productTypes: string[]; materialCodes: string[] },
   topK: number,
 ): Promise<SimilarityAccepted> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/similarity-searches`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/similarity-searches`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
@@ -92,7 +93,7 @@ export async function createSimilaritySearch(
 }
 
 export async function fetchSimilarityJob(jobId: string): Promise<SimilarityJob> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));

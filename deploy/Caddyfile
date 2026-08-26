@@ -1,0 +1,15 @@
+{
+	email {$TLS_EMAIL}
+}
+
+{$PUBLIC_WEB_DOMAIN} {
+	encode zstd gzip
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+	reverse_proxy web:8080
+}

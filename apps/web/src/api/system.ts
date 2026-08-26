@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type ServiceState = {
   name: string;
   status: "ok" | "error";
@@ -12,7 +14,7 @@ export type ReadinessResponse = {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 export async function fetchReadiness(): Promise<ReadinessResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/health/ready`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/health/ready`, {
     headers: { Accept: "application/json" },
   });
 

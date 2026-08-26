@@ -1,3 +1,5 @@
+import { apiFetch } from "./client";
+
 export type HMIField = {
   field_id: string;
   parameter_code: string;
@@ -65,7 +67,7 @@ export function hmiResourceUrl(path: string): string {
 }
 
 export async function fetchDemoHMI(): Promise<File> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/hmi/demo-fixture?variant=low-confidence`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi/demo-fixture?variant=low-confidence`);
   if (!response.ok) throw new Error(await errorMessage(response));
   return new File([await response.blob()], "demo-hmi-low-confidence.png", { type: "image/png" });
 }
@@ -74,7 +76,7 @@ export async function uploadHMI(file: File): Promise<HMIExtraction> {
   const form = new FormData();
   form.append("file", file);
   form.append("profile", "demo-generic-injection@1.0");
-  const response = await fetch(`${apiBaseUrl}/api/v1/hmi-extractions`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi-extractions`, {
     method: "POST",
     body: form,
     headers: { Accept: "application/json" },
@@ -87,7 +89,7 @@ export async function reviewHMI(
   extractionId: string,
   decisions: HMIReviewDecision[],
 ): Promise<HMIExtraction> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/hmi-extractions/${extractionId}/review`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi-extractions/${extractionId}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ reviewed_by: "demo-engineer", fields: decisions }),
@@ -97,7 +99,7 @@ export async function reviewHMI(
 }
 
 export async function exportHMI(extractionId: string): Promise<HMIExport> {
-  const response = await fetch(`${apiBaseUrl}/api/v1/hmi-extractions/${extractionId}/exports`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi-extractions/${extractionId}/exports`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ created_by: "demo-engineer" }),

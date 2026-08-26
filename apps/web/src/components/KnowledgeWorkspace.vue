@@ -11,6 +11,7 @@ import {
   type KnowledgeResultItem,
   type KnowledgeSearchResult,
 } from "../api/knowledge";
+import { downloadProtectedArtifact } from "../api/client";
 
 const file = ref<File | null>(null);
 const title = ref("");
@@ -115,6 +116,17 @@ async function submitSearch(): Promise<void> {
 
 function citationFor(item: KnowledgeResultItem) {
   return searchResult.value?.citations.find((citation) => citation.citation_id === item.citation_id);
+}
+
+async function downloadCitation(): Promise<void> {
+  if (!selectedResult.value) return;
+  const citation = citationFor(selectedResult.value);
+  if (!citation) return;
+  try {
+    await downloadProtectedArtifact(citation.source_url, citation.title);
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : "Source download failed.";
+  }
 }
 
 onMounted(loadDocuments);
@@ -258,14 +270,14 @@ onBeforeUnmount(() => {
               <span>{{ (selectedResult.score * 100).toFixed(1) }}%</span>
             </div>
             <blockquote>{{ selectedResult.excerpt }}</blockquote>
-            <a
+            <button
               v-if="citationFor(selectedResult)"
-              :href="citationFor(selectedResult)?.source_url"
-              target="_blank"
-              rel="noopener"
+              type="button"
+              class="citation-download"
+              @click="downloadCitation"
             >
               {{ citationFor(selectedResult)?.title }} · {{ citationFor(selectedResult)?.locator }}
-            </a>
+            </button>
           </div>
           <ol class="knowledge-result-list">
             <li v-for="item in searchResult.results" :key="item.chunk_id">

@@ -50,3 +50,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
+      - run: docker compose -f compose.yaml -f compose.release.yaml --env-file release.env.example config --quiet
