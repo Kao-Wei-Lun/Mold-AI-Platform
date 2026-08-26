@@ -152,6 +152,40 @@ services:
         condition: service_healthy
     networks: [backend]
 
+  mcp-gateway:
+    build:
+      context: ./services/platform-api
+      target: development
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PLATFORM_API_BASE_URL: http://api:8000/api/v1
+      PUBLIC_WEB_BASE_URL: ${PUBLIC_WEB_BASE_URL:-http://localhost:5173}
+      MCP_PORT: 8001
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp-gateway:*}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost:*}
+    command: ["python", "-m", "platform_core.mcp_gateway"]
+    volumes:
+      - ./services/platform-api:/app
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [frontend, backend]
+
   web:
     build:
       context: ./apps/web

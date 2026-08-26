@@ -105,6 +105,7 @@ REST_FRAMEWORK = {
 APP_NAME = "Mold AI Platform"
 APP_ENV = os.getenv("APP_ENV", "development")
 APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+ASSISTANT_LLM_PROVIDER = os.getenv("ASSISTANT_LLM_PROVIDER", "disabled")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_CAD_COLLECTION = os.getenv("QDRANT_CAD_COLLECTION", "cad-similarity-v1")

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
+import type { AssistantContext, UIAction } from "../api/assistant";
 import type { CADModelResult } from "../api/cad";
 import {
   createSimilaritySearch,
@@ -9,7 +10,8 @@ import {
   type SimilarityMatch,
 } from "../api/similarity";
 
-const props = defineProps<{ query: CADModelResult | null }>();
+const props = defineProps<{ query: CADModelResult | null; uiAction?: UIAction | null }>();
+const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const datasetId = ref("public-demo-v1");
@@ -92,13 +94,45 @@ watch(
   },
 );
 
+watch(
+  [() => result.value?.search_id, () => selectedMatch.value?.artifact_version_id],
+  () => {
+    if (!result.value || !selectedMatch.value || !job.value) return;
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "similarity_search",
+      query_artifact_version_id: result.value.query_ref.cad_artifact_version_id,
+      similarity_search_id: result.value.search_id,
+      selected_candidate_artifact_version_id: selectedMatch.value.artifact_version_id,
+      job_id: job.value.job_id,
+      ui_locale: "zh-TW",
+    });
+  },
+);
+
+watch(
+  () => props.uiAction?.action_id,
+  async () => {
+    const action = props.uiAction;
+    if (!action || action.type !== "assistant.show_evidence" || !result.value) return;
+    if (action.target.search_id !== result.value.search_id) return;
+    const selected = result.value.results.find(
+      (item) => item.artifact_version_id === action.target.candidate_artifact_version_id,
+    );
+    if (!selected) return;
+    selectedMatch.value = selected;
+    await nextTick();
+    document.getElementById("similarity")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  },
+);
+
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 });
 </script>
 
 <template>
-  <section class="similarity-workspace" aria-labelledby="similarity-title">
+  <section id="similarity" class="similarity-workspace" aria-labelledby="similarity-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">CAD similarity</p>

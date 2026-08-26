@@ -15,6 +15,7 @@ from platform_core.tasks import process_cad_job
 from .fixtures import ASCII_TETRAHEDRON_STL
 
 
+@override_settings(SIMILARITY_AUTO_INDEX=False)
 class CADProcessingTaskTests(TestCase):
     def setUp(self) -> None:
         self.media_directory = TemporaryDirectory()

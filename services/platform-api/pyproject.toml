@@ -16,6 +16,8 @@ dependencies = [
   "gunicorn>=23,<24",
   "cadquery==2.8.0",
   "trimesh>=4.12.2,<5",
+  "httpx>=0.28.1,<0.29",
+  "mcp==2.1.1",
 ]
 
 [project.optional-dependencies]

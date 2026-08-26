@@ -3,6 +3,8 @@ import { onMounted, ref } from "vue";
 
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import type { CADModelResult } from "./api/cad";
+import type { AssistantContext, UIAction } from "./api/assistant";
+import AssistantPanel from "./components/AssistantPanel.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
@@ -13,6 +15,16 @@ const readiness = ref<ReadinessResponse | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const activeCAD = ref<CADModelResult | null>(null);
+const assistantContext = ref<AssistantContext>({
+  context_version: "1.0",
+  page: "engineering_workspace",
+  ui_locale: "zh-TW",
+});
+const pendingUIAction = ref<UIAction | null>(null);
+
+function executeUIAction(action: UIAction): void {
+  pendingUIAction.value = action;
+}
 
 async function refreshHealth(): Promise<void> {
   loading.value = true;
@@ -73,9 +85,14 @@ onMounted(refreshHealth);
       </section>
 
       <CadWorkspace @ready="activeCAD = $event" />
-      <SimilarityWorkspace :query="activeCAD" />
+      <SimilarityWorkspace
+        :query="activeCAD"
+        :ui-action="pendingUIAction"
+        @context-change="assistantContext = $event"
+      />
       <DesignReviewWorkspace :query="activeCAD" />
       <KnowledgeWorkspace />
     </main>
+    <AssistantPanel :context="assistantContext" @execute-action="executeUIAction" />
   </div>
 </template>

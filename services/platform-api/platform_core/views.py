@@ -11,6 +11,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .assistant import AssistantValidationError, create_assistant_response
+from .assistant_providers import get_assistant_provider
 from .contracts import (
     artifact_payload,
     job_payload,
@@ -92,6 +94,36 @@ class SystemInfoView(APIView):
                 "api_version": "v1",
             }
         )
+
+
+class AssistantCapabilitiesView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        return Response(
+            {
+                "schema_version": "1.0",
+                "context_version": "1.0",
+                "ui_action_protocol_version": "1.0",
+                "provider": get_assistant_provider().health().payload(),
+                "supported_intents": ["explain_similarity", "get_job_status"],
+            }
+        )
+
+
+class AssistantMessageView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        try:
+            payload = create_assistant_response(
+                str(request.data.get("message", "")), request.data.get("context")
+            )
+        except AssistantValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        return Response(payload)
 
 
 def _error_response(code: str, message: str, http_status: int) -> Response:

@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     ArtifactVersionDownloadView,
+    AssistantCapabilitiesView,
+    AssistantMessageView,
     CADArtifactDetailView,
     CADArtifactListCreateView,
     DesignReviewDetailView,
@@ -26,6 +28,12 @@ urlpatterns = [
     path("health/live", LiveView.as_view(), name="health-live"),
     path("health/ready", ReadyView.as_view(), name="health-ready"),
     path("system/info", SystemInfoView.as_view(), name="system-info"),
+    path(
+        "assistant/capabilities",
+        AssistantCapabilitiesView.as_view(),
+        name="assistant-capabilities",
+    ),
+    path("assistant/messages", AssistantMessageView.as_view(), name="assistant-messages"),
     path("cad-artifacts", CADArtifactListCreateView.as_view(), name="cad-artifact-list-create"),
     path(
         "cad-artifacts/<uuid:artifact_id>",

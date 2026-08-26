@@ -35,7 +35,7 @@ button:disabled {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-columns: 230px minmax(0, 1fr) 360px;
 }
 
 .sidebar {
@@ -69,6 +69,147 @@ button:disabled {
 .workspace {
   width: min(1180px, 100%);
   padding: 5rem clamp(1.5rem, 5vw, 5rem);
+}
+
+.assistant-panel {
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  border-left: 1px solid #dbe2ec;
+  padding: 1.5rem;
+  background: #fbfcfe;
+}
+
+.assistant-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.assistant-heading h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.15rem;
+}
+
+.assistant-provider {
+  border-radius: 99px;
+  padding: 0.3rem 0.55rem;
+  color: #745200;
+  background: #fff0c7;
+  font-size: 0.65rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.assistant-provider.ok {
+  color: #12623b;
+  background: #dff6e9;
+}
+
+.provider-note {
+  margin: 0;
+  color: #745200;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.assistant-context,
+.assistant-answer {
+  border: 1px solid #dbe2ec;
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: white;
+}
+
+.assistant-context summary,
+.assistant-answer summary {
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.context-summary {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+}
+
+.context-summary span {
+  color: #2457d6;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.context-summary code {
+  overflow-wrap: anywhere;
+  color: #69758a;
+  font-size: 0.63rem;
+}
+
+.context-summary small {
+  color: #69758a;
+}
+
+.context-clear {
+  margin-top: 0.7rem;
+  padding: 0.35rem 0.55rem;
+  color: #4d586c;
+  background: #edf1f6;
+  font-size: 0.68rem;
+}
+
+.assistant-answer p {
+  margin: 0;
+  color: #26344f;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.assistant-answer details {
+  margin-top: 0.7rem;
+}
+
+.assistant-answer ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+  color: #556175;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.assistant-action {
+  width: 100%;
+  margin-top: 0.8rem;
+  font-size: 0.75rem;
+}
+
+.assistant-form {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: auto;
+}
+
+.assistant-form label {
+  color: #4d586c;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.assistant-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #cad4e2;
+  border-radius: 10px;
+  padding: 0.7rem;
+  color: #172033;
+  background: white;
+  font: inherit;
 }
 
 .hero {
@@ -1106,6 +1247,13 @@ button:disabled {
 
   .sidebar {
     padding: 1rem 1.25rem;
+  }
+
+  .assistant-panel {
+    position: static;
+    height: auto;
+    border-top: 1px solid #dbe2ec;
+    border-left: 0;
   }
 
   .workspace {

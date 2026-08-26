@@ -28,6 +28,12 @@ quarantine, server-derived ACL filtering, deterministic hybrid Qdrant retrieval,
 citations, and explicit abstention. See [stage-05-knowledge-rag.md](stage-05-knowledge-rag.md) for
 retrieval and security boundaries.
 
+Stage 6 adds a versioned minimal UI Context envelope, deterministic context-aware similarity
+explanations, a frontend UI Action allowlist, provider degradation visibility, and a separate
+Streamable HTTP MCP Gateway exposing five focused Capability adapters. See
+[stage-06-assistant-mcp.md](stage-06-assistant-mcp.md) for the protocol, current ChatGPT boundary,
+and external-access prerequisites.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -50,6 +56,8 @@ services.
 - API liveness: <http://localhost:8000/api/v1/health/live>
 - API readiness: <http://localhost:8000/api/v1/health/ready>
 - Django admin: <http://localhost:8000/admin/>
+- MCP Gateway (local preflight only): <http://localhost:8001/mcp>
+- MCP Gateway liveness: <http://localhost:8001/health/live>
 
 The database, Redis, and Qdrant ports are intentionally not published to the Windows host.
 
@@ -95,6 +103,11 @@ The values in `.env.example` are development placeholders. Before external acces
 - do not publish PostgreSQL, Redis, Qdrant, or Docker daemon ports;
 - never commit `.env` or LLM API keys.
 
+The local MCP endpoint intentionally has no user authentication and is restricted to the approved
+public Demo data scope. Do not forward it to the Internet. ChatGPT testing requires a controlled
+public HTTPS endpoint or Secure MCP Tunnel plus the account/workspace and authorization preflight
+described in Stage 6.
+
 ## Implemented similarity pipeline
 
 Stage 3 builds on the parsed geometry:
@@ -123,4 +136,18 @@ versioned public Demo document
 -> scan and section/paragraph chunks
 -> ACL-scoped deterministic text index
 -> extractive evidence with citations or abstention
+```
+
+## Implemented Assistant and MCP adapter
+
+```text
+versioned UI references
+-> server-side context resolution
+-> deterministic evidence-backed fallback answer
+-> validated UI Action
+
+ChatGPT / MCP client
+-> Streamable HTTP /mcp
+-> focused tool schema + safety annotations
+-> existing REST Capability API
 ```

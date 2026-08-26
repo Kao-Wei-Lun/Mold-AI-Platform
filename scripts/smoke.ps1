@@ -246,6 +246,35 @@ if ($similarityDetail.state -ne "succeeded" -or `
     throw "Persisted similarity result endpoint smoke check failed."
 }
 
+$assistantCapabilities = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/assistant/capabilities"
+if ($assistantCapabilities.context_version -ne "1.0" -or `
+    $assistantCapabilities.provider.status -ne "degraded") {
+    throw "Assistant capability/degradation preflight failed."
+}
+$assistantRequest = @{
+    message = "Why did this candidate rank first?"
+    context = @{
+        context_version = "1.0"
+        page = "similarity_search"
+        query_artifact_version_id = $stepUpload.artifact_version_id
+        similarity_search_id = $similarityAccepted.search_id
+        selected_candidate_artifact_version_id = `
+            $similarityJob.result.results[0].artifact_version_id
+        job_id = $similarityAccepted.job_id
+        ui_locale = "en"
+    }
+} | ConvertTo-Json -Depth 5
+$assistantResponse = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/assistant/messages" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $assistantRequest
+if ($assistantResponse.tool_calls[0].name -ne "get_similarity_explanation" -or `
+    $assistantResponse.ui_actions[0].type -ne "assistant.show_evidence") {
+    throw "Context-aware Assistant explanation smoke check failed."
+}
+
 $reviewRequest = @{
     schema_version = "1.0"
     idempotency_key = "stage4-design-review-smoke-$([guid]::NewGuid())"
@@ -413,6 +442,15 @@ if (-not $abstention.abstained -or $abstention.claims.Count -ne 0 -or `
     throw "Knowledge retrieval did not abstain when authorized evidence was absent."
 }
 
+$mcpLive = Invoke-RestMethod -Uri "http://localhost:8001/health/live"
+if ($mcpLive.status -ne "ok" -or $mcpLive.transport -ne "streamable-http") {
+    throw "MCP Gateway liveness check failed."
+}
+$mcpResult = docker compose exec -T api python scripts/mcp_smoke.py
+if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovered") {
+    throw "MCP protocol discovery/call smoke check failed."
+}
+
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"
