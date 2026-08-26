@@ -40,6 +40,12 @@ abstention, engineer-gated historical ranges, lineage/audit records, and a Proce
 workspace. See [stage-07-process-trial.md](stage-07-process-trial.md) for data, scoring, and safety
 boundaries.
 
+Stage 8 adds canonical CAE Study/Run/Result records, an idempotent synthetic structured-export
+Connector, solver/material/mesh compatibility gates, compatible metric subsets, deterministic
+deltas, result-level evidence, lineage/audit records, and a CAE comparison Web workspace. See
+[stage-08-cae-comparison.md](stage-08-cae-comparison.md) for integration-level and comparison
+boundaries.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -166,4 +172,14 @@ synthetic connector record + version/hash
 -> deterministic multi-lane case ranking
 -> compatibility and validation guardrails
 -> evidence-backed controlled-trial references or abstention
+```
+
+## Implemented CAE comparison pipeline
+
+```text
+synthetic structured export + source version/hash
+-> canonical CAEStudy / CAERun / CAEResult
+-> run compatibility gate
+-> compatible metric subset
+-> deterministic delta + result-level evidence or blocked comparison
 ```

@@ -13,6 +13,13 @@ from rest_framework.views import APIView
 
 from .assistant import AssistantValidationError, create_assistant_response
 from .assistant_providers import get_assistant_provider
+from .cae import (
+    CAEValidationError,
+    cae_study_payload,
+    cae_study_queryset,
+    compare_cae_runs,
+)
+from .cae_connectors import SyntheticCAEConnector, seed_demo_cae_studies
 from .contracts import (
     artifact_payload,
     job_payload,
@@ -42,6 +49,9 @@ from .knowledge import (
 from .models import (
     Artifact,
     ArtifactVersion,
+    CAEComparison,
+    CAERun,
+    CAEStudy,
     Job,
     KnowledgeDocument,
     KnowledgeSearch,
@@ -444,6 +454,120 @@ class RuleProfileListView(APIView):
     def get(self, request: Request) -> Response:
         profile = get_demo_rule_profile()
         return Response({"schema_version": "1.0", "items": [rule_profile_payload(profile)]})
+
+
+class CAEDemoFixtureView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        return Response(
+            {
+                "schema_version": "1.0",
+                "connector": SyntheticCAEConnector().health(),
+                "loaded_study_count": CAEStudy.objects.filter(
+                    connector_key="synthetic-cae-structured-export"
+                ).count(),
+            }
+        )
+
+    def post(self, request: Request) -> Response:
+        try:
+            result = seed_demo_cae_studies()
+        except ValueError as exc:
+            return _error_response(
+                "CONFLICT_CAE_FIXTURE_VERSION", str(exc), status.HTTP_409_CONFLICT
+            )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "connector_key": result.connector_key,
+                "source_version": result.source_version,
+                "created": result.created,
+                "existing": result.existing,
+                "study_ids": result.study_ids,
+            },
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
+        )
+
+
+class CAEStudyListView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        studies = cae_study_queryset().order_by("study_code")[:50]
+        items = [cae_study_payload(item) for item in studies if "public-demo" in item.acl_scopes]
+        return Response({"schema_version": "1.0", "items": items})
+
+
+class CAEStudyDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, study_id: str) -> Response:
+        study = get_object_or_404(cae_study_queryset(), pk=study_id)
+        if "public-demo" not in study.acl_scopes:
+            return _error_response(
+                "RESOURCE_NOT_FOUND",
+                "The requested resource is not available.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        return Response(cae_study_payload(study))
+
+
+class CAEComparisonListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        try:
+            baseline_id = uuid.UUID(str(request.data.get("baseline_run_id", "")))
+            candidate_id = uuid.UUID(str(request.data.get("candidate_run_id", "")))
+        except (TypeError, ValueError):
+            return _error_response(
+                "VALIDATION_CAE_RUN_ID",
+                "baseline_run_id and candidate_run_id must be UUIDs.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        runs = CAERun.objects.select_related("study").prefetch_related("results")
+        baseline = get_object_or_404(runs, pk=baseline_id, study__classification="public_demo")
+        candidate = get_object_or_404(runs, pk=candidate_id, study__classification="public_demo")
+        if "public-demo" not in baseline.study.acl_scopes or "public-demo" not in (
+            candidate.study.acl_scopes
+        ):
+            return _error_response(
+                "RESOURCE_NOT_FOUND",
+                "The requested resource is not available.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            comparison = compare_cae_runs(baseline, candidate)
+        except CAEValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        return Response(comparison.result, status=status.HTTP_200_OK)
+
+
+class CAEComparisonDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, comparison_id: str) -> Response:
+        comparison = get_object_or_404(
+            CAEComparison.objects.select_related("baseline_run__study", "candidate_run__study"),
+            pk=comparison_id,
+            baseline_run__study__classification="public_demo",
+            candidate_run__study__classification="public_demo",
+        )
+        if "public-demo" not in comparison.baseline_run.study.acl_scopes or "public-demo" not in (
+            comparison.candidate_run.study.acl_scopes
+        ):
+            return _error_response(
+                "RESOURCE_NOT_FOUND",
+                "The requested resource is not available.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        return Response(comparison.result)
 
 
 class ProcessTrialDemoFixtureView(APIView):

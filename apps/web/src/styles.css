@@ -548,13 +548,253 @@ button:disabled {
 .similarity-workspace,
 .design-review-workspace,
 .knowledge-workspace,
-.process-workspace {
+.process-workspace,
+.cae-workspace {
   margin-top: 1.5rem;
   padding: 1.7rem;
   border: 1px solid #dbe2ec;
   border-radius: 18px;
   background: white;
   box-shadow: 0 18px 45px rgb(33 48 79 / 8%);
+}
+
+.cae-source-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #d7e1e2;
+  border-radius: 14px;
+  background: #f7faf9;
+}
+
+.cae-source-bar > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.cae-source-bar span {
+  color: #657272;
+  font-size: 0.82rem;
+}
+
+.cae-compare-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background: #152f31;
+}
+
+.cae-compare-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #cfe0df;
+  font-size: 0.78rem;
+}
+
+.cae-compare-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #4e6768;
+  border-radius: 8px;
+  color: #eef7f5;
+  background: #203d3f;
+}
+
+.comparison-arrow {
+  padding-bottom: 0.7rem;
+  color: #96bcba;
+  font-size: 1.35rem;
+}
+
+.cae-compatibility {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+}
+
+.cae-compatibility > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.cae-compatibility span {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.cae-compatibility.compatible {
+  border: 1px solid #89b9ae;
+  color: #175b50;
+  background: #eaf7f3;
+}
+
+.cae-compatibility.blocked {
+  border: 1px solid #dba9a4;
+  color: #8d312b;
+  background: #fff0ee;
+}
+
+.cae-blocked-panel {
+  margin-top: 0.85rem;
+  padding: 1rem;
+  border: 1px solid #e2bbb6;
+  border-radius: 12px;
+  background: #fff7f5;
+}
+
+.cae-blocked-panel h3,
+.cae-blocked-panel p {
+  margin: 0 0 0.5rem;
+}
+
+.cae-blocked-panel ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cae-blocked-panel li {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cae-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+
+.cae-summary-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid #dce5e4;
+  border-radius: 10px;
+  background: #fbfcfc;
+}
+
+.cae-summary-grid span,
+.cae-lineage span {
+  color: #657272;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.cae-metric-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.85rem;
+  border: 1px solid #dce5e4;
+  border-radius: 12px;
+}
+
+.cae-metric-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.cae-metric-table th,
+.cae-metric-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5eceb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cae-metric-table th {
+  color: #526263;
+  background: #f2f6f5;
+}
+
+.cae-metric-table td:first-child,
+.cae-metric-table details {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.cae-metric-table details code {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cae-finding {
+  display: inline-block;
+  padding: 0.25rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cae-finding.improved {
+  color: #17624e;
+  background: #dff4ed;
+}
+
+.cae-finding.worsened {
+  color: #9b302c;
+  background: #fde8e5;
+}
+
+.cae-finding.changed_review_required,
+.cae-finding.unchanged {
+  color: #725819;
+  background: #fff2c9;
+}
+
+.cae-lineage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+
+.cae-lineage > div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border-radius: 10px;
+  background: #eef3f2;
+}
+
+.cae-lineage code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1100px) {
+  .cae-compare-form {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-arrow {
+    display: none;
+  }
+
+  .cae-summary-grid,
+  .cae-lineage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .process-source-bar {

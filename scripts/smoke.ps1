@@ -516,6 +516,82 @@ if (-not $missingMaterial.abstained -or $missingMaterial.result_count -ne 0 -or 
     throw "Process/Trial missing-material abstention check failed."
 }
 
+$caeSeed = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/cae/demo-fixtures" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body "{}"
+if (($caeSeed.created + $caeSeed.existing) -ne 5 -or `
+    $caeSeed.connector_key -ne "synthetic-cae-structured-export") {
+    throw "CAE synthetic structured-export Connector seed check failed."
+}
+
+$caeStudies = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/cae-studies"
+if ($caeStudies.items.Count -ne 5 -or `
+    ($caeStudies.items | Where-Object { $_.provenance.official_solver_api_connected }).Count -ne 0) {
+    throw "Canonical CAE study catalog or integration-level disclosure check failed."
+}
+$caeBaseline = $caeStudies.items | `
+    Where-Object { $_.study_code -eq "CAE-DEMO-BASELINE" } | `
+    Select-Object -First 1
+$caeCandidate = $caeStudies.items | `
+    Where-Object { $_.study_code -eq "CAE-DEMO-CANDIDATE" } | `
+    Select-Object -First 1
+$caeIncompatibleSolver = $caeStudies.items | `
+    Where-Object { $_.study_code -eq "CAE-DEMO-INCOMPATIBLE-SOLVER" } | `
+    Select-Object -First 1
+if ($null -eq $caeBaseline -or $null -eq $caeCandidate -or $null -eq $caeIncompatibleSolver) {
+    throw "Required CAE comparison fixtures are missing."
+}
+
+$caeCompareRequest = @{
+    baseline_run_id = $caeBaseline.runs[0].run_id
+    candidate_run_id = $caeCandidate.runs[0].run_id
+} | ConvertTo-Json
+$caeComparison = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/cae-comparisons" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $caeCompareRequest
+if (-not $caeComparison.compatible -or `
+    $caeComparison.comparison_summary.comparable_metric_count -ne 6 -or `
+    $caeComparison.comparison_summary.finding_counts.improved -ne 5) {
+    throw "Compatible CAE Run comparison summary check failed."
+}
+$pressureDelta = $caeComparison.metric_comparisons | `
+    Where-Object { $_.metric_code -eq "max_injection_pressure_mpa" } | `
+    Select-Object -First 1
+if ($null -eq $pressureDelta -or $pressureDelta.delta -ne -6 -or `
+    $pressureDelta.finding -ne "improved" -or $pressureDelta.evidence_refs.Count -ne 7) {
+    throw "CAE metric delta or evidence reference check failed."
+}
+$temperatureDelta = $caeComparison.metric_comparisons | `
+    Where-Object { $_.metric_code -eq "min_melt_front_temperature_c" } | `
+    Select-Object -First 1
+if ($temperatureDelta.finding -ne "changed_review_required" -or `
+    -not $caeComparison.lineage.comparison_ref.StartsWith("cae-comparison:")) {
+    throw "CAE temperature semantics or lineage check failed."
+}
+$caeComparisonDetail = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/cae-comparisons/$($caeComparison.comparison_id)"
+if ($caeComparisonDetail.comparison_id -ne $caeComparison.comparison_id) {
+    throw "Persisted CAE comparison check failed."
+}
+
+$caeBlockedRequest = @{
+    baseline_run_id = $caeBaseline.runs[0].run_id
+    candidate_run_id = $caeIncompatibleSolver.runs[0].run_id
+} | ConvertTo-Json
+$caeBlocked = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/cae-comparisons" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $caeBlockedRequest
+if ($caeBlocked.compatible -or $caeBlocked.metric_comparisons.Count -ne 0 -or `
+    -not ($caeBlocked.incompatibilities.code -contains "CAE_INCOMPATIBLE_SOLVER_VERSION")) {
+    throw "CAE incompatible solver-version gate check failed."
+}
+
 $mcpLive = Invoke-RestMethod -Uri "http://localhost:8001/health/live"
 if ($mcpLive.status -ne "ok" -or $mcpLive.transport -ne "streamable-http") {
     throw "MCP Gateway liveness check failed."
@@ -527,4 +603,4 @@ if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovere
 
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; CAE=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"

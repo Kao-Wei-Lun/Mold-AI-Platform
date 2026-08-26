@@ -697,3 +697,121 @@ class ProcessCaseSearch(models.Model):
 
     def __str__(self) -> str:
         return f"Process case search {self.id}"
+
+
+class CAEStudy(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    study_code = models.CharField(max_length=64, unique=True)
+    connector_key = models.CharField(max_length=64)
+    integration_level = models.CharField(max_length=64)
+    source_record_id = models.CharField(max_length=128)
+    source_version = models.CharField(max_length=64)
+    source_hash = models.CharField(max_length=64)
+    mapping_version = models.CharField(max_length=64)
+    solver_name = models.CharField(max_length=128)
+    product_ref = models.CharField(max_length=128)
+    mold_revision_ref = models.CharField(max_length=128)
+    material_model_code = models.CharField(max_length=128)
+    mesh_family = models.CharField(max_length=128)
+    objective = models.TextField()
+    owner = models.CharField(max_length=128)
+    classification = models.CharField(max_length=32, default="public_demo")
+    acl_scopes = models.JSONField(default=list)
+    data_quality = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["study_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["connector_key", "source_record_id", "source_version"],
+                name="unique_cae_study_source_version",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.study_code
+
+
+class CAERun(models.Model):
+    class Status(models.TextChoices):
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        INCOMPLETE = "incomplete", "Incomplete"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    study = models.ForeignKey(CAEStudy, related_name="runs", on_delete=models.PROTECT)
+    run_code = models.CharField(max_length=64)
+    solver_name = models.CharField(max_length=128)
+    solver_version = models.CharField(max_length=64)
+    mesh_artifact_ref = models.CharField(max_length=255)
+    mesh_checksum = models.CharField(max_length=64)
+    material_model_code = models.CharField(max_length=128)
+    boundary_settings = models.JSONField(default=dict)
+    process_settings = models.JSONField(default=dict)
+    unit_system = models.CharField(max_length=32)
+    status = models.CharField(max_length=24, choices=Status.choices)
+    input_hash = models.CharField(max_length=64)
+    data_quality = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["run_code"]
+        constraints = [
+            models.UniqueConstraint(fields=["study", "run_code"], name="unique_cae_study_run")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.study.study_code}:{self.run_code}"
+
+
+class CAEResult(models.Model):
+    class ResultType(models.TextChoices):
+        SCALAR = "scalar", "Scalar"
+        REGION_COUNT = "region_count", "Region count"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(CAERun, related_name="results", on_delete=models.PROTECT)
+    metric_code = models.CharField(max_length=128)
+    result_type = models.CharField(max_length=32, choices=ResultType.choices)
+    value = models.FloatField()
+    unit = models.CharField(max_length=32)
+    location = models.JSONField(default=dict)
+    field_summary = models.JSONField(default=dict)
+    quality_flags = models.JSONField(default=list)
+    parser_name = models.CharField(max_length=128)
+    parser_version = models.CharField(max_length=64)
+    source_locator = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["metric_code"]
+        constraints = [
+            models.UniqueConstraint(fields=["run", "metric_code"], name="unique_cae_run_metric")
+        ]
+        indexes = [models.Index(fields=["metric_code"], name="cae_metric_code_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.run_id}:{self.metric_code}"
+
+
+class CAEComparison(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    baseline_run = models.ForeignKey(
+        CAERun, related_name="baseline_comparisons", on_delete=models.PROTECT
+    )
+    candidate_run = models.ForeignKey(
+        CAERun, related_name="candidate_comparisons", on_delete=models.PROTECT
+    )
+    compatibility_profile_version = models.CharField(max_length=64)
+    request_snapshot = models.JSONField(default=dict)
+    compatible = models.BooleanField(default=False)
+    incompatibilities = models.JSONField(default=list)
+    result = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"CAE comparison {self.id}"

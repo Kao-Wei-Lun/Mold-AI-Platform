@@ -5,6 +5,7 @@ import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import type { CADModelResult } from "./api/cad";
 import type { AssistantContext, UIAction } from "./api/assistant";
 import AssistantPanel from "./components/AssistantPanel.vue";
+import CAEWorkspace from "./components/CAEWorkspace.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
@@ -94,6 +95,7 @@ onMounted(refreshHealth);
       <DesignReviewWorkspace :query="activeCAD" />
       <KnowledgeWorkspace />
       <ProcessTrialWorkspace />
+      <CAEWorkspace />
     </main>
     <AssistantPanel :context="assistantContext" @execute-action="executeUIAction" />
   </div>

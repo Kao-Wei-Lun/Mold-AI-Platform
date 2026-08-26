@@ -18,10 +18,11 @@
 
 ## Development
 
-Stages 1–7 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
+Stages 1–8 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
 deterministic explainable CAD similarity through Qdrant, and an auditable deterministic Design
 Review workflow, governed extractive Knowledge/RAG retrieval, and the context-aware Assistant plus
 Streamable HTTP MCP Gateway. Stage 7 adds canonical Process/Trial cases, a replaceable synthetic
-Connector, explainable case ranking, and engineer-gated parameter references. See
+Connector, explainable case ranking, and engineer-gated parameter references. Stage 8 adds
+canonical structured CAE results and a strict compatibility-gated Run comparison. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
 service endpoints, and implementation boundaries.
