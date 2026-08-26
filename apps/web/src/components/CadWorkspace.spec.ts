@@ -117,4 +117,84 @@ describe("CadWorkspace", () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain("Invalid STL signature");
   });
+
+  it("loads an existing indexed CAD artifact as the active query", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          schema_version: "1.0",
+          items: [
+            {
+              artifact_id: "artifact-existing",
+              name: "Existing housing",
+              kind: "cad_source",
+              classification: "public_demo",
+              dataset_id: "public-demo-v1",
+              product_type: "housing",
+              material_code: "PC_ABS",
+              created_at: "2026-08-26T00:00:00Z",
+              jobs: [
+                {
+                  schema_version: "1.0",
+                  job_id: "job-existing",
+                  capability: "cad.parse@1.0.0",
+                  state: "succeeded",
+                  stage: "completed",
+                  progress: 100,
+                  attempt: 1,
+                  artifact_version_id: "version-existing",
+                  correlation_id: "correlation-existing",
+                  error: null,
+                  result: {
+                    cad_model_id: "cad-existing",
+                    artifact_version_id: "version-existing",
+                    cad_format: "stl",
+                    unit_system: "unknown",
+                    parser: { name: "trimesh", version: "4.12.2" },
+                    geometry_status: "succeeded",
+                    bounding_box: {
+                      min: { x: 0, y: 0, z: 0 },
+                      max: { x: 1, y: 1, z: 1 },
+                      size: { x: 1, y: 1, z: 1 },
+                    },
+                    volume: 0.1667,
+                    surface_area: 2.366,
+                    face_count: 4,
+                    edge_count: 6,
+                    surface_type_histogram: { triangle: 4 },
+                    quality_flags: ["UNIT_UNCERTAIN"],
+                    preview: {
+                      artifact_version_id: "preview-existing",
+                      download_url: "/preview-existing",
+                    },
+                    similarity_index: {
+                      feature_set_id: "feature-existing",
+                      schema_version: "1.0",
+                      extractor_version: "1.0.0",
+                      index_version: "cad-demo-v1",
+                      status: "indexed",
+                      error_code: null,
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const wrapper = mount(CadWorkspace, {
+      global: { stubs: { CadPreview: true } },
+    });
+
+    await wrapper.get(".recent-cad-loader > button").trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Existing housing");
+    await wrapper.get(".recent-cad-loader button:last-child").trigger("click");
+
+    expect(wrapper.emitted("ready")?.[0]?.[0]).toMatchObject({
+      artifact_version_id: "version-existing",
+    });
+  });
 });

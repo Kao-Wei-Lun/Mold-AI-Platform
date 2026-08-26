@@ -111,6 +111,9 @@ try {
     if ($cadJob.result.face_count -ne 4 -or $cadJob.result.edge_count -ne 6) {
         throw "CAD geometry smoke result did not match the tetrahedron fixture."
     }
+    if ($cadJob.result.similarity_index.status -ne "indexed") {
+        throw "STL similarity feature indexing did not complete."
+    }
     $preview = Invoke-WebRequest `
         -Uri "http://localhost:8000$($cadJob.result.preview.download_url)" `
         -UseBasicParsing
@@ -170,6 +173,9 @@ os._exit(0)
     if ($stepJob.result.face_count -ne 6 -or $stepJob.result.edge_count -ne 12 -or $volumeDelta -gt 0.01) {
         throw "STEP geometry smoke result did not match the 10 x 20 x 30 box fixture."
     }
+    if ($stepJob.result.similarity_index.status -ne "indexed") {
+        throw "STEP similarity feature indexing did not complete."
+    }
 }
 finally {
     if (Test-Path -LiteralPath $stepFile) {
@@ -177,6 +183,69 @@ finally {
     }
 }
 
+$similarityRequest = @{
+    schema_version = "1.0"
+    idempotency_key = "stage3-similarity-smoke-$([guid]::NewGuid())"
+    query = @{
+        cad_artifact_version_id = $stepUpload.artifact_version_id
+    }
+    profile = "demo-general@1.0"
+    filters = @{
+        dataset_ids = @("public-demo-v1")
+    }
+    top_k = 5
+} | ConvertTo-Json -Depth 5
+
+$similarityAccepted = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/similarity-searches" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $similarityRequest
+
+if ($similarityAccepted.status -ne "accepted") {
+    throw "Similarity search was not accepted."
+}
+
+$similarityDeadline = (Get-Date).AddSeconds(60)
+$similarityJob = $null
+while ((Get-Date) -lt $similarityDeadline) {
+    $similarityJob = Invoke-RestMethod `
+        -Uri "http://localhost:8000/api/v1/jobs/$($similarityAccepted.job_id)"
+    if ($similarityJob.state -in @("succeeded", "failed")) {
+        break
+    }
+    Start-Sleep -Seconds 1
+}
+
+if ($null -eq $similarityJob -or $similarityJob.state -ne "succeeded") {
+    $failureCode = if ($similarityJob.error) { $similarityJob.error.code } else { "timeout" }
+    throw "Similarity search smoke check failed: $failureCode"
+}
+if ($similarityJob.result.result_count -lt 1) {
+    throw "Similarity search did not return an indexed candidate."
+}
+if ($similarityJob.result.results[0].artifact_version_id -eq $stepUpload.artifact_version_id) {
+    throw "Similarity search returned the query artifact as its own candidate."
+}
+if ($null -eq $similarityJob.result.results[0].sub_scores.geometry -or `
+    $null -eq $similarityJob.result.results[0].sub_scores.topology) {
+    throw "Similarity result is missing required deterministic score lanes."
+}
+if ($similarityJob.result.results[0].similarities.Count -eq 0 -and `
+    $similarityJob.result.results[0].differences.Count -eq 0) {
+    throw "Similarity result does not contain engineering evidence."
+}
+if (-not $similarityJob.result.lineage_ref.StartsWith("similarity-search:")) {
+    throw "Similarity result lineage reference is missing."
+}
+
+$similarityDetail = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/similarity-searches/$($similarityAccepted.search_id)"
+if ($similarityDetail.state -ne "succeeded" -or `
+    $similarityDetail.result.search_id -ne $similarityAccepted.search_id) {
+    throw "Persisted similarity result endpoint smoke check failed."
+}
+
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; STL/STEP upload/parse/preview=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD parse/index/preview=ok; Similarity/Qdrant=ok; $($serviceSummary -join '; ')"

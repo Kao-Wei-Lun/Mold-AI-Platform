@@ -14,6 +14,10 @@ Stage 2 adds versioned STEP/STL upload, the canonical Artifact/Job/CADModel reco
 queue, OpenCascade/Trimesh parsing, derived preview lineage, polling APIs, and a Three.js viewer.
 See [stage-02-cad-ingestion.md](stage-02-cad-ingestion.md) for its contract and known security gaps.
 
+Stage 3 adds versioned deterministic feature extraction, scoped Qdrant indexing, asynchronous
+similarity search, explainable reranking, and side-by-side comparison. See
+[stage-03-cad-similarity.md](stage-03-cad-similarity.md) for the score contract and limitations.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -59,7 +63,7 @@ npm install
 cd ..\..
 ```
 
-Run all Stage 1 checks:
+Run all implemented-stage checks:
 
 ```powershell
 .\scripts\test.ps1
@@ -81,7 +85,7 @@ The values in `.env.example` are development placeholders. Before external acces
 - do not publish PostgreSQL, Redis, Qdrant, or Docker daemon ports;
 - never commit `.env` or LLM API keys.
 
-## Next stage
+## Implemented similarity pipeline
 
 Stage 3 builds on the parsed geometry:
 

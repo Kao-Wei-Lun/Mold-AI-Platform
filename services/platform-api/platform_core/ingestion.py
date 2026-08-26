@@ -107,6 +107,9 @@ def create_upload_records(
     upload: UploadedFile,
     *,
     artifact_name: str = "",
+    dataset_id: str = "public-demo-v1",
+    product_type: str = "",
+    material_code: str = "",
     idempotency_key: str | None = None,
 ) -> UploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
@@ -133,6 +136,9 @@ def create_upload_records(
                 name=(artifact_name.strip() or filename)[:255],
                 kind=Artifact.Kind.CAD_SOURCE,
                 classification="public_demo",
+                dataset_id=(dataset_id.strip() or "public-demo-v1")[:128],
+                product_type=product_type.strip()[:128],
+                material_code=material_code.strip()[:128],
             )
             version = ArtifactVersion.objects.create(
                 id=version_id,

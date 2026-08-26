@@ -18,6 +18,7 @@
 
 ## Development
 
-Stages 1 and 2 establish the runnable foundation and the STEP/STL Artifact/Job vertical slice. See
+Stages 1–3 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice, and
+deterministic explainable CAD similarity through Qdrant. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
-service endpoints, and the next similarity-search vertical slice.
+service endpoints, and implementation boundaries.

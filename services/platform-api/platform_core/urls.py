@@ -7,6 +7,8 @@ from .views import (
     JobDetailView,
     LiveView,
     ReadyView,
+    SimilaritySearchDetailView,
+    SimilaritySearchListCreateView,
     SystemInfoView,
 )
 
@@ -23,6 +25,16 @@ urlpatterns = [
         name="cad-artifact-detail",
     ),
     path("jobs/<uuid:job_id>", JobDetailView.as_view(), name="job-detail"),
+    path(
+        "similarity-searches",
+        SimilaritySearchListCreateView.as_view(),
+        name="similarity-search-list-create",
+    ),
+    path(
+        "similarity-searches/<uuid:search_id>",
+        SimilaritySearchDetailView.as_view(),
+        name="similarity-search-detail",
+    ),
     path(
         "artifact-versions/<uuid:artifact_version_id>/download",
         ArtifactVersionDownloadView.as_view(),

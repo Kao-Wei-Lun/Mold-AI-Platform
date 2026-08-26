@@ -32,6 +32,8 @@ Upload fields:
 
 - `file` — required multipart file.
 - `artifact_name` — optional display name.
+- `dataset_id` — canonical dataset scope; defaults to `public-demo-v1`.
+- `product_type` and `material_code` — optional canonical metadata used by similarity filters.
 - `idempotency_key` — recommended; may alternatively use the `Idempotency-Key` header.
 
 ## Canonical records

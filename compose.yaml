@@ -56,6 +56,9 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       QDRANT_URL: http://qdrant:6333
+      QDRANT_CAD_COLLECTION: cad-similarity-v1
+      SIMILARITY_INDEX_VERSION: cad-demo-v1
+      SIMILARITY_AUTO_INDEX: "true"
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command: ["./scripts/start-api.sh"]
     volumes:
@@ -89,6 +92,9 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       QDRANT_URL: http://qdrant:6333
+      QDRANT_CAD_COLLECTION: cad-similarity-v1
+      SIMILARITY_INDEX_VERSION: cad-demo-v1
+      SIMILARITY_AUTO_INDEX: "true"
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command: ["celery", "-A", "mold_platform", "worker", "--loglevel=INFO", "--queues=general", "--concurrency=2"]
     volumes:
@@ -118,6 +124,9 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       QDRANT_URL: http://qdrant:6333
+      QDRANT_CAD_COLLECTION: cad-similarity-v1
+      SIMILARITY_INDEX_VERSION: cad-demo-v1
+      SIMILARITY_AUTO_INDEX: "true"
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command:
       [

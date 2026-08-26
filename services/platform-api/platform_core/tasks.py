@@ -11,6 +11,8 @@ from django.utils import timezone
 
 from .cad_processing import CADProcessingError, parse_cad_file
 from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent, LineageEdge
+from .similarity import SimilarityValidationError, extract_and_index_cad_model, run_similarity
+from .vector_store import VectorStoreError
 
 PREVIEW_NAMESPACE = uuid.UUID("732b7e1e-3c42-4af1-a4ec-e0c11fdf0d58")
 TERMINAL_STATES = {Job.State.SUCCEEDED, Job.State.FAILED, Job.State.CANCELLED, Job.State.EXPIRED}
@@ -191,6 +193,19 @@ def process_cad_job(job_id: str) -> dict[str, str]:
         cad_model.error_code = ""
         cad_model.save()
 
+        if settings.SIMILARITY_AUTO_INDEX:
+            update_job(job.id, stage="extracting_similarity_features", progress=82)
+            try:
+                extract_and_index_cad_model(cad_model)
+                update_job(job.id, stage="similarity_features_indexed", progress=92)
+            except VectorStoreError:
+                quality_flags = list(cad_model.quality_flags)
+                if "SIMILARITY_INDEX_UNAVAILABLE" not in quality_flags:
+                    quality_flags.append("SIMILARITY_INDEX_UNAVAILABLE")
+                    cad_model.quality_flags = quality_flags
+                    cad_model.save(update_fields=["quality_flags", "updated_at"])
+                update_job(job.id, stage="similarity_index_degraded", progress=92)
+
         result_ref = f"cad_model:{cad_model.id}"
         update_job(
             job.id,
@@ -212,3 +227,58 @@ def process_cad_job(job_id: str) -> dict[str, str]:
         raise
     finally:
         temporary_preview.unlink(missing_ok=True)
+
+
+@shared_task(name="platform_core.run_similarity_job")
+def run_similarity_job(job_id: str) -> dict[str, str]:
+    job = Job.objects.select_related(
+        "similarity_search__query_feature_set__cad_model__artifact_version__artifact",
+        "similarity_search__profile",
+    ).get(pk=job_id)
+    if job.state in TERMINAL_STATES:
+        terminal_result = {"job_id": str(job.id), "state": job.state}
+        if job.result_ref:
+            terminal_result["result_ref"] = job.result_ref
+        if job.error_code:
+            terminal_result["error_code"] = job.error_code
+        return terminal_result
+
+    try:
+        update_job(job.id, state=Job.State.RUNNING, stage="retrieving_candidates", progress=20)
+        result = run_similarity(job.similarity_search)
+        update_job(job.id, stage="persisting_ranked_results", progress=85)
+        search = job.similarity_search
+        search.result = result
+        search.completed_at = timezone.now()
+        search.save(update_fields=["result", "completed_at"])
+        result_ref = f"similarity_search:{search.id}"
+        update_job(
+            job.id,
+            state=Job.State.SUCCEEDED,
+            stage="completed",
+            progress=100,
+            result_ref=result_ref,
+        )
+        return {"job_id": str(job.id), "state": Job.State.SUCCEEDED, "result_ref": result_ref}
+    except (SimilarityValidationError, VectorStoreError) as exc:
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code=exc.code,
+            error_message=exc.user_message,
+        )
+        return {"job_id": str(job.id), "state": Job.State.FAILED, "error_code": exc.code}
+    except Exception:
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code="INTERNAL_SIMILARITY_SEARCH",
+            error_message=(
+                "The similarity search failed unexpectedly. Use the correlation ID for support."
+            ),
+        )
+        raise

@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 
-import { fetchCADJob, type CADJob, uploadCAD } from "../api/cad";
+import { fetchCADJob, fetchRecentCAD, type CADJob, uploadCAD } from "../api/cad";
+
+const emit = defineEmits<{ ready: [result: NonNullable<CADJob["result"]>] }>();
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const selectedFile = ref<File | null>(null);
 const artifactName = ref("");
+const datasetId = ref("public-demo-v1");
+const productType = ref("");
+const materialCode = ref("");
 const uploading = ref(false);
 const error = ref<string | null>(null);
 const warning = ref<string | null>(null);
 const job = ref<CADJob | null>(null);
+const recentJobs = ref<Array<{ job: CADJob; label: string }>>([]);
+const selectedRecentJobId = ref("");
+const loadingRecent = ref(false);
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
@@ -39,6 +47,7 @@ async function refreshJob(): Promise<void> {
   if (!job.value) return;
   try {
     job.value = await fetchCADJob(job.value.job_id);
+    if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "Unable to refresh the CAD job.";
@@ -59,15 +68,54 @@ async function submit(): Promise<void> {
 
   try {
     const idempotencyKey = `web-${Date.now()}-${selectedFile.value.name}-${selectedFile.value.size}`;
-    const accepted = await uploadCAD(selectedFile.value, artifactName.value, idempotencyKey);
+    const accepted = await uploadCAD(selectedFile.value, artifactName.value, idempotencyKey, {
+      datasetId: datasetId.value,
+      productType: productType.value,
+      materialCode: materialCode.value,
+    });
     warning.value = accepted.warnings[0] || null;
     job.value = await fetchCADJob(accepted.job_id);
+    if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "CAD upload failed.";
   } finally {
     uploading.value = false;
   }
+}
+
+async function browseRecent(): Promise<void> {
+  loadingRecent.value = true;
+  error.value = null;
+  try {
+    const artifacts = await fetchRecentCAD();
+    recentJobs.value = artifacts.flatMap((artifact) =>
+      artifact.jobs
+        .filter(
+          (candidate) =>
+            candidate.capability.startsWith("cad.parse@") &&
+            candidate.state === "succeeded" &&
+            candidate.result?.similarity_index?.status === "indexed",
+        )
+        .map((candidate) => ({
+          job: candidate,
+          label: `${artifact.name} · ${artifact.dataset_id}`,
+        })),
+    );
+    selectedRecentJobId.value = recentJobs.value[0]?.job.job_id || "";
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : "Unable to load recent CAD artifacts.";
+  } finally {
+    loadingRecent.value = false;
+  }
+}
+
+function activateRecent(): void {
+  const selected = recentJobs.value.find((candidate) => candidate.job.job_id === selectedRecentJobId.value);
+  if (!selected?.job.result) return;
+  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  job.value = selected.job;
+  emit("ready", selected.job.result);
 }
 
 onBeforeUnmount(() => {
@@ -85,6 +133,24 @@ onBeforeUnmount(() => {
       <span class="demo-label">Public / Synthetic Demo Data</span>
     </div>
 
+    <div class="recent-cad-loader">
+      <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent">
+        {{ loadingRecent ? "Loading..." : "Browse recent processed CAD" }}
+      </button>
+      <template v-if="recentJobs.length">
+        <label>
+          <span>Indexed CAD artifact</span>
+          <select v-model="selectedRecentJobId">
+            <option v-for="candidate in recentJobs" :key="candidate.job.job_id" :value="candidate.job.job_id">
+              {{ candidate.label }}
+            </option>
+          </select>
+        </label>
+        <button type="button" @click="activateRecent">Use as query</button>
+      </template>
+      <span v-else-if="!loadingRecent" class="muted">Or upload a new STEP/STL below.</span>
+    </div>
+
     <form class="upload-form" @submit.prevent="submit">
       <label>
         <span>STEP or STL file</span>
@@ -93,6 +159,18 @@ onBeforeUnmount(() => {
       <label>
         <span>Artifact name</span>
         <input v-model="artifactName" type="text" maxlength="255" placeholder="Housing revision A" />
+      </label>
+      <label>
+        <span>Dataset</span>
+        <input v-model="datasetId" type="text" maxlength="128" required />
+      </label>
+      <label>
+        <span>Product type</span>
+        <input v-model="productType" type="text" maxlength="128" placeholder="housing" />
+      </label>
+      <label>
+        <span>Material</span>
+        <input v-model="materialCode" type="text" maxlength="128" placeholder="PC_ABS" />
       </label>
       <button type="submit" :disabled="uploading">
         {{ uploading ? "Submitting..." : "Upload and process" }}

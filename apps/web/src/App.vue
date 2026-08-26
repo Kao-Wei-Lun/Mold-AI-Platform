@@ -2,12 +2,15 @@
 import { onMounted, ref } from "vue";
 
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
+import type { CADModelResult } from "./api/cad";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
+import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
 
 const readiness = ref<ReadinessResponse | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const activeCAD = ref<CADModelResult | null>(null);
 
 async function refreshHealth(): Promise<void> {
   loading.value = true;
@@ -67,7 +70,8 @@ onMounted(refreshHealth);
         </ul>
       </section>
 
-      <CadWorkspace />
+      <CadWorkspace @ready="activeCAD = $event" />
+      <SimilarityWorkspace :query="activeCAD" />
     </main>
   </div>
 </template>

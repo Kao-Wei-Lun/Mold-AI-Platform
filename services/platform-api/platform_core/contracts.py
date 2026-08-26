@@ -1,4 +1,4 @@
-from .models import Artifact, ArtifactVersion, CADModel, Job
+from .models import Artifact, ArtifactVersion, CADModel, Job, SimilaritySearch
 
 
 def artifact_version_payload(version: ArtifactVersion) -> dict[str, object]:
@@ -21,6 +21,17 @@ def cad_model_payload(cad_model: CADModel) -> dict[str, object]:
     preview = None
     if cad_model.preview_artifact_version_id:
         preview = artifact_version_payload(cad_model.preview_artifact_version)
+    feature_set = cad_model.feature_sets.order_by("-created_at").first()
+    similarity_index = None
+    if feature_set:
+        similarity_index = {
+            "feature_set_id": str(feature_set.id),
+            "schema_version": feature_set.schema_version,
+            "extractor_version": feature_set.extractor_version,
+            "index_version": feature_set.index_version,
+            "status": feature_set.index_status,
+            "error_code": feature_set.index_error_code or None,
+        }
     return {
         "cad_model_id": str(cad_model.id),
         "artifact_version_id": str(cad_model.artifact_version_id),
@@ -39,17 +50,23 @@ def cad_model_payload(cad_model: CADModel) -> dict[str, object]:
         "surface_type_histogram": cad_model.surface_type_histogram,
         "quality_flags": cad_model.quality_flags,
         "preview": preview,
+        "similarity_index": similarity_index,
     }
 
 
 def job_payload(job: Job) -> dict[str, object]:
     result = None
-    try:
-        cad_model = job.input_artifact_version.cad_model
-        if job.state == Job.State.SUCCEEDED:
+    if job.state == Job.State.SUCCEEDED and job.capability_id == "cad.parse":
+        try:
+            cad_model = job.input_artifact_version.cad_model
             result = cad_model_payload(cad_model)
-    except CADModel.DoesNotExist:
-        pass
+        except CADModel.DoesNotExist:
+            pass
+    elif job.state == Job.State.SUCCEEDED and job.capability_id == "mold.similarity_search":
+        try:
+            result = job.similarity_search.result
+        except SimilaritySearch.DoesNotExist:
+            pass
 
     error = None
     if job.error_code:
@@ -93,6 +110,9 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "name": artifact.name,
         "kind": artifact.kind,
         "classification": artifact.classification,
+        "dataset_id": artifact.dataset_id,
+        "product_type": artifact.product_type,
+        "material_code": artifact.material_code,
         "created_at": artifact.created_at.isoformat(),
         "versions": [artifact_version_payload(version) for version in versions],
         "jobs": jobs,

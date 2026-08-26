@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.http import FileResponse
@@ -11,8 +13,9 @@ from rest_framework.views import APIView
 from .contracts import artifact_payload, job_payload
 from .health import collect_readiness
 from .ingestion import UploadValidationError, create_upload_records
-from .models import Artifact, ArtifactVersion, Job
-from .tasks import mark_job_failed, process_cad_job
+from .models import Artifact, ArtifactVersion, Job, SimilaritySearch
+from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
+from .tasks import mark_job_failed, process_cad_job, run_similarity_job, update_job
 
 
 class LiveView(APIView):
@@ -66,7 +69,9 @@ class CADArtifactListCreateView(APIView):
         artifacts = (
             Artifact.objects.filter(kind=Artifact.Kind.CAD_SOURCE)
             .prefetch_related(
-                "versions__input_jobs", "versions__cad_model__preview_artifact_version"
+                "versions__input_jobs",
+                "versions__cad_model__preview_artifact_version",
+                "versions__cad_model__feature_sets",
             )
             .order_by("-created_at")[:25]
         )
@@ -97,6 +102,9 @@ class CADArtifactListCreateView(APIView):
             records = create_upload_records(
                 upload,
                 artifact_name=str(request.data.get("artifact_name", "")),
+                dataset_id=str(request.data.get("dataset_id", "public-demo-v1")),
+                product_type=str(request.data.get("product_type", "")),
+                material_code=str(request.data.get("material_code", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
             )
         except UploadValidationError as exc:
@@ -152,7 +160,9 @@ class CADArtifactDetailView(APIView):
     def get(self, request: Request, artifact_id: str) -> Response:
         artifact = get_object_or_404(
             Artifact.objects.prefetch_related(
-                "versions__input_jobs", "versions__cad_model__preview_artifact_version"
+                "versions__input_jobs",
+                "versions__cad_model__preview_artifact_version",
+                "versions__cad_model__feature_sets",
             ),
             pk=artifact_id,
             kind=Artifact.Kind.CAD_SOURCE,
@@ -167,11 +177,132 @@ class JobDetailView(APIView):
     def get(self, request: Request, job_id: str) -> Response:
         job = get_object_or_404(
             Job.objects.select_related(
-                "input_artifact_version__cad_model__preview_artifact_version"
+                "input_artifact_version__cad_model__preview_artifact_version",
+                "similarity_search",
             ),
             pk=job_id,
         )
         return Response(job_payload(job))
+
+
+class SimilaritySearchListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        query = request.data.get("query", {})
+        if not isinstance(query, dict) or not query.get("cad_artifact_version_id"):
+            return _error_response(
+                "VALIDATION_QUERY_ARTIFACT",
+                "query.cad_artifact_version_id is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            query_version_id = uuid.UUID(str(query["cad_artifact_version_id"]))
+        except (TypeError, ValueError):
+            return _error_response(
+                "VALIDATION_QUERY_ARTIFACT",
+                "query.cad_artifact_version_id must be a UUID.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        requested_profile = str(request.data.get("profile", PROFILE_KEY))
+        if requested_profile != PROFILE_KEY:
+            return _error_response(
+                "VALIDATION_SIMILARITY_PROFILE",
+                f"Only {PROFILE_KEY} is available in the Demo environment.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        query_version = get_object_or_404(
+            ArtifactVersion.objects.select_related("artifact", "cad_model"),
+            pk=query_version_id,
+            artifact__kind=Artifact.Kind.CAD_SOURCE,
+        )
+        try:
+            top_k = int(request.data.get("top_k", 10))
+        except (TypeError, ValueError):
+            return _error_response(
+                "VALIDATION_TOP_K", "top_k must be an integer.", status.HTTP_400_BAD_REQUEST
+            )
+        filters = request.data.get("filters", {})
+        if not isinstance(filters, dict):
+            return _error_response(
+                "VALIDATION_FILTER", "filters must be an object.", status.HTTP_400_BAD_REQUEST
+            )
+        idempotency_key = request.data.get("idempotency_key") or request.headers.get(
+            "Idempotency-Key"
+        )
+        if idempotency_key and len(str(idempotency_key)) > 255:
+            return _error_response(
+                "VALIDATION_IDEMPOTENCY_KEY",
+                "The idempotency key must be 255 characters or fewer.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            records = create_similarity_records(
+                query_version,
+                top_k=top_k,
+                filters=filters,
+                idempotency_key=str(idempotency_key) if idempotency_key else None,
+            )
+        except SimilarityValidationError as exc:
+            conflict = exc.code.startswith("CONFLICT_")
+            return _error_response(
+                exc.code,
+                exc.user_message,
+                status.HTTP_409_CONFLICT if conflict else status.HTTP_400_BAD_REQUEST,
+            )
+
+        if records.created:
+            try:
+                run_similarity_job.apply_async(args=[str(records.job.id)], queue="cad")
+            except Exception:
+                update_job(
+                    records.job.id,
+                    state=Job.State.FAILED,
+                    stage="failed",
+                    progress=100,
+                    error_code="JOB_QUEUE_UNAVAILABLE",
+                    error_message="The similarity job could not be queued.",
+                )
+                return _error_response(
+                    "JOB_QUEUE_UNAVAILABLE",
+                    "The similarity job could not be queued.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+        return Response(
+            {
+                "schema_version": "1.0",
+                "status": "accepted",
+                "search_id": str(records.search.id),
+                "job_id": str(records.job.id),
+                "idempotent_replay": not records.created,
+                "links": {
+                    "status": f"/api/v1/jobs/{records.job.id}",
+                    "result": f"/api/v1/similarity-searches/{records.search.id}",
+                    "ui": f"/similarity/jobs/{records.job.id}",
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class SimilaritySearchDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, search_id: str) -> Response:
+        search = get_object_or_404(SimilaritySearch.objects.select_related("job"), pk=search_id)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "search_id": str(search.id),
+                "state": search.job.state,
+                "job_id": str(search.job.id),
+                "result": search.result if search.job.state == Job.State.SUCCEEDED else None,
+            }
+        )
 
 
 class ArtifactVersionDownloadView(APIView):

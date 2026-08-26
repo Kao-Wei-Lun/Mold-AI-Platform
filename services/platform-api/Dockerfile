@@ -11,18 +11,20 @@ RUN addgroup --system app && adduser --system --ingroup app app \
     && chown app:app /data
 
 COPY pyproject.toml ./
+RUN python -c "import subprocess, sys, tomllib; config=tomllib.load(open('pyproject.toml', 'rb')); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--no-cache-dir', *config['project']['dependencies']])"
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY manage.py ./
 COPY mold_platform ./mold_platform
 COPY platform_core ./platform_core
 COPY scripts ./scripts
 
-RUN pip install --no-cache-dir . && chmod +x scripts/*.sh
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libgl1 \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --no-deps . && chmod +x scripts/*.sh
 
 FROM base AS development
-RUN pip install --no-cache-dir ".[dev]"
+RUN python -c "import subprocess, sys, tomllib; config=tomllib.load(open('pyproject.toml', 'rb')); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--no-cache-dir', *config['project']['optional-dependencies']['dev']])"
 USER app
 
 FROM base AS production

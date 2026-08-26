@@ -13,6 +13,9 @@ class Artifact(models.Model):
     name = models.CharField(max_length=255)
     kind = models.CharField(max_length=32, choices=Kind.choices)
     classification = models.CharField(max_length=32, default="public_demo")
+    dataset_id = models.CharField(max_length=128, default="public-demo-v1")
+    product_type = models.CharField(max_length=128, blank=True)
+    material_code = models.CharField(max_length=128, blank=True)
     created_by = models.CharField(max_length=128, default="demo-user")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -220,3 +223,81 @@ class LineageEdge(models.Model):
 
     def __str__(self) -> str:
         return f"{self.from_artifact_version_id} {self.relationship} {self.to_artifact_version_id}"
+
+
+class SimilarityProfile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile_key = models.CharField(max_length=128, unique=True)
+    schema_version = models.CharField(max_length=32, default="1.0")
+    weights = models.JSONField(default=dict)
+    candidate_collection = models.CharField(max_length=128)
+    index_version = models.CharField(max_length=128)
+    status = models.CharField(max_length=32, default="approved_demo")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return self.profile_key
+
+
+class FeatureSet(models.Model):
+    class IndexStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        INDEXED = "indexed", "Indexed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cad_model = models.ForeignKey(CADModel, related_name="feature_sets", on_delete=models.PROTECT)
+    feature_type = models.CharField(max_length=64, default="cad_similarity")
+    schema_version = models.CharField(max_length=32, default="1.0")
+    extractor_name = models.CharField(max_length=128, default="deterministic-cad-features")
+    extractor_version = models.CharField(max_length=32, default="1.0.0")
+    features = models.JSONField(default=dict)
+    vector = models.JSONField(default=list)
+    vector_dimension = models.PositiveSmallIntegerField()
+    metric = models.CharField(max_length=32, default="cosine")
+    normalized = models.BooleanField(default=True)
+    vector_checksum = models.CharField(max_length=64)
+    index_collection = models.CharField(max_length=128)
+    index_version = models.CharField(max_length=128)
+    index_status = models.CharField(
+        max_length=24, choices=IndexStatus.choices, default=IndexStatus.PENDING
+    )
+    index_error_code = models.CharField(max_length=128, blank=True)
+    indexed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cad_model", "feature_type", "schema_version", "extractor_version"],
+                name="unique_cad_feature_set_version",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["index_status", "created_at"], name="feature_index_status_idx")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.cad_model_id}:{self.feature_type}@{self.schema_version}"
+
+
+class SimilaritySearch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job = models.OneToOneField(Job, related_name="similarity_search", on_delete=models.PROTECT)
+    query_feature_set = models.ForeignKey(
+        FeatureSet, related_name="query_searches", on_delete=models.PROTECT
+    )
+    profile = models.ForeignKey(
+        SimilarityProfile, related_name="searches", on_delete=models.PROTECT
+    )
+    top_k = models.PositiveSmallIntegerField(default=10)
+    filters = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Similarity search {self.id} [{self.job.state}]"
