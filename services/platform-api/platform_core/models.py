@@ -546,3 +546,154 @@ class KnowledgeSearch(models.Model):
 
     def __str__(self) -> str:
         return f"Knowledge search {self.id}"
+
+
+class TrialCase(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case_code = models.CharField(max_length=64, unique=True)
+    connector_key = models.CharField(max_length=64)
+    source_record_id = models.CharField(max_length=128)
+    source_version = models.CharField(max_length=64)
+    source_hash = models.CharField(max_length=64)
+    mapping_version = models.CharField(max_length=64)
+    classification = models.CharField(max_length=32, default="public_demo")
+    acl_scopes = models.JSONField(default=list)
+    mold_revision_ref = models.CharField(max_length=128)
+    part_revision_ref = models.CharField(max_length=128)
+    machine_code = models.CharField(max_length=64)
+    material_code = models.CharField(max_length=64)
+    material_lot = models.CharField(max_length=64, blank=True)
+    product_type = models.CharField(max_length=128)
+    operator_ref = models.CharField(max_length=128, default="synthetic-operator")
+    purpose = models.CharField(max_length=255)
+    outcome = models.CharField(max_length=64)
+    started_at = models.DateTimeField()
+    data_quality = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["case_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["connector_key", "source_record_id", "source_version"],
+                name="unique_trial_source_version",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["material_code", "machine_code"], name="trial_material_machine_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.case_code
+
+
+class ProcessRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    trial = models.ForeignKey(TrialCase, related_name="runs", on_delete=models.PROTECT)
+    run_number = models.PositiveSmallIntegerField()
+    cycle_start = models.PositiveIntegerField(null=True, blank=True)
+    cycle_end = models.PositiveIntegerField(null=True, blank=True)
+    environment = models.JSONField(default=dict)
+    result = models.CharField(max_length=64)
+    data_quality = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["run_number"]
+        constraints = [
+            models.UniqueConstraint(fields=["trial", "run_number"], name="unique_trial_process_run")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.trial.case_code}:run:{self.run_number}"
+
+
+class ProcessParameter(models.Model):
+    class ValueKind(models.TextChoices):
+        SETPOINT = "setpoint", "Setpoint"
+        ACTUAL = "actual", "Actual"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    process_run = models.ForeignKey(ProcessRun, related_name="parameters", on_delete=models.PROTECT)
+    canonical_code = models.CharField(max_length=64)
+    raw_name = models.CharField(max_length=128)
+    value = models.FloatField()
+    unit = models.CharField(max_length=32)
+    value_kind = models.CharField(max_length=16, choices=ValueKind.choices)
+    sampling_method = models.CharField(max_length=64)
+    sampled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["canonical_code", "value_kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["process_run", "canonical_code", "value_kind"],
+                name="unique_run_parameter_kind",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.process_run_id}:{self.canonical_code}={self.value}{self.unit}"
+
+
+class DefectObservation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    process_run = models.ForeignKey(ProcessRun, related_name="defects", on_delete=models.PROTECT)
+    defect_code = models.CharField(max_length=64)
+    severity = models.CharField(max_length=32)
+    location = models.CharField(max_length=128)
+    quantity_rate = models.FloatField(null=True, blank=True)
+    quantity_unit = models.CharField(max_length=32, blank=True)
+    inspection_method = models.CharField(max_length=128)
+    evidence_refs = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["defect_code"]
+        indexes = [models.Index(fields=["defect_code"], name="trial_defect_code_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.process_run_id}:{self.defect_code}"
+
+
+class CorrectiveAction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    process_run = models.ForeignKey(ProcessRun, related_name="actions", on_delete=models.PROTECT)
+    action_code = models.CharField(max_length=64)
+    description = models.TextField()
+    before_values = models.JSONField(default=dict)
+    after_values = models.JSONField(default=dict)
+    rationale_source = models.JSONField(default=dict)
+    approved_by = models.CharField(max_length=128)
+    executed = models.BooleanField(default=False)
+    observed_outcome = models.JSONField(default=dict)
+    expected_effect = models.TextField()
+    stop_condition = models.TextField()
+    evidence_refs = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["action_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["process_run", "action_code"], name="unique_run_corrective_action"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.process_run_id}:{self.action_code}"
+
+
+class ProcessCaseSearch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request_snapshot = models.JSONField(default=dict)
+    scoring_profile_version = models.CharField(max_length=64)
+    result = models.JSONField(default=dict)
+    abstained = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Process case search {self.id}"

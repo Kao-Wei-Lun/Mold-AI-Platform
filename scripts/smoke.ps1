@@ -442,6 +442,80 @@ if (-not $abstention.abstained -or $abstention.claims.Count -ne 0 -or `
     throw "Knowledge retrieval did not abstain when authorized evidence was absent."
 }
 
+$processSeed = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/process-trial/demo-fixtures" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body "{}"
+if (($processSeed.created + $processSeed.existing) -ne 6 -or `
+    $processSeed.connector_key -ne "synthetic-process-trial") {
+    throw "Process/Trial synthetic Connector seed check failed."
+}
+
+$trialCases = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/trial-cases"
+if ($trialCases.items.Count -ne 6 -or `
+    ($trialCases.items | Where-Object { $_.provenance.source_type -ne "synthetic" }).Count -ne 0) {
+    throw "Canonical Process/Trial catalog or provenance check failed."
+}
+
+$processSearchRequest = @{
+    defect_code = "short_shot"
+    material_code = "PA6-GF30"
+    machine_code = "IM-180T"
+    product_type = "connector_housing"
+    location = "far_flow_end"
+    parameters = @{
+        injection_pressure_mpa = @{ value = 84; unit = "MPa" }
+        injection_speed_mm_s = @{ value = 43; unit = "mm/s" }
+        melt_temperature_c = @{ value = 279; unit = "degC" }
+    }
+    top_k = 5
+} | ConvertTo-Json -Depth 5
+$processSearch = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/process-case-searches" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $processSearchRequest
+if ($processSearch.abstained -or $processSearch.results[0].case_code -ne "TRIAL-DEMO-001" -or `
+    $processSearch.results[0].score_breakdown.material -ne 1 -or `
+    $processSearch.recommendation.controlled_trial_steps.Count -lt 1) {
+    throw "Explainable Process/Trial case ranking check failed."
+}
+$unsafeStep = $processSearch.recommendation.controlled_trial_steps | `
+    Where-Object { -not $_.requires_engineer_approval -or -not $_.do_not_auto_apply } | `
+    Select-Object -First 1
+if ($null -ne $unsafeStep -or `
+    -not $processSearch.lineage.search_ref.StartsWith("process-case-search:") -or `
+    -not ($processSearch.limitations -join " ").Contains("synthetic")) {
+    throw "Process/Trial approval, lineage, or synthetic-data guardrail check failed."
+}
+
+$processDetail = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/process-case-searches/$($processSearch.search_id)"
+if ($processDetail.search_id -ne $processSearch.search_id -or `
+    $processDetail.scoring_profile_version -ne "process-case-demo@1.0.0") {
+    throw "Persisted Process/Trial search check failed."
+}
+
+$missingMaterialRequest = @{
+    defect_code = "short_shot"
+    material_code = ""
+    machine_code = "IM-180T"
+    parameters = @{
+        injection_pressure_mpa = @{ value = 84; unit = "MPa" }
+    }
+} | ConvertTo-Json -Depth 4
+$missingMaterial = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/process-case-searches" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $missingMaterialRequest
+if (-not $missingMaterial.abstained -or $missingMaterial.result_count -ne 0 -or `
+    $missingMaterial.recommendation.controlled_trial_steps.Count -ne 0 -or `
+    $missingMaterial.recommendation.reason_code -ne "MISSING_COMPATIBILITY_CONTEXT") {
+    throw "Process/Trial missing-material abstention check failed."
+}
+
 $mcpLive = Invoke-RestMethod -Uri "http://localhost:8001/health/live"
 if ($mcpLive.status -ne "ok" -or $mcpLive.transport -ne "streamable-http") {
     throw "MCP Gateway liveness check failed."
@@ -453,4 +527,4 @@ if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovere
 
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"

@@ -14,12 +14,17 @@ from .views import (
     KnowledgeSearchDetailView,
     KnowledgeSearchListCreateView,
     LiveView,
+    ProcessCaseSearchDetailView,
+    ProcessCaseSearchListCreateView,
+    ProcessTrialDemoFixtureView,
     ReadyView,
     ReviewFindingDecisionCreateView,
     RuleProfileListView,
     SimilaritySearchDetailView,
     SimilaritySearchListCreateView,
     SystemInfoView,
+    TrialCaseDetailView,
+    TrialCaseListView,
 )
 
 app_name = "platform_core"
@@ -34,6 +39,27 @@ urlpatterns = [
         name="assistant-capabilities",
     ),
     path("assistant/messages", AssistantMessageView.as_view(), name="assistant-messages"),
+    path(
+        "process-trial/demo-fixtures",
+        ProcessTrialDemoFixtureView.as_view(),
+        name="process-trial-demo-fixtures",
+    ),
+    path("trial-cases", TrialCaseListView.as_view(), name="trial-case-list"),
+    path(
+        "trial-cases/<uuid:trial_case_id>",
+        TrialCaseDetailView.as_view(),
+        name="trial-case-detail",
+    ),
+    path(
+        "process-case-searches",
+        ProcessCaseSearchListCreateView.as_view(),
+        name="process-case-search-list-create",
+    ),
+    path(
+        "process-case-searches/<uuid:search_id>",
+        ProcessCaseSearchDetailView.as_view(),
+        name="process-case-search-detail",
+    ),
     path("cad-artifacts", CADArtifactListCreateView.as_view(), name="cad-artifact-list-create"),
     path(
         "cad-artifacts/<uuid:artifact_id>",

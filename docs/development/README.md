@@ -34,6 +34,12 @@ Streamable HTTP MCP Gateway exposing five focused Capability adapters. See
 [stage-06-assistant-mcp.md](stage-06-assistant-mcp.md) for the protocol, current ChatGPT boundary,
 and external-access prerequisites.
 
+Stage 7 adds a canonical Trial → ProcessRun → Parameter / Defect / CorrectiveAction graph, an
+idempotent synthetic-data Connector, explainable deterministic case ranking, compatibility
+abstention, engineer-gated historical ranges, lineage/audit records, and a Process/Trial Web
+workspace. See [stage-07-process-trial.md](stage-07-process-trial.md) for data, scoring, and safety
+boundaries.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -150,4 +156,14 @@ ChatGPT / MCP client
 -> Streamable HTTP /mcp
 -> focused tool schema + safety annotations
 -> existing REST Capability API
+```
+
+## Implemented Process/Trial pipeline
+
+```text
+synthetic connector record + version/hash
+-> canonical Trial / ProcessRun / Parameter / Defect / Action
+-> deterministic multi-lane case ranking
+-> compatibility and validation guardrails
+-> evidence-backed controlled-trial references or abstention
 ```

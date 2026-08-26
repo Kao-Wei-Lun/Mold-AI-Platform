@@ -45,9 +45,18 @@ from .models import (
     Job,
     KnowledgeDocument,
     KnowledgeSearch,
+    ProcessCaseSearch,
     ReviewFinding,
     ReviewRun,
     SimilaritySearch,
+    TrialCase,
+)
+from .process_connectors import SyntheticProcessTrialConnector, seed_demo_process_trials
+from .process_trial import (
+    ProcessTrialValidationError,
+    search_process_cases,
+    trial_case_payload,
+    trial_case_queryset,
 )
 from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
 from .tasks import (
@@ -435,6 +444,89 @@ class RuleProfileListView(APIView):
     def get(self, request: Request) -> Response:
         profile = get_demo_rule_profile()
         return Response({"schema_version": "1.0", "items": [rule_profile_payload(profile)]})
+
+
+class ProcessTrialDemoFixtureView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        return Response(
+            {
+                "schema_version": "1.0",
+                "connector": SyntheticProcessTrialConnector().health(),
+                "loaded_case_count": TrialCase.objects.filter(
+                    connector_key="synthetic-process-trial"
+                ).count(),
+            }
+        )
+
+    def post(self, request: Request) -> Response:
+        try:
+            result = seed_demo_process_trials()
+        except ValueError as exc:
+            return _error_response(
+                "CONFLICT_PROCESS_FIXTURE_VERSION",
+                str(exc),
+                status.HTTP_409_CONFLICT,
+            )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "connector_key": result.connector_key,
+                "source_version": result.source_version,
+                "created": result.created,
+                "existing": result.existing,
+                "case_ids": result.case_ids,
+            },
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
+        )
+
+
+class TrialCaseListView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        trials = trial_case_queryset().order_by("case_code")[:50]
+        items = [trial_case_payload(trial) for trial in trials if "public-demo" in trial.acl_scopes]
+        return Response({"schema_version": "1.0", "items": items})
+
+
+class TrialCaseDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, trial_case_id: str) -> Response:
+        trial = get_object_or_404(trial_case_queryset(), pk=trial_case_id)
+        if "public-demo" not in trial.acl_scopes:
+            return _error_response(
+                "RESOURCE_NOT_FOUND",
+                "The requested resource is not available.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        return Response(trial_case_payload(trial))
+
+
+class ProcessCaseSearchListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        try:
+            search = search_process_cases(request.data)
+        except ProcessTrialValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        return Response(search.result, status=status.HTTP_200_OK)
+
+
+class ProcessCaseSearchDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, search_id: str) -> Response:
+        search = get_object_or_404(ProcessCaseSearch, pk=search_id)
+        return Response(search.result)
 
 
 class DesignReviewListCreateView(APIView):

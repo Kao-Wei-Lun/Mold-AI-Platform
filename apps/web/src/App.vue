@@ -8,6 +8,7 @@ import AssistantPanel from "./components/AssistantPanel.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
+import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
 
@@ -57,8 +58,8 @@ onMounted(refreshHealth);
         <p class="eyebrow">Engineering workspace</p>
         <h1>Explainable mold engineering workspace</h1>
         <p>
-          Process versioned CAD, find comparable geometry, and evaluate deterministic design rules
-          with traceable evidence and reviewer decisions.
+          Process versioned CAD, evaluate deterministic rules, and compare governed trial evidence
+          with traceable results and human approval boundaries.
         </p>
       </header>
 
@@ -92,6 +93,7 @@ onMounted(refreshHealth);
       />
       <DesignReviewWorkspace :query="activeCAD" />
       <KnowledgeWorkspace />
+      <ProcessTrialWorkspace />
     </main>
     <AssistantPanel :context="assistantContext" @execute-action="executeUIAction" />
   </div>
