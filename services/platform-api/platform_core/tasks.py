@@ -10,7 +10,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .cad_processing import CADProcessingError, parse_cad_file
-from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent, LineageEdge
+from .design_review import DesignReviewValidationError, evaluate_review
+from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent, LineageEdge, ReviewRun
 from .similarity import SimilarityValidationError, extract_and_index_cad_model, run_similarity
 from .vector_store import VectorStoreError
 
@@ -279,6 +280,65 @@ def run_similarity_job(job_id: str) -> dict[str, str]:
             error_code="INTERNAL_SIMILARITY_SEARCH",
             error_message=(
                 "The similarity search failed unexpectedly. Use the correlation ID for support."
+            ),
+        )
+        raise
+
+
+@shared_task(name="platform_core.run_design_review_job")
+def run_design_review_job(job_id: str) -> dict[str, str]:
+    job = Job.objects.select_related(
+        "design_review__cad_model__artifact_version",
+        "design_review__profile",
+    ).get(pk=job_id)
+    if job.state in TERMINAL_STATES:
+        terminal_result = {"job_id": str(job.id), "state": job.state}
+        if job.result_ref:
+            terminal_result["result_ref"] = job.result_ref
+        if job.error_code:
+            terminal_result["error_code"] = job.error_code
+        return terminal_result
+
+    review = job.design_review
+    try:
+        update_job(job.id, state=Job.State.RUNNING, stage="loading_rule_snapshot", progress=15)
+        review.review_status = ReviewRun.Status.RUNNING
+        review.save(update_fields=["review_status"])
+        update_job(job.id, stage="evaluating_deterministic_rules", progress=45)
+        evaluate_review(review)
+        update_job(job.id, stage="persisting_review_evidence", progress=85)
+        result_ref = f"design_review:{review.id}"
+        update_job(
+            job.id,
+            state=Job.State.SUCCEEDED,
+            stage="completed",
+            progress=100,
+            result_ref=result_ref,
+        )
+        return {"job_id": str(job.id), "state": Job.State.SUCCEEDED, "result_ref": result_ref}
+    except DesignReviewValidationError as exc:
+        review.review_status = ReviewRun.Status.FAILED
+        review.save(update_fields=["review_status"])
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code=exc.code,
+            error_message=exc.user_message,
+        )
+        return {"job_id": str(job.id), "state": Job.State.FAILED, "error_code": exc.code}
+    except Exception:
+        review.review_status = ReviewRun.Status.FAILED
+        review.save(update_fields=["review_status"])
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code="INTERNAL_DESIGN_REVIEW",
+            error_message=(
+                "The design review failed unexpectedly. Use the correlation ID for support."
             ),
         )
         raise

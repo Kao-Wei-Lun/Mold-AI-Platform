@@ -15,7 +15,7 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-const props = defineProps<{ source: string }>();
+const props = defineProps<{ source: string; accent?: "default" | "warning" | "pass" }>();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const loading = ref(true);
@@ -79,7 +79,12 @@ function loadModel(source: string): void {
     source,
     (geometry) => {
       geometry.computeVertexNormals();
-      const material = new MeshStandardMaterial({ color: 0x3f72ef, roughness: 0.42, metalness: 0.08 });
+      const colors = { default: 0x3f72ef, warning: 0xd95b3d, pass: 0x16845b };
+      const material = new MeshStandardMaterial({
+        color: colors[props.accent || "default"],
+        roughness: 0.42,
+        metalness: 0.08,
+      });
       mesh = new Mesh(geometry, material);
       scene?.add(mesh);
 
@@ -126,8 +131,8 @@ onMounted(() => {
 });
 
 watch(
-  () => props.source,
-  (source) => {
+  () => [props.source, props.accent] as const,
+  ([source]) => {
     if (renderer) loadModel(source);
   },
 );

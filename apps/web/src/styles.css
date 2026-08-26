@@ -404,13 +404,250 @@ button:disabled {
   font-size: 0.88rem;
 }
 
-.similarity-workspace {
+.similarity-workspace,
+.design-review-workspace {
   margin-top: 1.5rem;
   padding: 1.7rem;
   border: 1px solid #dbe2ec;
   border-radius: 18px;
   background: white;
   box-shadow: 0 18px 45px rgb(33 48 79 / 8%);
+}
+
+.review-intro {
+  margin: 1.5rem 0 0;
+}
+
+.review-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.review-form label,
+.decision-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: #4d586c;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.review-form input,
+.decision-form input,
+.decision-form select,
+.decision-form textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cad4e2;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  color: #172033;
+  background: #fbfcfe;
+  font: inherit;
+}
+
+.review-form button {
+  min-height: 42px;
+}
+
+.review-results {
+  margin-top: 1.25rem;
+}
+
+.review-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.review-summary > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: #f6f8fb;
+}
+
+.review-summary span,
+.measurement-grid span {
+  color: #69758a;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.review-decision.fail {
+  color: #8d2b2b;
+  background: #fde5e5;
+}
+
+.review-decision.pass {
+  color: #12623b;
+  background: #dff6e9;
+}
+
+.review-decision.incomplete {
+  color: #745200;
+  background: #fff0c7;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.38fr) minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.finding-list {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  max-height: 820px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.finding-card {
+  display: grid;
+  width: 100%;
+  gap: 0.3rem;
+  border: 1px solid #dbe2ec;
+  padding: 0.8rem;
+  color: #172033;
+  text-align: left;
+  background: white;
+}
+
+.finding-card.selected {
+  border-color: #3f72ef;
+  box-shadow: 0 0 0 2px rgb(63 114 239 / 12%);
+}
+
+.finding-card small {
+  color: #69758a;
+}
+
+.finding-state {
+  width: fit-content;
+  border-radius: 99px;
+  padding: 0.25rem 0.5rem;
+  color: #4b5d75;
+  background: #edf1f6;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.finding-state.fail,
+.finding-card.fail .finding-state {
+  color: #8d2b2b;
+  background: #fde5e5;
+}
+
+.finding-state.pass,
+.finding-card.pass .finding-state {
+  color: #12623b;
+  background: #dff6e9;
+}
+
+.finding-card.not_evaluated .finding-state,
+.finding-card.not_applicable .finding-state {
+  color: #745200;
+  background: #fff0c7;
+}
+
+.finding-detail {
+  min-width: 0;
+}
+
+.review-viewer {
+  display: grid;
+  gap: 0.35rem;
+  color: #69758a;
+  font-size: 0.72rem;
+}
+
+.review-viewer .cad-preview {
+  min-height: 320px;
+}
+
+.review-viewer .cad-preview canvas {
+  height: 320px;
+}
+
+.finding-heading {
+  display: flex;
+  gap: 1rem;
+  align-items: start;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.finding-heading > div {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.finding-heading h3 {
+  margin: 0;
+}
+
+.finding-heading > span {
+  color: #69758a;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
+
+.measurement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.measurement-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: #f6f8fb;
+}
+
+.measurement-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.recommendation,
+.decision-history {
+  margin-top: 0.75rem;
+  padding: 0.8rem;
+  border-radius: 10px;
+  color: #4d586c;
+  background: #eef3ff;
+  font-size: 0.8rem;
+}
+
+.decision-history p {
+  margin: 0.45rem 0 0;
+}
+
+.decision-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.4fr) minmax(180px, 1fr) minmax(170px, 0.7fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #dbe2ec;
+  border-radius: 10px;
+}
+
+.decision-form h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
 }
 
 .similarity-intro {
@@ -664,11 +901,16 @@ button:disabled {
 
   .upload-form,
   .cad-result,
-  .similarity-form,
-  .similarity-layout,
-  .comparison-viewers,
-  .score-grid,
-  .evidence-columns {
+    .similarity-form,
+    .review-form,
+    .similarity-layout,
+    .review-layout,
+    .review-summary,
+    .comparison-viewers,
+    .score-grid,
+    .evidence-columns,
+    .measurement-grid,
+    .decision-form {
     grid-template-columns: 1fr;
   }
 

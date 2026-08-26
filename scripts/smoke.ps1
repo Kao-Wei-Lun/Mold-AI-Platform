@@ -246,6 +246,83 @@ if ($similarityDetail.state -ne "succeeded" -or `
     throw "Persisted similarity result endpoint smoke check failed."
 }
 
+$reviewRequest = @{
+    schema_version = "1.0"
+    idempotency_key = "stage4-design-review-smoke-$([guid]::NewGuid())"
+    cad_artifact_version_id = $stepUpload.artifact_version_id
+    profile = "demo-general-design@1.0"
+    context = @{
+        nominal_wall_thickness_mm = 2.0
+        max_rib_thickness_mm = 1.5
+    }
+} | ConvertTo-Json -Depth 5
+
+$reviewAccepted = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/design-reviews" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $reviewRequest
+
+if ($reviewAccepted.status -ne "accepted") {
+    throw "Design review was not accepted."
+}
+
+$reviewDeadline = (Get-Date).AddSeconds(60)
+$reviewJob = $null
+while ((Get-Date) -lt $reviewDeadline) {
+    $reviewJob = Invoke-RestMethod `
+        -Uri "http://localhost:8000/api/v1/jobs/$($reviewAccepted.job_id)"
+    if ($reviewJob.state -in @("succeeded", "failed")) {
+        break
+    }
+    Start-Sleep -Seconds 1
+}
+
+if ($null -eq $reviewJob -or $reviewJob.state -ne "succeeded") {
+    $failureCode = if ($reviewJob.error) { $reviewJob.error.code } else { "timeout" }
+    throw "Design review smoke check failed: $failureCode"
+}
+if ($reviewJob.result.summary.total -ne 13 -or `
+    $reviewJob.result.summary.counts.PASS -lt 1 -or `
+    $reviewJob.result.summary.counts.FAIL -lt 1 -or `
+    $reviewJob.result.summary.counts.NOT_EVALUATED -lt 1) {
+    throw "Design review did not preserve PASS, FAIL, and NOT_EVALUATED semantics."
+}
+
+$ribFinding = $reviewJob.result.findings | `
+    Where-Object { $_.rule.rule_id -eq "DEMO-RIB-RATIO-012" } | `
+    Select-Object -First 1
+if ($null -eq $ribFinding -or $ribFinding.result -ne "FAIL" -or `
+    [math]::Abs($ribFinding.actual_value - 0.75) -gt 0.0001 -or `
+    $ribFinding.limit_value -ne 0.6 -or `
+    $ribFinding.geometry_location.scope -ne "context:rib-measurement") {
+    throw "Rib design-review evidence did not match the controlled Demo measurement."
+}
+
+$waiverRequest = @{
+    decision = "waived"
+    reason = "Approved for automated Stage 4 smoke validation only."
+    decided_by = "smoke-reviewer"
+    approved_by = "smoke-approver"
+} | ConvertTo-Json
+$waiver = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/design-reviews/$($reviewAccepted.review_id)/findings/$($ribFinding.finding_id)/decisions" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $waiverRequest
+if ($waiver.finding_result -ne "FAIL" -or $waiver.record.decision -ne "waived") {
+    throw "Review waiver changed the deterministic finding or was not persisted."
+}
+
+$reviewDetail = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/design-reviews/$($reviewAccepted.review_id)"
+$persistedRib = $reviewDetail.findings | `
+    Where-Object { $_.finding_id -eq $ribFinding.finding_id } | `
+    Select-Object -First 1
+if ($persistedRib.result -ne "FAIL" -or $persistedRib.decisions.Count -ne 1) {
+    throw "Persisted design-review result or immutable decision history is incorrect."
+}
+
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD parse/index/preview=ok; Similarity/Qdrant=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview/Audit=ok; $($serviceSummary -join '; ')"

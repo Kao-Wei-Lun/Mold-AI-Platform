@@ -301,3 +301,152 @@ class SimilaritySearch(models.Model):
 
     def __str__(self) -> str:
         return f"Similarity search {self.id} [{self.job.state}]"
+
+
+class RuleProfile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile_key = models.CharField(max_length=128, unique=True)
+    version = models.CharField(max_length=32)
+    status = models.CharField(max_length=32, default="approved_demo")
+    product_scope = models.JSONField(default=list)
+    material_scope = models.JSONField(default=list)
+    owner = models.CharField(max_length=128)
+    approved_by = models.CharField(max_length=128)
+    ruleset_checksum = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return self.profile_key
+
+
+class RuleVersion(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(RuleProfile, related_name="rules", on_delete=models.PROTECT)
+    rule_id = models.CharField(max_length=64)
+    rule_version = models.CharField(max_length=32)
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    evaluator = models.CharField(max_length=64)
+    applicability = models.JSONField(default=dict)
+    parameters = models.JSONField(default=dict)
+    operator = models.CharField(max_length=16)
+    limit_value = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=32)
+    tolerance = models.FloatField(default=0)
+    severity = models.CharField(max_length=16)
+    risk_type = models.CharField(max_length=64)
+    recommendation = models.TextField()
+    reference = models.JSONField(default=dict)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sort_order", "rule_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "rule_id", "rule_version"],
+                name="unique_rule_profile_version",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.rule_id}@{self.rule_version}"
+
+
+class ReviewRun(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job = models.OneToOneField(Job, related_name="design_review", on_delete=models.PROTECT)
+    cad_model = models.ForeignKey(CADModel, related_name="review_runs", on_delete=models.PROTECT)
+    profile = models.ForeignKey(RuleProfile, related_name="review_runs", on_delete=models.PROTECT)
+    context = models.JSONField(default=dict)
+    input_snapshot = models.JSONField(default=dict)
+    geometry_engine_version = models.CharField(max_length=128)
+    review_status = models.CharField(max_length=24, choices=Status.choices, default=Status.QUEUED)
+    result_summary = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Design review {self.id} [{self.review_status}]"
+
+
+class ReviewFinding(models.Model):
+    class Result(models.TextChoices):
+        PASS = "PASS", "Pass"
+        FAIL = "FAIL", "Fail"
+        NOT_APPLICABLE = "NOT_APPLICABLE", "Not applicable"
+        NOT_EVALUATED = "NOT_EVALUATED", "Not evaluated"
+        ERROR = "ERROR", "Error"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    review_run = models.ForeignKey(ReviewRun, related_name="findings", on_delete=models.PROTECT)
+    rule_version = models.ForeignKey(RuleVersion, related_name="findings", on_delete=models.PROTECT)
+    result = models.CharField(max_length=24, choices=Result.choices)
+    actual_value = models.FloatField(null=True, blank=True)
+    limit_value = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=32)
+    severity = models.CharField(max_length=16)
+    risk_type = models.CharField(max_length=64)
+    geometry_location = models.JSONField(default=dict)
+    evidence_refs = models.JSONField(default=list)
+    quality_flags = models.JSONField(default=list)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["rule_version__sort_order", "rule_version__rule_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review_run", "rule_version"], name="unique_review_finding"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.review_run_id}:{self.rule_version.rule_id}={self.result}"
+
+
+class ReviewDecision(models.Model):
+    class Decision(models.TextChoices):
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+        WAIVED = "waived", "Waived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    finding = models.ForeignKey(ReviewFinding, related_name="decisions", on_delete=models.PROTECT)
+    decision = models.CharField(max_length=16, choices=Decision.choices)
+    reason = models.TextField(blank=True)
+    decided_by = models.CharField(max_length=128)
+    approved_by = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.finding_id}:{self.decision}"
+
+
+class AuditEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_type = models.CharField(max_length=128)
+    actor_id = models.CharField(max_length=128)
+    target_refs = models.JSONField(default=list)
+    detail = models.JSONField(default=dict)
+    payload_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.event_type}:{self.id}"

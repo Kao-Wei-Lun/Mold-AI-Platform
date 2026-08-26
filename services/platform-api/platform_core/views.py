@@ -10,12 +10,33 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .contracts import artifact_payload, job_payload
+from .contracts import (
+    artifact_payload,
+    job_payload,
+    review_decision_payload,
+    review_payload,
+    rule_profile_payload,
+)
+from .design_review import (
+    PROFILE_KEY as DESIGN_REVIEW_PROFILE_KEY,
+)
+from .design_review import (
+    DesignReviewValidationError,
+    create_design_review_records,
+    create_review_decision,
+    get_demo_rule_profile,
+)
 from .health import collect_readiness
 from .ingestion import UploadValidationError, create_upload_records
-from .models import Artifact, ArtifactVersion, Job, SimilaritySearch
+from .models import Artifact, ArtifactVersion, Job, ReviewFinding, ReviewRun, SimilaritySearch
 from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
-from .tasks import mark_job_failed, process_cad_job, run_similarity_job, update_job
+from .tasks import (
+    mark_job_failed,
+    process_cad_job,
+    run_design_review_job,
+    run_similarity_job,
+    update_job,
+)
 
 
 class LiveView(APIView):
@@ -179,10 +200,163 @@ class JobDetailView(APIView):
             Job.objects.select_related(
                 "input_artifact_version__cad_model__preview_artifact_version",
                 "similarity_search",
+                "design_review__cad_model__preview_artifact_version",
+                "design_review__profile",
+            ).prefetch_related(
+                "design_review__profile__rules",
+                "design_review__findings__rule_version",
+                "design_review__findings__decisions",
             ),
             pk=job_id,
         )
         return Response(job_payload(job))
+
+
+class RuleProfileListView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        profile = get_demo_rule_profile()
+        return Response({"schema_version": "1.0", "items": [rule_profile_payload(profile)]})
+
+
+class DesignReviewListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        version_value = request.data.get("cad_artifact_version_id")
+        if not version_value:
+            return _error_response(
+                "VALIDATION_REVIEW_ARTIFACT",
+                "cad_artifact_version_id is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            version_id = uuid.UUID(str(version_value))
+        except (TypeError, ValueError):
+            return _error_response(
+                "VALIDATION_REVIEW_ARTIFACT",
+                "cad_artifact_version_id must be a UUID.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        requested_profile = str(request.data.get("profile", DESIGN_REVIEW_PROFILE_KEY))
+        if requested_profile != DESIGN_REVIEW_PROFILE_KEY:
+            return _error_response(
+                "VALIDATION_REVIEW_PROFILE",
+                f"Only {DESIGN_REVIEW_PROFILE_KEY} is available in the Demo environment.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        version = get_object_or_404(
+            ArtifactVersion.objects.select_related("artifact", "cad_model"),
+            pk=version_id,
+            artifact__kind=Artifact.Kind.CAD_SOURCE,
+        )
+        idempotency_key = request.data.get("idempotency_key") or request.headers.get(
+            "Idempotency-Key"
+        )
+        if idempotency_key and len(str(idempotency_key)) > 255:
+            return _error_response(
+                "VALIDATION_IDEMPOTENCY_KEY",
+                "The idempotency key must be 255 characters or fewer.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            records = create_design_review_records(
+                version,
+                context=request.data.get("context"),
+                idempotency_key=str(idempotency_key) if idempotency_key else None,
+            )
+        except DesignReviewValidationError as exc:
+            conflict = exc.code.startswith("CONFLICT_") or exc.code.endswith("MISMATCH")
+            return _error_response(
+                exc.code,
+                exc.user_message,
+                status.HTTP_409_CONFLICT if conflict else status.HTTP_400_BAD_REQUEST,
+            )
+
+        if records.created:
+            try:
+                run_design_review_job.apply_async(args=[str(records.job.id)], queue="cad")
+            except Exception:
+                records.review.review_status = ReviewRun.Status.FAILED
+                records.review.save(update_fields=["review_status"])
+                update_job(
+                    records.job.id,
+                    state=Job.State.FAILED,
+                    stage="failed",
+                    progress=100,
+                    error_code="JOB_QUEUE_UNAVAILABLE",
+                    error_message="The design review job could not be queued.",
+                )
+                return _error_response(
+                    "JOB_QUEUE_UNAVAILABLE",
+                    "The design review job could not be queued.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+        return Response(
+            {
+                "schema_version": "1.0",
+                "status": "accepted",
+                "review_id": str(records.review.id),
+                "job_id": str(records.job.id),
+                "idempotent_replay": not records.created,
+                "links": {
+                    "status": f"/api/v1/jobs/{records.job.id}",
+                    "result": f"/api/v1/design-reviews/{records.review.id}",
+                    "ui": f"/design-reviews/{records.review.id}",
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class DesignReviewDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, review_id: str) -> Response:
+        review = get_object_or_404(
+            ReviewRun.objects.select_related(
+                "job",
+                "profile",
+                "cad_model__preview_artifact_version",
+            ).prefetch_related("profile__rules", "findings__rule_version", "findings__decisions"),
+            pk=review_id,
+        )
+        return Response(review_payload(review))
+
+
+class ReviewFindingDecisionCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request, review_id: str, finding_id: str) -> Response:
+        finding = get_object_or_404(
+            ReviewFinding.objects.select_related("review_run", "rule_version"),
+            pk=finding_id,
+            review_run_id=review_id,
+        )
+        try:
+            decision = create_review_decision(
+                finding,
+                decision=str(request.data.get("decision", "")),
+                reason=str(request.data.get("reason", ""))[:2000],
+                decided_by=str(request.data.get("decided_by", "demo-reviewer"))[:128],
+                approved_by=str(request.data.get("approved_by", ""))[:128],
+            )
+        except DesignReviewValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "finding_result": finding.result,
+                "record": review_decision_payload(decision),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SimilaritySearchListCreateView(APIView):

@@ -18,6 +18,11 @@ Stage 3 adds versioned deterministic feature extraction, scoped Qdrant indexing,
 similarity search, explainable reranking, and side-by-side comparison. See
 [stage-03-cad-similarity.md](stage-03-cad-similarity.md) for the score contract and limitations.
 
+Stage 4 adds a checksum-protected Demo rule catalog, deterministic asynchronous Design Review,
+typed findings with evidence and lineage, immutable reviewer decisions, audit events, and a Web
+review workspace. See [stage-04-design-review.md](stage-04-design-review.md) for evaluator and
+measurement boundaries.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -95,4 +100,13 @@ geometry feature extraction
 -> Qdrant indexing
 -> explainable CAD similarity search
 -> side-by-side result comparison
+```
+
+## Implemented design-review pipeline
+
+```text
+parsed CADModel + RuleProfile snapshot
+-> registered deterministic evaluators
+-> versioned findings and evidence
+-> reviewer decision history and audit event
 ```

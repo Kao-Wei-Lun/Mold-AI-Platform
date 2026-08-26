@@ -1,4 +1,15 @@
-from .models import Artifact, ArtifactVersion, CADModel, Job, SimilaritySearch
+from .models import (
+    Artifact,
+    ArtifactVersion,
+    CADModel,
+    Job,
+    ReviewDecision,
+    ReviewFinding,
+    ReviewRun,
+    RuleProfile,
+    RuleVersion,
+    SimilaritySearch,
+)
 
 
 def artifact_version_payload(version: ArtifactVersion) -> dict[str, object]:
@@ -67,6 +78,11 @@ def job_payload(job: Job) -> dict[str, object]:
             result = job.similarity_search.result
         except SimilaritySearch.DoesNotExist:
             pass
+    elif job.state == Job.State.SUCCEEDED and job.capability_id == "mold.design_review":
+        try:
+            result = review_payload(job.design_review)
+        except ReviewRun.DoesNotExist:
+            pass
 
     error = None
     if job.error_code:
@@ -116,4 +132,102 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "created_at": artifact.created_at.isoformat(),
         "versions": [artifact_version_payload(version) for version in versions],
         "jobs": jobs,
+    }
+
+
+def rule_payload(rule: RuleVersion) -> dict[str, object]:
+    return {
+        "rule_version_id": str(rule.id),
+        "rule_id": rule.rule_id,
+        "rule_version": rule.rule_version,
+        "title": rule.title,
+        "description": rule.description,
+        "evaluator": rule.evaluator,
+        "applicability": rule.applicability,
+        "measurement_definition": rule.parameters,
+        "condition": {
+            "operator": rule.operator,
+            "limit": rule.limit_value,
+            "unit": rule.unit,
+            "tolerance": rule.tolerance,
+        },
+        "severity": rule.severity,
+        "risk_type": rule.risk_type,
+        "recommendation": rule.recommendation,
+        "reference": rule.reference,
+        "enabled": rule.enabled,
+    }
+
+
+def rule_profile_payload(profile: RuleProfile, *, include_rules: bool = True) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "profile_id": str(profile.id),
+        "profile_key": profile.profile_key,
+        "version": profile.version,
+        "status": profile.status,
+        "owner": profile.owner,
+        "approved_by": profile.approved_by,
+        "ruleset_checksum": profile.ruleset_checksum,
+        "rule_count": profile.rules.filter(enabled=True).count(),
+    }
+    if include_rules:
+        payload["rules"] = [rule_payload(rule) for rule in profile.rules.filter(enabled=True)]
+    return payload
+
+
+def review_decision_payload(decision: ReviewDecision) -> dict[str, object]:
+    return {
+        "decision_id": str(decision.id),
+        "decision": decision.decision,
+        "reason": decision.reason,
+        "decided_by": decision.decided_by,
+        "approved_by": decision.approved_by or None,
+        "created_at": decision.created_at.isoformat(),
+    }
+
+
+def review_finding_payload(finding: ReviewFinding) -> dict[str, object]:
+    return {
+        "finding_id": str(finding.id),
+        "rule": rule_payload(finding.rule_version),
+        "result": finding.result,
+        "actual_value": finding.actual_value,
+        "limit_value": finding.limit_value,
+        "unit": finding.unit,
+        "severity": finding.severity,
+        "risk_type": finding.risk_type,
+        "geometry_location": finding.geometry_location,
+        "evidence_refs": finding.evidence_refs,
+        "quality_flags": finding.quality_flags,
+        "message": finding.message,
+        "decisions": [review_decision_payload(item) for item in finding.decisions.all()],
+    }
+
+
+def review_payload(review: ReviewRun) -> dict[str, object]:
+    cad_model = review.cad_model
+    preview = None
+    if cad_model.preview_artifact_version_id:
+        preview = artifact_version_payload(cad_model.preview_artifact_version)
+    return {
+        "review_id": str(review.id),
+        "job_id": str(review.job_id),
+        "review_status": review.review_status,
+        "artifact_version_id": str(cad_model.artifact_version_id),
+        "profile": rule_profile_payload(review.profile, include_rules=False),
+        "geometry_engine_version": review.geometry_engine_version,
+        "input_snapshot": review.input_snapshot,
+        "context": review.context,
+        "summary": review.result_summary,
+        "preview": preview,
+        "findings": [review_finding_payload(item) for item in review.findings.all()],
+        "created_at": review.created_at.isoformat(),
+        "completed_at": review.completed_at.isoformat() if review.completed_at else None,
+        "limitations": [
+            "This Demo profile contains synthetic thresholds and is not "
+            "production engineering guidance.",
+            "Rib and draft checks use explicitly supplied Demo measurements; "
+            "automatic local face measurement is future scope.",
+            "Review decisions do not modify the immutable deterministic finding result.",
+        ],
     }
