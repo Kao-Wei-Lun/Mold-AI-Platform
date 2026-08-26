@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && mkdir -p /data \
+    && chown app:app /data
 
 COPY pyproject.toml ./
 COPY manage.py ./
@@ -15,6 +17,9 @@ COPY platform_core ./platform_core
 COPY scripts ./scripts
 
 RUN pip install --no-cache-dir . && chmod +x scripts/*.sh
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libgl1 \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM base AS development
 RUN pip install --no-cache-dir ".[dev]"

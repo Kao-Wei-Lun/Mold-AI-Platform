@@ -83,7 +83,12 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_ROOT = Path(os.getenv("ARTIFACT_STORAGE_ROOT", BASE_DIR / ".runtime" / "artifacts"))
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+MAX_CAD_UPLOAD_BYTES = int(os.getenv("MAX_CAD_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_CAD_UPLOAD_BYTES + (1024 * 1024)
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip()

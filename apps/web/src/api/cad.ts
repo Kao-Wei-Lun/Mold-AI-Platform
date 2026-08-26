@@ -1,0 +1,98 @@
+export type ArtifactVersion = {
+  artifact_version_id: string;
+  original_filename: string;
+  media_type: string;
+  format: string;
+  size_bytes: number;
+  sha256: string;
+  download_url: string;
+};
+
+export type CADModelResult = {
+  cad_model_id: string;
+  artifact_version_id: string;
+  cad_format: string;
+  unit_system: string;
+  parser: { name: string; version: string };
+  geometry_status: "queued" | "running" | "succeeded" | "failed";
+  bounding_box: {
+    min: Record<"x" | "y" | "z", number>;
+    max: Record<"x" | "y" | "z", number>;
+    size: Record<"x" | "y" | "z", number>;
+  };
+  volume: number | null;
+  surface_area: number;
+  face_count: number;
+  edge_count: number;
+  surface_type_histogram: Record<string, number>;
+  quality_flags: string[];
+  preview: ArtifactVersion;
+};
+
+export type CADJob = {
+  schema_version: "1.0";
+  job_id: string;
+  capability: string;
+  state:
+    | "queued"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "cancel_requested"
+    | "cancelled"
+    | "expired";
+  stage: string;
+  progress: number;
+  attempt: number;
+  artifact_version_id: string;
+  correlation_id: string;
+  result: CADModelResult | null;
+  error: { code: string; message: string; retryable: boolean; correlation_id: string } | null;
+};
+
+export type CADUploadAccepted = {
+  status: "accepted";
+  artifact_id: string;
+  artifact_version_id: string;
+  job_id: string;
+  idempotent_replay: boolean;
+  warnings: string[];
+  links: { artifact: string; status: string; ui: string };
+};
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { error?: { message?: string; code?: string } };
+    return payload.error?.message || payload.error?.code || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+export async function uploadCAD(
+  file: File,
+  artifactName: string,
+  idempotencyKey: string,
+): Promise<CADUploadAccepted> {
+  const body = new FormData();
+  body.append("file", file);
+  if (artifactName.trim()) body.append("artifact_name", artifactName.trim());
+  body.append("idempotency_key", idempotencyKey);
+
+  const response = await fetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as CADUploadAccepted;
+}
+
+export async function fetchCADJob(jobId: string): Promise<CADJob> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as CADJob;
+}

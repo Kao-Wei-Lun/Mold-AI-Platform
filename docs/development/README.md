@@ -1,9 +1,8 @@
 # Development Guide
 
-## Stage 1 scope
+## Implemented stages
 
-This stage provides the runnable foundation shared by future CAD, similarity, review, RAG,
-assistant, and MCP capabilities:
+Stage 1 provides the runnable foundation shared by future capabilities:
 
 - Django REST API with liveness, readiness, and safe system-info endpoints.
 - Celery worker using Redis.
@@ -11,8 +10,9 @@ assistant, and MCP capabilities:
 - Vue/TypeScript frontend that reports dependency readiness.
 - Backend/frontend tests and GitHub Actions CI.
 
-CAD processing, business data models, authentication, and AI functionality intentionally begin
-in later stages after this foundation is verified.
+Stage 2 adds versioned STEP/STL upload, the canonical Artifact/Job/CADModel records, an isolated CAD
+queue, OpenCascade/Trimesh parsing, derived preview lineage, polling APIs, and a Three.js viewer.
+See [stage-02-cad-ingestion.md](stage-02-cad-ingestion.md) for its contract and known security gaps.
 
 ## Prerequisites
 
@@ -83,13 +83,12 @@ The values in `.env.example` are development placeholders. Before external acces
 
 ## Next stage
 
-Stage 2 implements the first vertical slice:
+Stage 3 builds on the parsed geometry:
 
 ```text
-STEP/STL upload
--> immutable ArtifactVersion
--> asynchronous Job
--> isolated CAD Worker
--> geometry metadata and preview artifact
--> frontend job status and result view
+geometry feature extraction
+-> versioned feature schema
+-> Qdrant indexing
+-> explainable CAD similarity search
+-> side-by-side result comparison
 ```

@@ -24,6 +24,8 @@ try {
     Assert-LastExitCode "Backend formatting"
     & $pythonExe manage.py check
     Assert-LastExitCode "Django system check"
+    & $pythonExe manage.py makemigrations --check
+    Assert-LastExitCode "Django migration drift check"
     & $pythonExe -m pytest
     Assert-LastExitCode "Backend tests"
 }

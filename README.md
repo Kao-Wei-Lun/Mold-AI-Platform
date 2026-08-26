@@ -18,6 +18,6 @@
 
 ## Development
 
-Stage 1 establishes the runnable platform foundation. See
+Stages 1 and 2 establish the runnable foundation and the STEP/STL Artifact/Job vertical slice. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
-service endpoints, and the next CAD-processing vertical slice.
+service endpoints, and the next similarity-search vertical slice.

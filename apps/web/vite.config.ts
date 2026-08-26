@@ -6,6 +6,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    build: {
+      // Three.js is intentionally isolated in a lazy-loaded engineering viewer chunk.
+      chunkSizeWarningLimit: 600,
+    },
     server: {
       port: 5173,
       proxy: {
