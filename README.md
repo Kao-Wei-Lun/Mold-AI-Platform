@@ -15,3 +15,9 @@
 - Public→Company Connector 切換、Roadmap、測試與驗收
 
 目前文件為 `0.9 Draft Baseline`；企業資料來源、實際 CAD/Moldflow 版本、相似度 Ground Truth、權限政策與正式效能門檻仍需在需求訪談與資料盤點後核准。
+
+## Development
+
+Stage 1 establishes the runnable platform foundation. See
+[`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
+service endpoints, and the next CAD-processing vertical slice.
