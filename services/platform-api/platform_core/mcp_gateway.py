@@ -44,6 +44,7 @@ class PlatformAPIClient:
         public_web_base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         api_token: str | None = None,
+        forwarded_proto: str | None = None,
     ) -> None:
         self.base_url = (
             base_url or os.getenv("PLATFORM_API_BASE_URL", "http://api:8000/api/v1")
@@ -53,6 +54,11 @@ class PlatformAPIClient:
         ).rstrip("/")
         self.transport = transport
         self.api_token = api_token if api_token is not None else os.getenv("PLATFORM_API_TOKEN", "")
+        self.forwarded_proto = (
+            forwarded_proto
+            if forwarded_proto is not None
+            else os.getenv("PLATFORM_API_FORWARDED_PROTO", "")
+        )
 
     async def request(
         self, method: str, path: str, *, payload: dict[str, Any] | None = None
@@ -63,6 +69,8 @@ class PlatformAPIClient:
                 headers = {"Accept": "application/json", "X-Mold-AI-Client": "mcp-gateway"}
                 if self.api_token:
                     headers["Authorization"] = f"Bearer {self.api_token}"
+                if self.forwarded_proto:
+                    headers["X-Forwarded-Proto"] = self.forwarded_proto
                 response = await client.request(
                     method,
                     f"{self.base_url}/{path.lstrip('/')}",

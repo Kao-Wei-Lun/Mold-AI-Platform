@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-import { getDemoAccessToken } from "../api/client";
+import { consumeDemoAccessBootstrap, getDemoAccessToken } from "../api/client";
 import {
   clearDemoAccessToken,
   connectDemoAccess,
@@ -83,6 +83,7 @@ function onUnauthorized(): void {
 }
 
 onMounted(() => {
+  consumeDemoAccessBootstrap();
   window.addEventListener("mold-ai:unauthorized", onUnauthorized);
   loadPreflight();
 });

@@ -46,6 +46,19 @@ finally {
     Pop-Location
 }
 
+Push-Location -LiteralPath (Join-Path $repoRoot "apps\sites-web")
+try {
+    npm run lint
+    Assert-LastExitCode "Sites frontend lint"
+    npm test
+    Assert-LastExitCode "Sites frontend tests"
+    npm run build
+    Assert-LastExitCode "Sites frontend production build"
+}
+finally {
+    Pop-Location
+}
+
 Push-Location -LiteralPath $repoRoot
 try {
     docker compose config --quiet
@@ -53,6 +66,9 @@ try {
     docker compose -f compose.yaml -f compose.release.yaml `
         --env-file release.env.example config --quiet
     Assert-LastExitCode "Release Docker Compose validation"
+    docker compose -f compose.yaml -f compose.sites-demo.yaml `
+        --env-file .env.sites-demo.example config --quiet
+    Assert-LastExitCode "Sites Demo Docker Compose validation"
 }
 finally {
     Pop-Location

@@ -37,3 +37,25 @@ class DeploymentPreflightCommandTests(SimpleTestCase):
 
         self.assertIn('"production_ready": true', output.getvalue())
         self.assertNotIn(STRONG_TOKEN, output.getvalue())
+
+    @override_settings(
+        APP_ENV="external-demo",
+        QUICK_TUNNEL_MODE=True,
+        ALLOWED_HOSTS=[".trycloudflare.com", "api"],
+        DEMO_AUTH_MODE="required",
+        DEMO_API_TOKEN=STRONG_TOKEN,
+        DEMO_API_TOKEN_SCOPES={"public-demo:read", "public-demo:write"},
+        DEBUG=False,
+        SECRET_KEY="quick-tunnel-secret-0123456789abcdef",
+        TRUST_PROXY_HEADERS=True,
+        SECURE_SSL_REDIRECT=True,
+        SESSION_COOKIE_SECURE=True,
+        CSRF_COOKIE_SECURE=True,
+        SECURE_HSTS_SECONDS=86400,
+    )
+    def test_quick_tunnel_profile_does_not_require_a_stable_public_url(self) -> None:
+        output = StringIO()
+
+        call_command("deployment_preflight", "--profile", "quick-tunnel", "--strict", stdout=output)
+
+        self.assertIn("Demo quick-tunnel: READY", output.getvalue())

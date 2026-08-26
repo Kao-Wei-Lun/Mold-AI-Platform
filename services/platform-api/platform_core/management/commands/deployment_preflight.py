@@ -22,21 +22,36 @@ class Command(BaseCommand):
             action="store_true",
             help="Emit the complete machine-readable readiness document.",
         )
+        parser.add_argument(
+            "--profile",
+            choices=("release", "quick-tunnel"),
+            default="release",
+            help="Readiness profile to evaluate.",
+        )
 
     def handle(self, *args, **options) -> None:
         request = RequestFactory().get("/api/v1/security/preflight", secure=True)
         payload = security_preflight_payload(request)
-        failed = sorted(name for name, passed in payload["checks"].items() if not passed)
+        profile = options["profile"]
+        selected_checks = (
+            payload["quick_tunnel"]["checks"] if profile == "quick-tunnel" else payload["checks"]
+        )
+        ready = (
+            payload["quick_tunnel"]["ready"]
+            if profile == "quick-tunnel"
+            else payload["production_ready"]
+        )
+        failed = sorted(name for name, passed in selected_checks.items() if not passed)
 
         if options["json"]:
             self.stdout.write(json.dumps(payload, indent=2, sort_keys=True))
         else:
-            status = "READY" if payload["production_ready"] else "NOT READY"
-            self.stdout.write(f"Demo external release: {status}")
+            status = "READY" if ready else "NOT READY"
+            self.stdout.write(f"Demo {profile}: {status}")
             self.stdout.write("Failed checks: " + (", ".join(failed) if failed else "none"))
             self.stdout.write(
                 "This preflight never validates an OpenAI account, workspace policy, or OAuth flow."
             )
 
-        if options["strict"] and not payload["production_ready"]:
-            raise CommandError("Demo external release preflight failed.")
+        if options["strict"] and not ready:
+            raise CommandError(f"Demo {profile} preflight failed.")

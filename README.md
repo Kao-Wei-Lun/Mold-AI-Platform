@@ -26,6 +26,8 @@ Connector, explainable case ranking, and engineer-gated parameter references. St
 canonical structured CAE results and a strict compatibility-gated Run comparison. Stage 9 adds a
 bounded Machine UI extraction profile, human review gate, and versioned Excel export with source
 lineage. Stage 10 adds controlled external Demo access, fail-closed security/MCP preflight,
-authenticated artifact downloads, and a TLS release topology plus Secure MCP Tunnel runbook. See
+authenticated artifact downloads, and a TLS release topology plus Secure MCP Tunnel runbook.
+Stage 11 adds a private Sites portal, an outbound HTTPS Quick Tunnel for the complete Web, and a
+separate Secure MCP Tunnel startup path for ChatGPT developer-mode testing. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
 service endpoints, and implementation boundaries.

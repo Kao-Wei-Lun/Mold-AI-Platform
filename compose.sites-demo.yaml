@@ -1,0 +1,105 @@
+name: mold-ai-platform-sites-demo
+
+services:
+  db:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  qdrant:
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    command: ["./scripts/start-api-sites-demo.sh"]
+    volumes: !override
+      - runtime-data:/data
+    ports: !reset []
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; request=urllib.request.Request('http://localhost:8000/api/v1/health/live', headers={'X-Forwarded-Proto':'https'}); urllib.request.urlopen(request, timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    environment:
+      APP_ENV: external-demo
+      APP_VERSION: ${APP_VERSION:-0.11.0-demo}
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY}
+      DJANGO_ALLOWED_HOSTS: .trycloudflare.com,api,localhost,127.0.0.1
+      DEMO_AUTH_MODE: required
+      DEMO_API_TOKEN: ${DEMO_API_TOKEN:?Set DEMO_API_TOKEN}
+      DEMO_API_TOKEN_SCOPES: public-demo:read,public-demo:write
+      DEMO_API_ACTOR_ID: controlled-sites-demo-user
+      TRUST_PROXY_HEADERS: "true"
+      DJANGO_SECURE_SSL_REDIRECT: "true"
+      DJANGO_COOKIE_SECURE: "true"
+      DJANGO_SECURE_HSTS_SECONDS: "86400"
+      QUICK_TUNNEL_MODE: "true"
+      PUBLIC_WEB_BASE_URL: https://dynamic-quick-tunnel.invalid
+      PUBLIC_MCP_BASE_URL: ""
+      SECURE_MCP_TUNNEL_ID: ${SECURE_MCP_TUNNEL_ID:-}
+
+  worker:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !override
+      - runtime-data:/data
+
+  worker-cad:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !override
+      - runtime-data:/data
+
+  mcp-gateway:
+    build:
+      context: ./services/platform-api
+      target: production
+    restart: unless-stopped
+    volumes: !reset []
+    ports: !override
+      - "127.0.0.1:${MCP_HOST_PORT:-8002}:8001"
+    environment:
+      PLATFORM_API_TOKEN: ${DEMO_API_TOKEN:?Set DEMO_API_TOKEN}
+      PLATFORM_API_FORWARDED_PROTO: https
+      PUBLIC_WEB_BASE_URL: https://dynamic-quick-tunnel.invalid
+      SECURE_MCP_TUNNEL_ID: ${SECURE_MCP_TUNNEL_ID:-}
+      MCP_AUTH_MODE: none
+      MCP_BIND_HOST: 0.0.0.0
+      MCP_ALLOWED_HOSTS: localhost:*,127.0.0.1:*,mcp-gateway:*
+      MCP_ALLOWED_ORIGINS: http://localhost:*
+
+  web:
+    build:
+      context: ./apps/web
+      target: production
+    restart: unless-stopped
+    command: ["nginx", "-g", "daemon off;"]
+    volumes: !reset []
+    ports: !reset []
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://web:8080"]
+    depends_on:
+      web:
+        condition: service_started
+    networks: [frontend]

@@ -32,6 +32,22 @@ class MCPGatewayTests(SimpleTestCase):
 
         self.assertEqual(result["status"], "ok")
 
+    def test_platform_client_can_mark_a_trusted_internal_request_as_https(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.headers["X-Forwarded-Proto"], "https")
+            return httpx.Response(200, json={"schema_version": "1.0", "status": "ok"})
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+            forwarded_proto="https",
+        )
+
+        result = asyncio.run(client.request("GET", "system/info"))
+
+        self.assertEqual(result["status"], "ok")
+
     def test_review_tool_maps_only_the_canonical_demo_measurement_context(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             payload = json.loads(request.content)

@@ -144,6 +144,22 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
     production_ready = auth_mode == "required" and all(
         bool(checks[name]) for name in required_for_external
     )
+    quick_tunnel_checks = {
+        "external_environment_selected": checks["external_environment_selected"],
+        "quick_tunnel_mode_selected": settings.QUICK_TUNNEL_MODE,
+        "auth_required": auth_mode == "required",
+        "api_token_configured": checks["api_token_configured"],
+        "demo_scopes_complete": checks["demo_scopes_complete"],
+        "debug_disabled": checks["debug_disabled"],
+        "secret_key_hardened": checks["secret_key_hardened"],
+        "trycloudflare_host_allowed": "*" not in allowed_hosts
+        and ".trycloudflare.com" in allowed_hosts,
+        "https_proxy_trusted": checks["https_proxy_trusted"],
+        "ssl_redirect_enabled": checks["ssl_redirect_enabled"],
+        "secure_cookies_enabled": checks["secure_cookies_enabled"],
+        "hsts_enabled": checks["hsts_enabled"],
+    }
+    quick_tunnel_ready = all(bool(value) for value in quick_tunnel_checks.values())
     return {
         "schema_version": "1.0",
         "environment": settings.APP_ENV,
@@ -166,6 +182,11 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "checks": checks,
         "external_mode": external_mode,
         "production_ready": production_ready,
+        "quick_tunnel": {
+            "ready": quick_tunnel_ready,
+            "checks": quick_tunnel_checks,
+            "testing_only": True,
+        },
         "limitations": [
             "Static Demo bearer tokens are for controlled demonstrations, not enterprise SSO.",
             "Public ChatGPT MCP with user data requires OAuth 2.1; this stage does not fake it.",

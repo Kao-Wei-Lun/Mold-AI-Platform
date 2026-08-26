@@ -12,6 +12,18 @@ export function clearDemoAccessToken(): void {
   window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
 }
 
+export function consumeDemoAccessBootstrap(): boolean {
+  if (typeof window === "undefined" || !window.location.hash.startsWith("#mold-ai-bootstrap=")) {
+    return false;
+  }
+  const encoded = window.location.hash.slice("#mold-ai-bootstrap=".length);
+  const token = new URLSearchParams(encoded).get("token")?.trim() || "";
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  if (!token) return false;
+  setDemoAccessToken(token);
+  return true;
+}
+
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getDemoAccessToken();

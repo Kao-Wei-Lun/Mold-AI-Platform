@@ -58,6 +58,11 @@ official ChatGPT/Secure MCP Tunnel runbook without claiming external account or 
 See [stage-10-demo-release-hardening.md](stage-10-demo-release-hardening.md) for deployment and
 remaining operator checks.
 
+Stage 11 adds an owner-only Sites remote console, a token-protected production Web behind a
+temporary HTTPS Quick Tunnel, a separate loopback MCP port, and Windows scripts for OpenAI Secure
+MCP Tunnel startup. See [stage-11-sites-tunnels.md](stage-11-sites-tunnels.md) for the private
+external-test runbook and the remaining account-bound steps.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.

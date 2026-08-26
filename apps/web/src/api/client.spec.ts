@@ -1,6 +1,7 @@
 import {
   apiFetch,
   clearDemoAccessToken,
+  consumeDemoAccessBootstrap,
   downloadProtectedArtifact,
   setDemoAccessToken,
 } from "./client";
@@ -36,6 +37,14 @@ describe("authenticated API client", () => {
     await apiFetch("/api/v1/system/info", { headers: { Authorization: "Bearer explicit-token" } });
     const secondHeaders = new Headers(fetchMock.mock.calls[1][1]?.headers);
     expect(secondHeaders.get("Authorization")).toBe("Bearer explicit-token");
+  });
+
+  it("consumes a Sites bootstrap token from the URL fragment and immediately scrubs it", () => {
+    window.history.replaceState(null, "", "/#mold-ai-bootstrap=token=sites-secret");
+
+    expect(consumeDemoAccessBootstrap()).toBe(true);
+    expect(window.sessionStorage.getItem("mold-ai.demo-access-token")).toBe("sites-secret");
+    expect(window.location.hash).toBe("");
   });
 
   it("signals the UI when the server rejects the current session", async () => {

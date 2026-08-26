@@ -132,6 +132,7 @@ APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
 PUBLIC_WEB_BASE_URL = os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
 PUBLIC_MCP_BASE_URL = os.getenv("PUBLIC_MCP_BASE_URL", "")
 SECURE_MCP_TUNNEL_ID = os.getenv("SECURE_MCP_TUNNEL_ID", "")
+QUICK_TUNNEL_MODE = os.getenv("QUICK_TUNNEL_MODE", "false").lower() == "true"
 ASSISTANT_LLM_PROVIDER = os.getenv("ASSISTANT_LLM_PROVIDER", "disabled")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
