@@ -3,7 +3,7 @@ from datetime import date
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -37,6 +37,14 @@ from .design_review import (
     get_demo_rule_profile,
 )
 from .health import collect_readiness
+from .hmi import (
+    HMIValidationError,
+    create_demo_hmi_png,
+    create_hmi_extraction,
+    export_hmi_workbook,
+    extraction_payload,
+    review_hmi_fields,
+)
 from .ingestion import UploadValidationError, create_upload_records
 from .knowledge import (
     AUTHORITY_LEVELS,
@@ -52,6 +60,7 @@ from .models import (
     CAEComparison,
     CAERun,
     CAEStudy,
+    HMIExtraction,
     Job,
     KnowledgeDocument,
     KnowledgeSearch,
@@ -112,6 +121,138 @@ class SystemInfoView(APIView):
                 "version": settings.APP_VERSION,
                 "api_version": "v1",
             }
+        )
+
+
+def _hmi_extraction_queryset():
+    return HMIExtraction.objects.select_related(
+        "image_artifact_version__artifact"
+    ).prefetch_related("fields", "exports__artifact_version")
+
+
+class HMIDemoFixtureView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> HttpResponse:
+        variant = request.query_params.get("variant", "low-confidence")
+        if variant not in {"low-confidence", "clean"}:
+            return _error_response(
+                "VALIDATION_HMI_FIXTURE_VARIANT",
+                "variant must be low-confidence or clean.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        response = HttpResponse(
+            create_demo_hmi_png(low_confidence=variant == "low-confidence"),
+            content_type="image/png",
+        )
+        response["Content-Disposition"] = f'attachment; filename="demo-hmi-{variant}.png"'
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+class HMIExtractionListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request: Request) -> Response:
+        extractions = _hmi_extraction_queryset().filter(
+            image_artifact_version__classification="public_demo"
+        )[:25]
+        return Response(
+            {
+                "schema_version": "1.0",
+                "items": [extraction_payload(extraction) for extraction in extractions],
+            }
+        )
+
+    def post(self, request: Request) -> Response:
+        upload = request.FILES.get("file")
+        if upload is None:
+            return _error_response(
+                "VALIDATION_FILE_REQUIRED",
+                "A multipart file field is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            extraction = create_hmi_extraction(
+                upload,
+                profile=str(request.data.get("profile", "demo-generic-injection@1.0")),
+            )
+        except HMIValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        extraction = _hmi_extraction_queryset().get(pk=extraction.id)
+        return Response(extraction_payload(extraction), status=status.HTTP_201_CREATED)
+
+
+class HMIExtractionDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, extraction_id: str) -> Response:
+        extraction = get_object_or_404(
+            _hmi_extraction_queryset(),
+            pk=extraction_id,
+            image_artifact_version__classification="public_demo",
+        )
+        return Response(extraction_payload(extraction))
+
+
+class HMIExtractionReviewView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request, extraction_id: str) -> Response:
+        extraction = get_object_or_404(
+            _hmi_extraction_queryset(),
+            pk=extraction_id,
+            image_artifact_version__classification="public_demo",
+        )
+        try:
+            review_hmi_fields(
+                extraction,
+                request.data.get("fields"),
+                reviewer=str(request.data.get("reviewed_by", "demo-reviewer")),
+            )
+        except HMIValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        return Response(extraction_payload(_hmi_extraction_queryset().get(pk=extraction.id)))
+
+
+class HMIExtractionExportView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request, extraction_id: str) -> Response:
+        extraction = get_object_or_404(
+            _hmi_extraction_queryset(),
+            pk=extraction_id,
+            image_artifact_version__classification="public_demo",
+        )
+        try:
+            export = export_hmi_workbook(
+                extraction,
+                created_by=str(request.data.get("created_by", "demo-reviewer")),
+            )
+        except HMIValidationError as exc:
+            http_status = (
+                status.HTTP_409_CONFLICT
+                if exc.code.startswith("CONFLICT_")
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return _error_response(exc.code, exc.user_message, http_status)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "export_id": str(export.id),
+                "artifact_version_id": str(export.artifact_version_id),
+                "template_version": export.template_version,
+                "download_url": (
+                    f"/api/v1/artifact-versions/{export.artifact_version_id}/download"
+                ),
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

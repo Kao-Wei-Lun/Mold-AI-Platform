@@ -592,6 +592,92 @@ if ($caeBlocked.compatible -or $caeBlocked.metric_comparisons.Count -ne 0 -or `
     throw "CAE incompatible solver-version gate check failed."
 }
 
+$hmiFile = Join-Path ([System.IO.Path]::GetTempPath()) "mold-ai-hmi-smoke-$([guid]::NewGuid()).png"
+$hmiXlsx = Join-Path ([System.IO.Path]::GetTempPath()) "mold-ai-hmi-smoke-$([guid]::NewGuid()).xlsx"
+try {
+    Invoke-WebRequest `
+        -Uri "http://localhost:8000/api/v1/hmi/demo-fixture?variant=low-confidence" `
+        -OutFile $hmiFile `
+        -UseBasicParsing
+    $hmiUploadJson = curl.exe --silent --show-error --fail `
+        --form "file=@$hmiFile;type=image/png" `
+        --form "profile=demo-generic-injection@1.0" `
+        "http://localhost:8000/api/v1/hmi-extractions"
+    if ($LASTEXITCODE -ne 0) {
+        throw "HMI fixture upload smoke check failed."
+    }
+    $hmiUpload = $hmiUploadJson | ConvertFrom-Json
+    $holdingField = $hmiUpload.fields | `
+        Where-Object { $_.parameter_code -eq "holding_pressure_mpa" } | `
+        Select-Object -First 1
+    if ($hmiUpload.fields.Count -ne 4 -or `
+        $hmiUpload.review_status -ne "needs_review" -or `
+        $null -eq $holdingField -or $holdingField.value -ne 55 -or `
+        $holdingField.confidence -ge 0.9 -or $holdingField.review_status -ne "needs_review") {
+        throw "HMI bounded extraction or confidence gate check failed."
+    }
+
+    $blockedStatus = curl.exe --silent --output NUL --write-out "%{http_code}" `
+        --request POST `
+        --header "Content-Type: application/json" `
+        --data "{}" `
+        "http://localhost:8000/api/v1/hmi-extractions/$($hmiUpload.extraction_id)/exports"
+    if ($LASTEXITCODE -ne 0 -or $blockedStatus -ne "409") {
+        throw "HMI export was not blocked before human review."
+    }
+
+    $hmiReviewRequest = @{
+        reviewed_by = "smoke-engineer"
+        fields = @(@{ field_id = $holdingField.field_id; action = "confirm" })
+    } | ConvertTo-Json -Depth 4
+    $hmiReviewed = Invoke-RestMethod `
+        -Uri "http://localhost:8000/api/v1/hmi-extractions/$($hmiUpload.extraction_id)/review" `
+        -Method Post `
+        -ContentType "application/json" `
+        -Body $hmiReviewRequest
+    if ($hmiReviewed.review_status -ne "ready_for_export") {
+        throw "HMI human review did not release the export gate."
+    }
+
+    $hmiExport = Invoke-RestMethod `
+        -Uri "http://localhost:8000/api/v1/hmi-extractions/$($hmiUpload.extraction_id)/exports" `
+        -Method Post `
+        -ContentType "application/json" `
+        -Body '{"created_by":"smoke-engineer"}'
+    if ($hmiExport.template_version -ne "reviewed-parameters@1.0.0") {
+        throw "HMI workbook template version check failed."
+    }
+    Invoke-WebRequest `
+        -Uri "http://localhost:8000$($hmiExport.download_url)" `
+        -OutFile $hmiXlsx `
+        -UseBasicParsing
+
+    $workbookCheck = @"
+import sys
+from openpyxl import load_workbook
+workbook = load_workbook(sys.argv[1], data_only=False)
+assert workbook.sheetnames == ['Parameters', 'Audit']
+parameters = workbook['Parameters']
+assert parameters['B3'].value == sys.argv[2]
+assert parameters['E2'].value == '=COUNTA(A9:A100)'
+values = {parameters.cell(row, 1).value: parameters.cell(row, 4).value for row in range(9, 13)}
+assert values['holding_pressure_mpa'] == 55
+print('hmi-workbook-ok')
+"@
+    $workbookResult = & $pythonExe -c $workbookCheck $hmiXlsx $hmiUpload.image_sha256
+    if ($LASTEXITCODE -ne 0 -or ($workbookResult -join "`n") -notmatch "hmi-workbook-ok") {
+        throw "Downloaded HMI workbook contract check failed."
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $hmiFile) {
+        Remove-Item -LiteralPath $hmiFile -Force
+    }
+    if (Test-Path -LiteralPath $hmiXlsx) {
+        Remove-Item -LiteralPath $hmiXlsx -Force
+    }
+}
+
 $mcpLive = Invoke-RestMethod -Uri "http://localhost:8001/health/live"
 if ($mcpLive.status -ne "ok" -or $mcpLive.transport -ne "streamable-http") {
     throw "MCP Gateway liveness check failed."
@@ -603,4 +689,4 @@ if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovere
 
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; CAE=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; Process/Trial=ok; CAE=ok; HMI/Excel=ok; Assistant=ok; MCP=ok; $($serviceSummary -join '; ')"

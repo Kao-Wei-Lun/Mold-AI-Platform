@@ -46,6 +46,12 @@ deltas, result-level evidence, lineage/audit records, and a CAE comparison Web w
 [stage-08-cae-comparison.md](stage-08-cae-comparison.md) for integration-level and comparison
 boundaries.
 
+Stage 9 adds immutable HMI source artifacts, a bounded synthetic screen profile, deterministic
+numeric extraction with confidence and source regions, mandatory low-confidence human review, and
+versioned reviewed-parameter XLSX exports with audit/lineage data. See
+[stage-09-machine-ui-excel.md](stage-09-machine-ui-excel.md) for the fixed-profile boundary and
+Enterprise replacement path.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -182,4 +188,14 @@ synthetic structured export + source version/hash
 -> run compatibility gate
 -> compatible metric subset
 -> deterministic delta + result-level evidence or blocked comparison
+```
+
+## Implemented Machine UI to Excel pipeline
+
+```text
+versioned HMI image + fixed Demo profile
+-> bounded deterministic numeric extraction
+-> confidence, units, validation, and normalized source regions
+-> explicit human confirmation/correction gate
+-> versioned XLSX with reviewed values and lineage
 ```

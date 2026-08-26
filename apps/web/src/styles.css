@@ -1714,6 +1714,209 @@ button:disabled {
   font-size: 0.75rem;
 }
 
+.hmi-workspace {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+  border: 1px solid #dbe2ec;
+  border-radius: 16px;
+  padding: 1.35rem;
+  background: #fff;
+}
+
+.hmi-input-bar,
+.hmi-export-bar,
+.hmi-preview-card,
+.hmi-status {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.hmi-input-bar {
+  flex-wrap: wrap;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #f5f8fb;
+}
+
+.hmi-file-picker {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 240px;
+  color: #556175;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.hmi-preview-card {
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid #cad7d5;
+  border-radius: 12px;
+  background: #0f1d22;
+}
+
+.hmi-preview-card img {
+  width: min(52%, 520px);
+  height: auto;
+  object-fit: contain;
+}
+
+.hmi-preview-card > div {
+  display: grid;
+  align-content: center;
+  gap: 0.35rem;
+  padding: 1rem;
+  color: #e8f3f1;
+}
+
+.hmi-preview-card span,
+.hmi-export-bar span,
+.hmi-status span {
+  color: #69758a;
+  font-size: 0.72rem;
+}
+
+.hmi-preview-card span {
+  color: #a9c1be;
+}
+
+.hmi-status {
+  justify-content: space-between;
+  border-left: 4px solid #c48a00;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  background: #fff8e2;
+}
+
+.hmi-status.ready_for_export {
+  border-color: #238256;
+  background: #e8f7ef;
+}
+
+.hmi-status.rejected {
+  border-color: #b33030;
+  background: #fdecec;
+}
+
+.hmi-status > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.hmi-table-wrap {
+  overflow-x: auto;
+}
+
+.hmi-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.hmi-table th,
+.hmi-table td {
+  border-bottom: 1px solid #e1e8ed;
+  padding: 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.hmi-table th {
+  color: #48605f;
+  background: #eaf4f2;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.hmi-table td:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.confidence-pill,
+.review-state {
+  display: inline-block;
+  border-radius: 99px;
+  padding: 0.25rem 0.5rem;
+  color: #17613e;
+  background: #daf3e5;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.confidence-pill.low {
+  color: #7b5600;
+  background: #fff0bf;
+}
+
+.review-state.corrected,
+.review-state.confirmed {
+  color: #185ca0;
+  background: #e1effd;
+}
+
+.hmi-review-controls {
+  display: grid;
+  grid-template-columns: minmax(75px, 1fr) auto;
+  gap: 0.35rem;
+  min-width: 260px;
+}
+
+.hmi-review-controls input {
+  min-width: 0;
+  border: 1px solid #bdc9d5;
+  border-radius: 8px;
+  padding: 0.55rem;
+}
+
+.hmi-review-controls > span {
+  align-self: center;
+  color: #556175;
+}
+
+.hmi-review-controls button {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.7rem;
+}
+
+.hmi-export-bar {
+  justify-content: space-between;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #edf3ff;
+}
+
+.hmi-export-bar > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.download-link {
+  border-radius: 9px;
+  padding: 0.65rem 0.8rem;
+  color: #fff;
+  background: #17613e;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.hmi-lineage {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 0.7rem;
+  color: #69758a;
+  font-size: 0.72rem;
+}
+
+.hmi-lineage code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1761,6 +1964,18 @@ button:disabled {
     .measurement-grid,
     .decision-form {
     grid-template-columns: 1fr;
+  }
+
+  .hmi-input-bar,
+  .hmi-export-bar,
+  .hmi-preview-card,
+  .hmi-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hmi-preview-card img {
+    width: 100%;
   }
 
   .recent-cad-loader {

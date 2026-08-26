@@ -9,6 +9,8 @@ class Artifact(models.Model):
         CAD_SOURCE = "cad_source", "CAD source"
         CAD_PREVIEW = "cad_preview", "CAD preview"
         KNOWLEDGE_SOURCE = "knowledge_source", "Knowledge source"
+        HMI_SOURCE = "hmi_source", "HMI source image"
+        HMI_EXPORT = "hmi_export", "HMI spreadsheet export"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -815,3 +817,85 @@ class CAEComparison(models.Model):
 
     def __str__(self) -> str:
         return f"CAE comparison {self.id}"
+
+
+class HMIExtraction(models.Model):
+    class Status(models.TextChoices):
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    image_artifact_version = models.OneToOneField(
+        ArtifactVersion, related_name="hmi_extraction", on_delete=models.PROTECT
+    )
+    profile_key = models.CharField(max_length=128)
+    profile_version = models.CharField(max_length=32)
+    extractor_version = models.CharField(max_length=64)
+    status = models.CharField(max_length=24, choices=Status.choices)
+    image_width = models.PositiveIntegerField()
+    image_height = models.PositiveIntegerField()
+    preprocessing = models.JSONField(default=dict)
+    review_status = models.CharField(max_length=32, default="pending_review")
+    error_code = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"HMI extraction {self.id} [{self.status}]"
+
+
+class HMIExtractedField(models.Model):
+    class ReviewStatus(models.TextChoices):
+        NOT_REQUIRED = "not_required", "Not required"
+        NEEDS_REVIEW = "needs_review", "Needs review"
+        CONFIRMED = "confirmed", "Confirmed"
+        CORRECTED = "corrected", "Corrected"
+        REJECTED = "rejected", "Rejected"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    extraction = models.ForeignKey(HMIExtraction, related_name="fields", on_delete=models.PROTECT)
+    parameter_code = models.CharField(max_length=64)
+    display_label = models.CharField(max_length=128)
+    raw_text = models.CharField(max_length=128, blank=True)
+    normalized_value = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=32)
+    confidence = models.FloatField()
+    source_region = models.JSONField(default=dict)
+    validation_status = models.CharField(max_length=32)
+    review_status = models.CharField(max_length=24, choices=ReviewStatus.choices)
+    reviewer_value = models.FloatField(null=True, blank=True)
+    reviewer_unit = models.CharField(max_length=32, blank=True)
+    reviewed_by = models.CharField(max_length=128, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["parameter_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["extraction", "parameter_code"], name="unique_hmi_extraction_field"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.extraction_id}:{self.parameter_code}"
+
+
+class HMIExport(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    extraction = models.ForeignKey(HMIExtraction, related_name="exports", on_delete=models.PROTECT)
+    artifact_version = models.OneToOneField(
+        ArtifactVersion, related_name="hmi_export", on_delete=models.PROTECT
+    )
+    template_version = models.CharField(max_length=64)
+    reviewed_snapshot_hash = models.CharField(max_length=64)
+    created_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"HMI export {self.id}"

@@ -9,6 +9,7 @@ import CAEWorkspace from "./components/CAEWorkspace.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
+import HMIWorkspace from "./components/HMIWorkspace.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
@@ -96,6 +97,7 @@ onMounted(refreshHealth);
       <KnowledgeWorkspace />
       <ProcessTrialWorkspace />
       <CAEWorkspace />
+      <HMIWorkspace />
     </main>
     <AssistantPanel :context="assistantContext" @execute-action="executeUIAction" />
   </div>
