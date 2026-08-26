@@ -87,6 +87,7 @@ MEDIA_ROOT = Path(os.getenv("ARTIFACT_STORAGE_ROOT", BASE_DIR / ".runtime" / "ar
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 MAX_CAD_UPLOAD_BYTES = int(os.getenv("MAX_CAD_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+MAX_KNOWLEDGE_UPLOAD_BYTES = int(os.getenv("MAX_KNOWLEDGE_UPLOAD_BYTES", str(5 * 1024 * 1024)))
 DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_CAD_UPLOAD_BYTES + (1024 * 1024)
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
@@ -107,6 +108,7 @@ APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_CAD_COLLECTION = os.getenv("QDRANT_CAD_COLLECTION", "cad-similarity-v1")
+QDRANT_KNOWLEDGE_COLLECTION = os.getenv("QDRANT_KNOWLEDGE_COLLECTION", "knowledge-text-demo-v1")
 SIMILARITY_INDEX_VERSION = os.getenv("SIMILARITY_INDEX_VERSION", "cad-demo-v1")
 SIMILARITY_AUTO_INDEX = os.getenv("SIMILARITY_AUTO_INDEX", "false").lower() == "true"
 

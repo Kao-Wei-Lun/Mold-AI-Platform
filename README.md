@@ -18,8 +18,8 @@
 
 ## Development
 
-Stages 1–4 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
+Stages 1–5 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
 deterministic explainable CAD similarity through Qdrant, and an auditable deterministic Design
-Review workflow. See
+Review workflow, plus governed extractive Knowledge/RAG retrieval. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
 service endpoints, and implementation boundaries.

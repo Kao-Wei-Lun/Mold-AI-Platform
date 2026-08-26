@@ -5,6 +5,7 @@ import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import type { CADModelResult } from "./api/cad";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
+import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
 
@@ -74,6 +75,7 @@ onMounted(refreshHealth);
       <CadWorkspace @ready="activeCAD = $event" />
       <SimilarityWorkspace :query="activeCAD" />
       <DesignReviewWorkspace :query="activeCAD" />
+      <KnowledgeWorkspace />
     </main>
   </div>
 </template>

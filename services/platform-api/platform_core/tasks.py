@@ -11,7 +11,17 @@ from django.utils import timezone
 
 from .cad_processing import CADProcessingError, parse_cad_file
 from .design_review import DesignReviewValidationError, evaluate_review
-from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent, LineageEdge, ReviewRun
+from .knowledge import KnowledgeValidationError, index_knowledge_document
+from .models import (
+    Artifact,
+    ArtifactVersion,
+    CADModel,
+    Job,
+    JobEvent,
+    KnowledgeDocument,
+    LineageEdge,
+    ReviewRun,
+)
 from .similarity import SimilarityValidationError, extract_and_index_cad_model, run_similarity
 from .vector_store import VectorStoreError
 
@@ -339,6 +349,67 @@ def run_design_review_job(job_id: str) -> dict[str, str]:
             error_code="INTERNAL_DESIGN_REVIEW",
             error_message=(
                 "The design review failed unexpectedly. Use the correlation ID for support."
+            ),
+        )
+        raise
+
+
+@shared_task(name="platform_core.process_knowledge_job")
+def process_knowledge_job(job_id: str) -> dict[str, str]:
+    job = Job.objects.select_related(
+        "input_artifact_version__artifact",
+        "input_artifact_version__knowledge_document",
+    ).get(pk=job_id)
+    if job.state in TERMINAL_STATES:
+        terminal_result = {"job_id": str(job.id), "state": job.state}
+        if job.result_ref:
+            terminal_result["result_ref"] = job.result_ref
+        if job.error_code:
+            terminal_result["error_code"] = job.error_code
+        return terminal_result
+
+    document = job.input_artifact_version.knowledge_document
+    try:
+        update_job(job.id, state=Job.State.RUNNING, stage="scanning_untrusted_text", progress=15)
+        document.ingestion_status = KnowledgeDocument.IngestionStatus.RUNNING
+        document.save(update_fields=["ingestion_status", "updated_at"])
+        update_job(job.id, stage="chunking_document", progress=40)
+        result = index_knowledge_document(document)
+        update_job(job.id, stage="persisting_citations", progress=90)
+        result_ref = f"knowledge_document:{document.id}"
+        update_job(
+            job.id,
+            state=Job.State.SUCCEEDED,
+            stage=result["status"],
+            progress=100,
+            result_ref=result_ref,
+        )
+        return {"job_id": str(job.id), "state": Job.State.SUCCEEDED, "result_ref": result_ref}
+    except (KnowledgeValidationError, VectorStoreError) as exc:
+        document.ingestion_status = KnowledgeDocument.IngestionStatus.FAILED
+        document.error_code = exc.code
+        document.save(update_fields=["ingestion_status", "error_code", "updated_at"])
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code=exc.code,
+            error_message=exc.user_message,
+        )
+        return {"job_id": str(job.id), "state": Job.State.FAILED, "error_code": exc.code}
+    except Exception:
+        document.ingestion_status = KnowledgeDocument.IngestionStatus.FAILED
+        document.error_code = "INTERNAL_KNOWLEDGE_INGESTION"
+        document.save(update_fields=["ingestion_status", "error_code", "updated_at"])
+        update_job(
+            job.id,
+            state=Job.State.FAILED,
+            stage="failed",
+            progress=100,
+            error_code="INTERNAL_KNOWLEDGE_INGESTION",
+            error_message=(
+                "Knowledge ingestion failed unexpectedly. Use the correlation ID for support."
             ),
         )
         raise

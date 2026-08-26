@@ -405,13 +405,237 @@ button:disabled {
 }
 
 .similarity-workspace,
-.design-review-workspace {
+.design-review-workspace,
+.knowledge-workspace {
   margin-top: 1.5rem;
   padding: 1.7rem;
   border: 1px solid #dbe2ec;
   border-radius: 18px;
   background: white;
   box-shadow: 0 18px 45px rgb(33 48 79 / 8%);
+}
+
+.knowledge-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.42fr) minmax(0, 0.58fr);
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.knowledge-layout > article {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dbe2ec;
+  border-radius: 12px;
+}
+
+.knowledge-layout h3 {
+  margin: 0;
+}
+
+.subsection-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.subsection-heading > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.subsection-heading span {
+  color: #69758a;
+  font-size: 0.72rem;
+}
+
+.knowledge-upload-form,
+.knowledge-search-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.knowledge-upload-form label,
+.knowledge-search-form label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  color: #4d586c;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.knowledge-upload-form input,
+.knowledge-upload-form select,
+.knowledge-search-form input,
+.knowledge-search-form select,
+.knowledge-search-form textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #cad4e2;
+  border-radius: 9px;
+  padding: 0.55rem 0.65rem;
+  color: #172033;
+  background: #fbfcfe;
+  font: inherit;
+}
+
+.knowledge-upload-form .file-field,
+.knowledge-search-form .query-field {
+  grid-column: 1 / -1;
+}
+
+.knowledge-upload-form button,
+.knowledge-search-form button {
+  min-height: 40px;
+}
+
+.compact-job {
+  margin-top: 0.75rem;
+}
+
+.document-list,
+.knowledge-result-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem;
+  border-radius: 9px;
+  background: #f6f8fb;
+}
+
+.document-list li > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.document-list strong,
+.document-list span {
+  overflow: hidden;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-list li > div span {
+  color: #69758a;
+}
+
+.document-status {
+  border-radius: 99px;
+  padding: 0.25rem 0.45rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.document-status.indexed {
+  color: #12623b;
+  background: #dff6e9;
+}
+
+.document-status.quarantined,
+.document-status.obsolete {
+  color: #745200;
+  background: #fff0c7;
+}
+
+.document-status.failed {
+  color: #8d2b2b;
+  background: #fde5e5;
+}
+
+.knowledge-answer {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border-left: 4px solid #3f72ef;
+  color: #26344f;
+  background: #eef3ff;
+}
+
+.knowledge-answer.abstained {
+  border-color: #d59b18;
+  background: #fff7de;
+}
+
+.knowledge-answer span {
+  color: #69758a;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.knowledge-evidence {
+  margin-top: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid #dbe2ec;
+  border-radius: 10px;
+}
+
+.evidence-score-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.evidence-score-row span {
+  color: #12623b;
+  font-weight: 800;
+}
+
+.knowledge-evidence blockquote {
+  margin: 0.7rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid #cad4e2;
+  color: #4d586c;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.knowledge-evidence a {
+  color: #2457d6;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.knowledge-result-list button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.2rem 0.5rem;
+  border: 1px solid #dbe2ec;
+  padding: 0.65rem;
+  color: #172033;
+  text-align: left;
+  background: white;
+}
+
+.knowledge-result-list button.selected {
+  border-color: #3f72ef;
+  background: #eef3ff;
+}
+
+.knowledge-result-list button > span {
+  grid-row: 1 / 3;
+  color: #2457d6;
+  font-weight: 800;
+}
+
+.knowledge-result-list small {
+  color: #69758a;
 }
 
 .review-intro {
@@ -906,6 +1130,9 @@ button:disabled {
     .similarity-layout,
     .review-layout,
     .review-summary,
+    .knowledge-layout,
+    .knowledge-upload-form,
+    .knowledge-search-form,
     .comparison-viewers,
     .score-grid,
     .evidence-columns,

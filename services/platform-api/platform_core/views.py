@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -28,15 +29,34 @@ from .design_review import (
 )
 from .health import collect_readiness
 from .ingestion import UploadValidationError, create_upload_records
-from .models import Artifact, ArtifactVersion, Job, ReviewFinding, ReviewRun, SimilaritySearch
+from .knowledge import (
+    AUTHORITY_LEVELS,
+    DOCUMENT_TYPES,
+    KnowledgeValidationError,
+    create_knowledge_upload_records,
+    knowledge_document_payload,
+    search_knowledge,
+)
+from .models import (
+    Artifact,
+    ArtifactVersion,
+    Job,
+    KnowledgeDocument,
+    KnowledgeSearch,
+    ReviewFinding,
+    ReviewRun,
+    SimilaritySearch,
+)
 from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
 from .tasks import (
     mark_job_failed,
     process_cad_job,
+    process_knowledge_job,
     run_design_review_job,
     run_similarity_job,
     update_job,
 )
+from .vector_store import VectorStoreError
 
 
 class LiveView(APIView):
@@ -202,6 +222,7 @@ class JobDetailView(APIView):
                 "similarity_search",
                 "design_review__cad_model__preview_artifact_version",
                 "design_review__profile",
+                "input_artifact_version__knowledge_document",
             ).prefetch_related(
                 "design_review__profile__rules",
                 "design_review__findings__rule_version",
@@ -210,6 +231,169 @@ class JobDetailView(APIView):
             pk=job_id,
         )
         return Response(job_payload(job))
+
+
+class KnowledgeDocumentListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request: Request) -> Response:
+        documents = KnowledgeDocument.objects.select_related("artifact_version__artifact").order_by(
+            "-created_at"
+        )[:50]
+        return Response(
+            {
+                "schema_version": "1.0",
+                "items": [knowledge_document_payload(document) for document in documents],
+            }
+        )
+
+    def post(self, request: Request) -> Response:
+        upload = request.FILES.get("file")
+        if upload is None:
+            return _error_response(
+                "VALIDATION_FILE_REQUIRED",
+                "A multipart file field is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        def optional_date(field: str) -> date | None:
+            raw = str(request.data.get(field, "")).strip()
+            if not raw:
+                return None
+            try:
+                return date.fromisoformat(raw)
+            except ValueError as exc:
+                raise KnowledgeValidationError(
+                    "VALIDATION_EFFECTIVE_DATE", f"{field} must use YYYY-MM-DD."
+                ) from exc
+
+        idempotency_key = request.data.get("idempotency_key") or request.headers.get(
+            "Idempotency-Key"
+        )
+        if idempotency_key and len(str(idempotency_key)) > 255:
+            return _error_response(
+                "VALIDATION_IDEMPOTENCY_KEY",
+                "The idempotency key must be 255 characters or fewer.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            records = create_knowledge_upload_records(
+                upload,
+                title=str(request.data.get("title", "")),
+                document_type=str(request.data.get("document_type", "demo_sop")),
+                authority_level=str(request.data.get("authority_level", "demo")),
+                owner=str(request.data.get("owner", "demo-knowledge-curator")),
+                language=str(request.data.get("language", "en")),
+                effective_from=optional_date("effective_from"),
+                effective_to=optional_date("effective_to"),
+                idempotency_key=str(idempotency_key) if idempotency_key else None,
+            )
+        except KnowledgeValidationError as exc:
+            conflict = exc.code.startswith("CONFLICT_")
+            return _error_response(
+                exc.code,
+                exc.user_message,
+                status.HTTP_409_CONFLICT if conflict else status.HTTP_400_BAD_REQUEST,
+            )
+        if records.created:
+            try:
+                process_knowledge_job.apply_async(args=[str(records.job.id)], queue="general")
+            except Exception:
+                records.document.ingestion_status = KnowledgeDocument.IngestionStatus.FAILED
+                records.document.error_code = "JOB_QUEUE_UNAVAILABLE"
+                records.document.save(
+                    update_fields=["ingestion_status", "error_code", "updated_at"]
+                )
+                update_job(
+                    records.job.id,
+                    state=Job.State.FAILED,
+                    stage="failed",
+                    progress=100,
+                    error_code="JOB_QUEUE_UNAVAILABLE",
+                    error_message="The knowledge ingestion job could not be queued.",
+                )
+                return _error_response(
+                    "JOB_QUEUE_UNAVAILABLE",
+                    "The knowledge ingestion job could not be queued.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "status": "accepted",
+                "artifact_id": str(records.artifact.id),
+                "artifact_version_id": str(records.version.id),
+                "document_id": str(records.document.id),
+                "job_id": str(records.job.id),
+                "idempotent_replay": not records.created,
+                "links": {
+                    "status": f"/api/v1/jobs/{records.job.id}",
+                    "document": f"/api/v1/knowledge-documents/{records.document.id}",
+                },
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class KnowledgeDocumentDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, document_id: str) -> Response:
+        document = get_object_or_404(
+            KnowledgeDocument.objects.select_related("artifact_version__artifact"), pk=document_id
+        )
+        return Response(knowledge_document_payload(document))
+
+
+class KnowledgeSearchListCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        def string_list(field: str, allowed: set[str]) -> list[str]:
+            value = request.data.get(field, [])
+            if value is None:
+                return []
+            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                raise KnowledgeValidationError(
+                    "VALIDATION_KNOWLEDGE_FILTER", f"{field} must be an array of strings."
+                )
+            normalized = [item.strip() for item in value if item.strip()]
+            if set(normalized) - allowed:
+                raise KnowledgeValidationError(
+                    "VALIDATION_KNOWLEDGE_FILTER", f"{field} contains an unsupported value."
+                )
+            return normalized
+
+        try:
+            top_k = int(request.data.get("top_k", 5))
+            search = search_knowledge(
+                str(request.data.get("query", "")),
+                top_k=top_k,
+                document_types=string_list("document_types", DOCUMENT_TYPES),
+                authority_levels=string_list("authority_levels", AUTHORITY_LEVELS),
+            )
+        except (TypeError, ValueError):
+            return _error_response(
+                "VALIDATION_TOP_K", "top_k must be an integer.", status.HTTP_400_BAD_REQUEST
+            )
+        except KnowledgeValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        except VectorStoreError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({"search_id": str(search.id), **search.result}, status=status.HTTP_200_OK)
+
+
+class KnowledgeSearchDetailView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, search_id: str) -> Response:
+        search = get_object_or_404(KnowledgeSearch, pk=search_id)
+        return Response({"search_id": str(search.id), **search.result})
 
 
 class RuleProfileListView(APIView):
@@ -495,7 +679,8 @@ class ArtifactVersionDownloadView(APIView):
         response = FileResponse(
             source,
             content_type=version.media_type,
-            as_attachment=version.artifact.kind != Artifact.Kind.CAD_PREVIEW,
+            as_attachment=version.artifact.kind
+            not in {Artifact.Kind.CAD_PREVIEW, Artifact.Kind.KNOWLEDGE_SOURCE},
             filename=version.original_filename,
         )
         response["X-Content-Type-Options"] = "nosniff"

@@ -1,8 +1,10 @@
+from .knowledge import knowledge_document_payload
 from .models import (
     Artifact,
     ArtifactVersion,
     CADModel,
     Job,
+    KnowledgeDocument,
     ReviewDecision,
     ReviewFinding,
     ReviewRun,
@@ -82,6 +84,11 @@ def job_payload(job: Job) -> dict[str, object]:
         try:
             result = review_payload(job.design_review)
         except ReviewRun.DoesNotExist:
+            pass
+    elif job.state == Job.State.SUCCEEDED and job.capability_id == "knowledge.ingest":
+        try:
+            result = knowledge_document_payload(job.input_artifact_version.knowledge_document)
+        except KnowledgeDocument.DoesNotExist:
             pass
 
     error = None

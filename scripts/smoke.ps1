@@ -323,6 +323,96 @@ if ($persistedRib.result -ne "FAIL" -or $persistedRib.decisions.Count -ne 1) {
     throw "Persisted design-review result or immutable decision history is incorrect."
 }
 
+$knowledgeMarker = "smokeref$(([guid]::NewGuid()).ToString('N'))"
+$knowledgeFile = Join-Path ([System.IO.Path]::GetTempPath()) "mold-ai-knowledge-smoke-$([guid]::NewGuid()).md"
+$knowledgeContent = @"
+# Rib Design
+
+Rib thickness must be reviewed against nominal wall thickness before the demo design is released. Reference: $knowledgeMarker.
+
+# Trial Control
+
+Holding pressure changes require an engineer-approved trial plan and a recorded outcome.
+"@
+try {
+    [System.IO.File]::WriteAllText(
+        $knowledgeFile,
+        $knowledgeContent,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $knowledgeUploadJson = curl.exe --silent --show-error --fail `
+        --form "file=@$knowledgeFile;type=text/markdown" `
+        --form "title=Stage 5 smoke knowledge guide" `
+        --form "document_type=design_guideline" `
+        --form "authority_level=reviewed_demo" `
+        --form "language=en" `
+        --form "idempotency_key=stage5-knowledge-smoke-$([guid]::NewGuid())" `
+        "http://localhost:8000/api/v1/knowledge-documents"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Knowledge upload smoke check failed."
+    }
+    $knowledgeUpload = $knowledgeUploadJson | ConvertFrom-Json
+    $knowledgeDeadline = (Get-Date).AddSeconds(60)
+    $knowledgeJob = $null
+    while ((Get-Date) -lt $knowledgeDeadline) {
+        $knowledgeJob = Invoke-RestMethod `
+            -Uri "http://localhost:8000/api/v1/jobs/$($knowledgeUpload.job_id)"
+        if ($knowledgeJob.state -in @("succeeded", "failed")) {
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+    if ($null -eq $knowledgeJob -or $knowledgeJob.state -ne "succeeded" -or `
+        $knowledgeJob.result.ingestion_status -ne "indexed" -or `
+        $knowledgeJob.result.chunk_count -lt 2) {
+        $failureCode = if ($knowledgeJob.error) { $knowledgeJob.error.code } else { "timeout" }
+        throw "Knowledge ingestion smoke check failed: $failureCode"
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $knowledgeFile) {
+        Remove-Item -LiteralPath $knowledgeFile -Force
+    }
+}
+
+$knowledgeSearchRequest = @{
+    query = "$knowledgeMarker rib thickness wall"
+    document_types = @("design_guideline")
+    authority_levels = @("reviewed_demo")
+    top_k = 5
+} | ConvertTo-Json -Depth 4
+$knowledgeSearch = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/knowledge-searches" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $knowledgeSearchRequest
+if ($knowledgeSearch.abstained -or $knowledgeSearch.results.Count -lt 1 -or `
+    $knowledgeSearch.claims.Count -lt 1 -or $knowledgeSearch.citations.Count -lt 1) {
+    throw "Knowledge retrieval did not return grounded extractive evidence."
+}
+if ($knowledgeSearch.citations[0].artifact_version_id -ne $knowledgeUpload.artifact_version_id -or `
+    -not $knowledgeSearch.citations[0].locator.StartsWith("section:Rib Design") -or `
+    -not $knowledgeSearch.citations[0].source_url.EndsWith("/download")) {
+    throw "Knowledge citation is missing its immutable source version or locator."
+}
+if ($knowledgeSearch.principal_scope_source -ne "server_demo_policy") {
+    throw "Knowledge retrieval did not use the server-derived Demo ACL scope."
+}
+
+$abstentionRequest = @{
+    query = "unrelated quantum spindle evidence"
+    top_k = 5
+} | ConvertTo-Json
+$abstention = Invoke-RestMethod `
+    -Uri "http://localhost:8000/api/v1/knowledge-searches" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $abstentionRequest
+if (-not $abstention.abstained -or $abstention.claims.Count -ne 0 -or `
+    $abstention.citations.Count -ne 0) {
+    throw "Knowledge retrieval did not abstain when authorized evidence was absent."
+}
+
 $serviceSummary = $ready.services | ForEach-Object { "$($_.name)=$($_.status)" }
 Write-Host `
-    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview/Audit=ok; $($serviceSummary -join '; ')"
+    "Smoke tests passed: API=ok; Web=ok; Worker=ok; CAD=ok; Similarity=ok; DesignReview=ok; Knowledge/RAG=ok; $($serviceSummary -join '; ')"

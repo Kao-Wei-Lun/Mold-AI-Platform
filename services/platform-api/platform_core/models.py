@@ -8,6 +8,7 @@ class Artifact(models.Model):
     class Kind(models.TextChoices):
         CAD_SOURCE = "cad_source", "CAD source"
         CAD_PREVIEW = "cad_preview", "CAD preview"
+        KNOWLEDGE_SOURCE = "knowledge_source", "Knowledge source"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -450,3 +451,98 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_type}:{self.id}"
+
+
+class KnowledgeDocument(models.Model):
+    class IngestionStatus(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        INDEXED = "indexed", "Indexed"
+        QUARANTINED = "quarantined", "Quarantined"
+        FAILED = "failed", "Failed"
+        OBSOLETE = "obsolete", "Obsolete"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    artifact_version = models.OneToOneField(
+        ArtifactVersion, related_name="knowledge_document", on_delete=models.PROTECT
+    )
+    document_type = models.CharField(max_length=64)
+    authority_level = models.CharField(max_length=32, default="demo")
+    effective_from = models.DateField(null=True, blank=True)
+    effective_to = models.DateField(null=True, blank=True)
+    owner = models.CharField(max_length=128)
+    classification = models.CharField(max_length=32, default="public_demo")
+    acl_scopes = models.JSONField(default=list)
+    language = models.CharField(max_length=16, default="en")
+    parser_version = models.CharField(max_length=64, default="plain-text@1.0.0")
+    chunker_version = models.CharField(max_length=64, default="section-paragraph@1.0.0")
+    ingestion_status = models.CharField(
+        max_length=24,
+        choices=IngestionStatus.choices,
+        default=IngestionStatus.QUEUED,
+    )
+    injection_scan_status = models.CharField(max_length=24, default="pending")
+    injection_findings = models.JSONField(default=list)
+    chunk_count = models.PositiveIntegerField(default=0)
+    indexed_at = models.DateTimeField(null=True, blank=True)
+    error_code = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Knowledge {self.artifact_version_id} [{self.ingestion_status}]"
+
+
+class KnowledgeChunk(models.Model):
+    class IndexStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        INDEXED = "indexed", "Indexed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(KnowledgeDocument, related_name="chunks", on_delete=models.PROTECT)
+    ordinal = models.PositiveIntegerField()
+    text = models.TextField()
+    text_hash = models.CharField(max_length=64)
+    locator = models.JSONField(default=dict)
+    embedding_model = models.CharField(max_length=128, default="feature-hash-demo@1.0.0")
+    embedding_dimension = models.PositiveSmallIntegerField(default=64)
+    embedding = models.JSONField(default=list)
+    language = models.CharField(max_length=16, default="en")
+    injection_scan_status = models.CharField(max_length=24, default="clear")
+    index_status = models.CharField(
+        max_length=24, choices=IndexStatus.choices, default=IndexStatus.PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["ordinal"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "ordinal"], name="unique_knowledge_chunk_ordinal"
+            )
+        ]
+        indexes = [models.Index(fields=["text_hash"], name="knowledge_text_hash_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.document_id}:chunk:{self.ordinal}"
+
+
+class KnowledgeSearch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    query = models.TextField()
+    principal_scopes = models.JSONField(default=list)
+    filters = models.JSONField(default=dict)
+    retrieval_config = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    abstained = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Knowledge search {self.id}"

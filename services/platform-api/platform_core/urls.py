@@ -7,6 +7,10 @@ from .views import (
     DesignReviewDetailView,
     DesignReviewListCreateView,
     JobDetailView,
+    KnowledgeDocumentDetailView,
+    KnowledgeDocumentListCreateView,
+    KnowledgeSearchDetailView,
+    KnowledgeSearchListCreateView,
     LiveView,
     ReadyView,
     ReviewFindingDecisionCreateView,
@@ -29,6 +33,26 @@ urlpatterns = [
         name="cad-artifact-detail",
     ),
     path("jobs/<uuid:job_id>", JobDetailView.as_view(), name="job-detail"),
+    path(
+        "knowledge-documents",
+        KnowledgeDocumentListCreateView.as_view(),
+        name="knowledge-document-list-create",
+    ),
+    path(
+        "knowledge-documents/<uuid:document_id>",
+        KnowledgeDocumentDetailView.as_view(),
+        name="knowledge-document-detail",
+    ),
+    path(
+        "knowledge-searches",
+        KnowledgeSearchListCreateView.as_view(),
+        name="knowledge-search-list-create",
+    ),
+    path(
+        "knowledge-searches/<uuid:search_id>",
+        KnowledgeSearchDetailView.as_view(),
+        name="knowledge-search-detail",
+    ),
     path("rule-profiles", RuleProfileListView.as_view(), name="rule-profile-list"),
     path(
         "design-reviews",

@@ -23,6 +23,11 @@ typed findings with evidence and lineage, immutable reviewer decisions, audit ev
 review workspace. See [stage-04-design-review.md](stage-04-design-review.md) for evaluator and
 measurement boundaries.
 
+Stage 5 adds governed TXT/Markdown ingestion, document/chunk provenance, prompt-injection
+quarantine, server-derived ACL filtering, deterministic hybrid Qdrant retrieval, clickable
+citations, and explicit abstention. See [stage-05-knowledge-rag.md](stage-05-knowledge-rag.md) for
+retrieval and security boundaries.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -109,4 +114,13 @@ parsed CADModel + RuleProfile snapshot
 -> registered deterministic evaluators
 -> versioned findings and evidence
 -> reviewer decision history and audit event
+```
+
+## Implemented knowledge pipeline
+
+```text
+versioned public Demo document
+-> scan and section/paragraph chunks
+-> ACL-scoped deterministic text index
+-> extractive evidence with citations or abstention
 ```
