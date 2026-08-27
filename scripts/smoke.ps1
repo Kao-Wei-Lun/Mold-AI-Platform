@@ -30,6 +30,11 @@ if ($failedServices.Count -gt 0) {
     throw "One or more API dependencies are unhealthy."
 }
 
+docker compose exec -T api python manage.py seed_demo_data
+if ($LASTEXITCODE -ne 0) {
+    throw "Governed Demo dataset seed failed."
+}
+
 $live = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/health/live"
 if ($live.status -ne "ok") {
     throw "API liveness check failed."
@@ -380,6 +385,7 @@ try {
         --form "document_type=design_guideline" `
         --form "authority_level=reviewed_demo" `
         --form "language=en" `
+        --form "dataset_id=automated-smoke-v1" `
         --form "idempotency_key=stage5-knowledge-smoke-$([guid]::NewGuid())" `
         "http://localhost:8000/api/v1/knowledge-documents"
     if ($LASTEXITCODE -ne 0) {
@@ -413,6 +419,7 @@ $knowledgeSearchRequest = @{
     query = "$knowledgeMarker rib thickness wall"
     document_types = @("design_guideline")
     authority_levels = @("reviewed_demo")
+    dataset_ids = @("automated-smoke-v1")
     top_k = 5
 } | ConvertTo-Json -Depth 4
 $knowledgeSearch = Invoke-RestMethod `
@@ -693,7 +700,7 @@ if ($mcpPreflight.authentication.oauth_implemented -or `
     throw "MCP preflight overstated OAuth or external ChatGPT readiness."
 }
 $mcpResult = docker compose exec -T api python scripts/mcp_smoke.py
-if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "5 tools discovered") {
+if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "9 tools discovered") {
     throw "MCP protocol discovery/call smoke check failed."
 }
 

@@ -97,11 +97,13 @@ Demo 用於證明平台骨架與跨入口流程可行，不用公開資料宣稱
 
 ### 4.10 MCP / ChatGPT demo
 
-- **D-MCP-001**：應提供至少 `search_similar_molds`、`get_similarity_explanation`、`run_design_review`、`get_job_status`、`search_knowledge` 五個 MCP tools。
+- **D-MCP-001**：應提供 `list_engineering_capabilities`、`get_platform_status`、`search_similar_molds`、`get_similarity_explanation`、`run_design_review`、`get_job_status`、`list_knowledge_documents`、`search_knowledge`、`search_process_trial_cases` 九個 MCP tools。
 - **D-MCP-002**：MCP 結果應使用與 REST API 相同的 domain schema，另加精簡 model-readable text 與 Engineering UI deep link。
 - **D-MCP-003**：Create-job tools 必須回傳 job_id，不應讓 MCP request 等待重型工作完成。
 - **D-MCP-004**：Demo 前應完成 Developer Mode／Plugin 可用性、Workspace Policy、endpoint、auth 與 tool discovery 預檢。
 - **D-MCP-005**：若官方 ChatGPT 能力或帳號限制不允許現場連線，應提供預錄證據與 MCP Inspector 備援，但不得宣稱為現場成功。
+- **D-MCP-006**：當使用者指名 Mold AI Platform 時，MCP instructions 應要求 Client 優先使用平台 tools；不得自行改用 Browser、不得猜測必要工程輸入，也不得用 Process/Trial 案例暗中替代空的 Knowledge 結果。
+- **D-MCP-007**：Process/Trial tool 的 defect 與 material 必須由使用者提供；選用 Demo fixture 時須明確標記 `input_source=explicit_demo_fixture` 並回傳 input provenance。
 
 ## 5. 非功能需求
 

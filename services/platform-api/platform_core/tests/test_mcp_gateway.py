@@ -11,12 +11,128 @@ from platform_core.mcp_gateway import (
     PlatformAPIClient,
     create_app,
     get_job_status,
+    get_platform_status,
     get_similarity_explanation,
+    list_engineering_capabilities,
+    list_knowledge_documents,
     run_design_review,
+    search_process_trial_cases,
 )
 
 
 class MCPGatewayTests(SimpleTestCase):
+    def test_capability_and_status_tools_return_canonical_rest_results(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/engineering-capabilities"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "schema_version": "1.0",
+                        "capabilities": [
+                            {
+                                "capability_id": "knowledge.retrieve",
+                                "mcp_tools": ["search_knowledge", "list_knowledge_documents"],
+                            }
+                        ],
+                    },
+                )
+            if request.url.path.endswith("/demo/status"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "schema_version": "1.0",
+                        "status": "ok",
+                        "demo_data": {
+                            "indexed_knowledge_documents": 1,
+                            "process_trial_cases": 6,
+                        },
+                    },
+                )
+            raise AssertionError(f"Unexpected request: {request.url}")
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            capabilities = asyncio.run(list_engineering_capabilities())
+            platform_status = asyncio.run(get_platform_status())
+
+        self.assertEqual(
+            capabilities.domain_result["capabilities"][0]["capability_id"],
+            "knowledge.retrieve",
+        )
+        self.assertIn("1 Demo engineering capabilities", capabilities.summary)
+        self.assertIn("6 process/trial cases", platform_status.summary)
+
+    def test_knowledge_catalog_excludes_automated_smoke_documents(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "schema_version": "1.0",
+                    "items": [
+                        {
+                            "document_id": "demo-1",
+                            "dataset_id": "public-knowledge-demo-v1",
+                            "ingestion_status": "indexed",
+                        },
+                        {
+                            "document_id": "smoke-1",
+                            "dataset_id": "automated-smoke-v1",
+                            "ingestion_status": "indexed",
+                        },
+                    ],
+                },
+            )
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            result = asyncio.run(list_knowledge_documents())
+
+        self.assertEqual(result.domain_result["indexed_count"], 1)
+        self.assertEqual(result.domain_result["items"][0]["document_id"], "demo-1")
+
+    def test_process_tool_omits_unprovided_defaults_and_reports_input_source(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content)
+            self.assertEqual(
+                payload,
+                {
+                    "defect_code": "short_shot",
+                    "material_code": "PA6-GF30",
+                    "parameters": {},
+                    "top_k": 3,
+                },
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "schema_version": "1.0",
+                    "search_id": "process-search-1",
+                    "result_count": 2,
+                    "results": [],
+                },
+            )
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            result = asyncio.run(search_process_trial_cases("short_shot", "PA6-GF30", top_k=3))
+
+        provenance = result.domain_result["input_provenance"]
+        self.assertEqual(provenance["source"], "user_provided")
+        self.assertFalse(provenance["demo_defaults_used"])
+        self.assertIn("machine_code", provenance["omitted_optional_inputs"])
+
     def test_platform_client_forwards_only_configured_internal_bearer_token(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.headers["Authorization"], "Bearer internal-demo-token")

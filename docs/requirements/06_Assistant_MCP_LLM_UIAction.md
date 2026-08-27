@@ -104,15 +104,15 @@ MCP Gateway 將內部 Capability 映射為適合 AI Client 的 focused tools。�
 
 | Tool | Risk | 同步 | 說明 |
 |---|---:|---:|---|
-| `list_demo_molds` | R0/R1 | 是 | 依可見 scope 列出案例 |
-| `get_mold_summary` | R1 | 是 | 取得最小摘要與 artifact refs |
+| `list_engineering_capabilities` | R0 | 是 | 列出已實作能力、前置條件、限制與 MCP 對應 |
+| `get_platform_status` | R0 | 是 | 讀取服務、Demo dataset 與 Assistant readiness |
 | `search_similar_molds` | R1 | 建 Job | 啟動相似搜尋 |
-| `get_similarity_results` | R1 | 是 | 讀取已完成結果 |
 | `get_similarity_explanation` | R1 | 是 | 取得分數與差異證據 |
 | `run_design_review` | R1 | 建 Job | 啟動 review |
-| `get_review_results` | R1 | 是 | 讀取 violations |
+| `get_job_status` | R1 | 是 | 查詢非同步工作進度、錯誤與結果 |
+| `list_knowledge_documents` | R1 | 是 | 列出核准的 public Demo Knowledge 文件 |
 | `search_knowledge` | R1 | 是 | 有 citation 的檢索 |
-| `get_job_status` | R1 | 是 | 查詢進度與錯誤 |
+| `search_process_trial_cases` | R1 | 是 | 以明確使用者輸入搜尋合成歷史案例 |
 
 ### 4.4 Transport and auth
 

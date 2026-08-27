@@ -11,8 +11,10 @@ from .views import (
     CAEDemoFixtureView,
     CAEStudyDetailView,
     CAEStudyListView,
+    DemoStatusView,
     DesignReviewDetailView,
     DesignReviewListCreateView,
+    EngineeringCapabilitiesView,
     HMIDemoFixtureView,
     HMIExtractionDetailView,
     HMIExtractionExportView,
@@ -44,6 +46,12 @@ urlpatterns = [
     path("health/live", LiveView.as_view(), name="health-live"),
     path("health/ready", ReadyView.as_view(), name="health-ready"),
     path("system/info", SystemInfoView.as_view(), name="system-info"),
+    path(
+        "engineering-capabilities",
+        EngineeringCapabilitiesView.as_view(),
+        name="engineering-capabilities",
+    ),
+    path("demo/status", DemoStatusView.as_view(), name="demo-status"),
     path("security/preflight", SecurityPreflightView.as_view(), name="security-preflight"),
     path("hmi/demo-fixture", HMIDemoFixtureView.as_view(), name="hmi-demo-fixture"),
     path(

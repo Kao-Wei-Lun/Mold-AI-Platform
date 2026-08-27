@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import uvicorn
@@ -118,13 +118,67 @@ mcp = MCPServer(
     name="mold-ai-platform",
     title="Mold AI Platform",
     description="Governed public-demo mold engineering capabilities.",
-    version="0.1.0",
+    version="0.2.0",
     instructions=(
-        "Use focused read tools for evidence and status. Search and review tools only create "
-        "analysis jobs; call get_job_status before claiming completion. All data is public "
-        "demo data."
+        "When the user asks to use Mold AI Platform, prefer these MCP tools over Browser or Web UI "
+        "automation. Use focused read tools for evidence and status. Never invent required "
+        "engineering inputs, silently substitute UI defaults, or switch from Knowledge retrieval "
+        "to Process/Trial evidence without telling the user. Search and review tools may persist "
+        "analysis records; call get_job_status before claiming asynchronous work is complete. "
+        "All exposed data is public synthetic Demo data."
     ),
 )
+
+
+@mcp.tool(
+    name="list_engineering_capabilities",
+    title="List Mold AI engineering capabilities",
+    description=(
+        "Use this when the user asks what Mold AI Platform can do. Return the canonical Demo "
+        "capability catalog, prerequisites, limitations, and the MCP tools actually available."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def list_engineering_capabilities() -> ToolResponse:
+    client = _client()
+    result = await client.request("GET", "engineering-capabilities")
+    capabilities = result.get("capabilities", [])
+    mcp_count = sum(len(item.get("mcp_tools", [])) for item in capabilities)
+    return ToolResponse(
+        summary=(
+            f"Mold AI Platform reports {len(capabilities)} Demo engineering capabilities "
+            f"with {mcp_count} capability-to-tool mappings."
+        ),
+        domain_result=result,
+        links={"ui": client.ui_url("")},
+    )
+
+
+@mcp.tool(
+    name="get_platform_status",
+    title="Get Mold AI Demo platform status",
+    description=(
+        "Use this when the user asks whether Mold AI Platform services or Demo datasets are ready. "
+        "Return current dependency status, indexed knowledge count, fixture counts, and Assistant "
+        "provider state."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def get_platform_status() -> ToolResponse:
+    client = _client()
+    result = await client.request("GET", "demo/status")
+    demo_data = result.get("demo_data", {})
+    return ToolResponse(
+        summary=(
+            f"Mold AI Demo is {result.get('status', 'unknown')}; "
+            f"{demo_data.get('indexed_knowledge_documents', 0)} indexed knowledge documents and "
+            f"{demo_data.get('process_trial_cases', 0)} process/trial cases are available."
+        ),
+        domain_result=result,
+        links={"ui": client.ui_url("")},
+    )
 
 
 @mcp.tool(
@@ -320,6 +374,7 @@ async def search_knowledge(
             "top_k": top_k,
             "document_types": document_types or [],
             "authority_levels": authority_levels or [],
+            "dataset_ids": ["public-knowledge-demo-v1"],
         },
     )
     summary = (
@@ -331,6 +386,110 @@ async def search_knowledge(
         summary=summary,
         domain_result=result,
         links={"ui": client.ui_url(f"?knowledge_search_id={result['search_id']}#knowledge")},
+    )
+
+
+@mcp.tool(
+    name="list_knowledge_documents",
+    title="List indexed Mold AI knowledge documents",
+    description=(
+        "Use this before or after Knowledge retrieval when the user asks what governed source "
+        "documents are available. Return public Demo document metadata and ingestion status; do "
+        "not substitute Process/Trial cases for missing documents."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def list_knowledge_documents() -> ToolResponse:
+    client = _client()
+    result = await client.request("GET", "knowledge-documents")
+    items = [
+        item
+        for item in result.get("items", [])
+        if item.get("dataset_id") == "public-knowledge-demo-v1"
+    ]
+    indexed = [item for item in items if item.get("ingestion_status") == "indexed"]
+    domain_result = {**result, "items": items, "indexed_count": len(indexed)}
+    return ToolResponse(
+        summary=f"Found {len(indexed)} indexed public Demo knowledge documents.",
+        domain_result=domain_result,
+        links={"ui": client.ui_url("#knowledge")},
+    )
+
+
+@mcp.tool(
+    name="search_process_trial_cases",
+    title="Search synthetic process and trial cases",
+    description=(
+        "Use this only when the user asks for Process/Trial case evidence and supplies both a "
+        "defect code and material code. Do not call it as an automatic replacement for an empty "
+        "Knowledge search, and do not invent machine, product, location, or process parameters. "
+        "Results are synthetic historical evidence and never machine-setting instructions."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def search_process_trial_cases(
+    defect_code: str,
+    material_code: str,
+    machine_code: str | None = None,
+    product_type: str | None = None,
+    location: str | None = None,
+    injection_pressure_mpa: float | None = None,
+    injection_speed_mm_s: float | None = None,
+    melt_temperature_c: float | None = None,
+    top_k: int = 5,
+    input_source: Literal["user_provided", "explicit_demo_fixture"] = "user_provided",
+) -> ToolResponse:
+    client = _client()
+    parameters: dict[str, dict[str, float | str]] = {}
+    if injection_pressure_mpa is not None:
+        parameters["injection_pressure_mpa"] = {"value": injection_pressure_mpa, "unit": "MPa"}
+    if injection_speed_mm_s is not None:
+        parameters["injection_speed_mm_s"] = {"value": injection_speed_mm_s, "unit": "mm/s"}
+    if melt_temperature_c is not None:
+        parameters["melt_temperature_c"] = {"value": melt_temperature_c, "unit": "degC"}
+    payload: dict[str, object] = {
+        "defect_code": defect_code,
+        "material_code": material_code,
+        "parameters": parameters,
+        "top_k": top_k,
+    }
+    for key, value in {
+        "machine_code": machine_code,
+        "product_type": product_type,
+        "location": location,
+    }.items():
+        if value:
+            payload[key] = value
+    result = await client.request("POST", "process-case-searches", payload=payload)
+    domain_result = {
+        **result,
+        "input_provenance": {
+            "source": input_source,
+            "demo_defaults_used": input_source == "explicit_demo_fixture",
+            "omitted_optional_inputs": [
+                key
+                for key, value in {
+                    "machine_code": machine_code,
+                    "product_type": product_type,
+                    "location": location,
+                    "injection_pressure_mpa": injection_pressure_mpa,
+                    "injection_speed_mm_s": injection_speed_mm_s,
+                    "melt_temperature_c": melt_temperature_c,
+                }.items()
+                if value is None
+            ],
+        },
+    }
+    result_count = int(result.get("result_count", len(result.get("results", []))))
+    return ToolResponse(
+        summary=(
+            f"Found {result_count} compatible synthetic Process/Trial cases. "
+            f"Input source: {input_source}."
+        ),
+        domain_result=domain_result,
+        links={"ui": client.ui_url(f"?process_search_id={result['search_id']}#process-trial")},
     )
 
 
@@ -375,7 +534,7 @@ def mcp_preflight_payload() -> dict[str, object]:
         "service": "mcp-gateway",
         "transport": "streamable-http",
         "endpoint": "/mcp",
-        "tool_count": 5,
+        "tool_count": 9,
         "data_scope": "public-demo",
         "authentication": {
             "mode": auth_mode,

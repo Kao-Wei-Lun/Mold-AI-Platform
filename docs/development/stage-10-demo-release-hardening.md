@@ -129,7 +129,7 @@ The HTTP flag follows the official guidance to replace the sample's stdio comman
 
 5. In ChatGPT Settings → Security and login, enable Developer mode if the account/workspace permits
    it. Create a developer-mode app, select **Tunnel**, choose the associated tunnel, inspect the
-   five discovered tools, then run positive, follow-up, negative, missing-ID, and empty-result test
+   nine discovered tools, then run positive, follow-up, negative, missing-ID, and empty-result test
    prompts.
 6. Record the ChatGPT workspace, operator, tunnel ID, tested tool schema version, results, and date
    in the release evidence. Until these checks pass, `/preflight` intentionally reports

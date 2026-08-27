@@ -23,17 +23,28 @@ const error = ref<string | null>(null);
 const result = ref<ProcessSearchResult | null>(null);
 const selected = ref<ProcessMatch | null>(null);
 
-const defectCode = ref("short_shot");
-const materialCode = ref("PA6-GF30");
-const machineCode = ref("IM-180T");
-const productType = ref("connector_housing");
-const location = ref("far_flow_end");
-const injectionPressure = ref<number | null>(84);
-const injectionSpeed = ref<number | null>(43);
-const meltTemperature = ref<number | null>(279);
+const defectCode = ref("");
+const materialCode = ref("");
+const machineCode = ref("");
+const productType = ref("");
+const location = ref("");
+const injectionPressure = ref<number | null>(null);
+const injectionSpeed = ref<number | null>(null);
+const meltTemperature = ref<number | null>(null);
 const topK = ref(5);
 
 const recommendation = computed(() => result.value?.recommendation || null);
+
+function useExplicitDemoInputs(): void {
+  defectCode.value = "short_shot";
+  materialCode.value = "PA6-GF30";
+  machineCode.value = "IM-180T";
+  productType.value = "connector_housing";
+  location.value = "far_flow_end";
+  injectionPressure.value = 84;
+  injectionSpeed.value = 43;
+  meltTemperature.value = 279;
+}
 
 async function loadWorkspace(): Promise<void> {
   loading.value = true;
@@ -134,9 +145,16 @@ onMounted(loadWorkspace);
     </div>
 
     <form class="process-query-form" @submit.prevent="submitSearch">
+      <div class="form-wide demo-input-notice">
+        <p>Inputs are empty by default so the platform never presents Demo values as user context.</p>
+        <button type="button" class="secondary-button" @click="useExplicitDemoInputs">
+          Use explicit Demo inputs
+        </button>
+      </div>
       <label>
         <span>Defect</span>
         <select v-model="defectCode">
+          <option value="">Select a defect</option>
           <option value="short_shot">Short shot</option>
           <option value="sink_mark">Sink mark</option>
           <option value="warpage">Warpage</option>
@@ -190,7 +208,10 @@ onMounted(loadWorkspace);
         <span>Top K</span>
         <input v-model.number="topK" type="number" min="1" max="10" />
       </label>
-      <button type="submit" :disabled="searching || loadedCaseCount === 0">
+      <button
+        type="submit"
+        :disabled="searching || loadedCaseCount === 0 || !defectCode || !materialCode"
+      >
         {{ searching ? "Comparing..." : "Find governed cases" }}
       </button>
     </form>

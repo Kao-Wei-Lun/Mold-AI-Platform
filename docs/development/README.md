@@ -30,7 +30,7 @@ retrieval and security boundaries.
 
 Stage 6 adds a versioned minimal UI Context envelope, deterministic context-aware similarity
 explanations, a frontend UI Action allowlist, provider degradation visibility, and a separate
-Streamable HTTP MCP Gateway exposing five focused Capability adapters. See
+Streamable HTTP MCP Gateway initially exposing five focused Capability adapters. See
 [stage-06-assistant-mcp.md](stage-06-assistant-mcp.md) for the protocol, current ChatGPT boundary,
 and external-access prerequisites.
 
@@ -63,6 +63,12 @@ temporary HTTPS Quick Tunnel, a separate loopback MCP port, and Windows scripts 
 MCP Tunnel startup. See [stage-11-sites-tunnels.md](stage-11-sites-tunnels.md) for the private
 external-test runbook and the remaining account-bound steps.
 
+Stage 12 adds a canonical capability catalog and live Demo status, expands the MCP Gateway to nine
+focused tools, seeds governed Traditional Chinese troubleshooting evidence, isolates automated
+smoke documents, and removes silent Process/Trial defaults. See
+[stage-12-mcp-grounding-demo-data.md](stage-12-mcp-grounding-demo-data.md) for the observed ChatGPT
+failure modes, corrected contracts, and retest procedure.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.
@@ -91,6 +97,10 @@ services.
 - MCP preflight: <http://localhost:8001/preflight>
 
 The database, Redis, and Qdrant ports are intentionally not published to the Windows host.
+
+Demo startup and smoke verification run `python manage.py seed_demo_data` idempotently. This loads
+the approved public Knowledge, Process/Trial, and CAE fixtures without mixing automated smoke-test
+documents into user-visible Knowledge results.
 
 ## Run tests locally
 

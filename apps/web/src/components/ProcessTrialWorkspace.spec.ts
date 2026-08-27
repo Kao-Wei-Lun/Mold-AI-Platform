@@ -132,6 +132,8 @@ describe("ProcessTrialWorkspace", () => {
 
     expect(wrapper.text()).toContain("6 canonical trial cases");
     expect(wrapper.text()).toContain("Source records remain clearly marked synthetic");
+    expect(wrapper.get('.process-query-form button[type="submit"]').attributes("disabled")).toBeDefined();
+    await wrapper.get(".demo-input-notice button").trigger("click");
     await wrapper.get(".process-query-form").trigger("submit");
     await flushPromises();
 

@@ -60,6 +60,10 @@ database; every tool calls the versioned REST API.
 | `run_design_review` | Create analysis job | Returns `review_id` and `job_id` immediately |
 | `get_job_status` | No | Returns canonical job progress/error/result |
 | `search_knowledge` | No domain write | Returns authorized extractive evidence or abstention |
+| `list_engineering_capabilities` | No | Returns the canonical implemented capability catalog |
+| `get_platform_status` | No | Returns live service, Demo data, and Assistant readiness |
+| `list_knowledge_documents` | No | Lists governed public Demo Knowledge documents |
+| `search_process_trial_cases` | No domain write | Searches synthetic cases from explicit user inputs |
 
 Every tool has an explicit input schema, output schema, focused description, and accurate
 `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` annotations. Results include
@@ -103,4 +107,6 @@ or user actions require OAuth/OIDC-compatible authorization and per-tool server-
 
 Stage 6 tests cover context minimization/validation, contextual explanation, audit creation,
 provider degradation, UI Action expiry/target/allowlist checks, MCP REST adapter behavior, MCP
-initialization, five-tool discovery, tool schemas/annotations, and an actual Knowledge tool call.
+initialization, nine-tool discovery, tool schemas/annotations, and actual status/Knowledge calls.
+The four catalog/status/process tools were added in Stage 12 without changing the REST-adapter
+boundary.

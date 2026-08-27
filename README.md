@@ -18,7 +18,7 @@
 
 ## Development
 
-Stages 1–10 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
+Stages 1–12 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
 deterministic explainable CAD similarity through Qdrant, and an auditable deterministic Design
 Review workflow, governed extractive Knowledge/RAG retrieval, and the context-aware Assistant plus
 Streamable HTTP MCP Gateway. Stage 7 adds canonical Process/Trial cases, a replaceable synthetic
@@ -28,6 +28,9 @@ bounded Machine UI extraction profile, human review gate, and versioned Excel ex
 lineage. Stage 10 adds controlled external Demo access, fail-closed security/MCP preflight,
 authenticated artifact downloads, and a TLS release topology plus Secure MCP Tunnel runbook.
 Stage 11 adds a private Sites portal, an outbound HTTPS Quick Tunnel for the complete Web, and a
-separate Secure MCP Tunnel startup path for ChatGPT developer-mode testing. See
+separate Secure MCP Tunnel startup path for ChatGPT developer-mode testing. Stage 12 grounds
+ChatGPT behavior with a canonical capability/status catalog, nine focused MCP tools, governed
+Traditional Chinese Demo knowledge, isolated smoke-test data, and explicit Process/Trial input
+provenance. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
 service endpoints, and implementation boundaries.

@@ -5,6 +5,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 from platform_core.knowledge import (
+    AUTOMATED_SMOKE_DATASET,
+    PUBLIC_KNOWLEDGE_DATASET,
+    _tokens,
     chunk_document,
     create_knowledge_upload_records,
     search_knowledge,
@@ -34,7 +37,14 @@ class KnowledgeTests(TestCase):
         self.settings_override.disable()
         self.media_directory.cleanup()
 
-    def create_document(self, content: bytes = SAFE_MARKDOWN, *, name: str = "guide.md"):
+    def create_document(
+        self,
+        content: bytes = SAFE_MARKDOWN,
+        *,
+        name: str = "guide.md",
+        dataset_id: str = PUBLIC_KNOWLEDGE_DATASET,
+        language: str = "en",
+    ):
         upload = SimpleUploadedFile(name, content, content_type="text/markdown")
         return create_knowledge_upload_records(
             upload,
@@ -42,10 +52,11 @@ class KnowledgeTests(TestCase):
             document_type="design_guideline",
             authority_level="reviewed_demo",
             owner="knowledge-curator",
-            language="en",
+            language=language,
             effective_from=None,
             effective_to=None,
             idempotency_key=None,
+            dataset_id=dataset_id,
         )
 
     @patch("platform_core.knowledge.upsert_named_vector")
@@ -170,6 +181,67 @@ class KnowledgeTests(TestCase):
         filters = query_vectors.call_args.kwargs["filters"]
         self.assertEqual(filters["classification"], "public_demo")
         self.assertEqual(filters["acl_scopes"], ["public-demo"])
+        self.assertEqual(filters["dataset_id"], [PUBLIC_KNOWLEDGE_DATASET])
+        upsert.assert_called()
+
+    @patch("platform_core.knowledge.query_named_vectors")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_zh_hant_query_has_lexical_support(self, upsert, query_vectors) -> None:
+        records = self.create_document(
+            "# 短射排查\n\n射出成型短射應先確認缺料位置與材料批次。".encode(),
+            name="short-shot.md",
+            language="zh-Hant",
+        )
+        process_knowledge_job.run(str(records.job.id))
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        query_vectors.return_value = [VectorCandidate(str(chunk.id), 0.92)]
+
+        search = search_knowledge(
+            "射出成型短射",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+        )
+
+        self.assertIn("短射", _tokens("射出成型短射"))
+        self.assertFalse(search.abstained)
+        self.assertEqual(search.result["citations"][0]["title"], "Demo Mold Design Guide")
+        upsert.assert_called()
+
+    @patch("platform_core.knowledge.query_named_vectors")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_default_search_excludes_automated_smoke_dataset(self, upsert, query_vectors) -> None:
+        records = self.create_document(
+            b"# Isolated smoke\n\nA unique smoke reference must remain test-only.",
+            name="isolated-smoke.md",
+            dataset_id=AUTOMATED_SMOKE_DATASET,
+        )
+        process_knowledge_job.run(str(records.job.id))
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        query_vectors.return_value = [VectorCandidate(str(chunk.id), 0.99)]
+
+        public_search = search_knowledge(
+            "unique smoke reference",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+        )
+        smoke_search = search_knowledge(
+            "unique smoke reference",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+            dataset_ids=[AUTOMATED_SMOKE_DATASET],
+        )
+
+        self.assertTrue(public_search.abstained)
+        self.assertFalse(smoke_search.abstained)
+        self.assertEqual(
+            query_vectors.call_args.kwargs["filters"]["dataset_id"],
+            [AUTOMATED_SMOKE_DATASET],
+        )
         upsert.assert_called()
 
     @patch("platform_core.knowledge.query_named_vectors")

@@ -29,11 +29,15 @@ EMBEDDING_DIMENSION = 64
 PARSER_VERSION = "plain-text@1.0.0"
 CHUNKER_VERSION = "section-paragraph@1.0.0"
 PUBLIC_DEMO_SCOPES = ["public-demo"]
+PUBLIC_KNOWLEDGE_DATASET = "public-knowledge-demo-v1"
+AUTOMATED_SMOKE_DATASET = "automated-smoke-v1"
+KNOWLEDGE_DATASETS = {PUBLIC_KNOWLEDGE_DATASET, AUTOMATED_SMOKE_DATASET}
 DOCUMENT_TYPES = {"demo_sop", "design_guideline", "trial_report", "case_note"}
 AUTHORITY_LEVELS = {"demo", "reviewed_demo"}
 SUPPORTED_EXTENSIONS = {".txt": ("txt", "text/plain"), ".md": ("md", "text/markdown")}
 EICAR_MARKER = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
 TOKEN_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
+CJK_RUN_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
 INJECTION_PATTERNS = {
     "IGNORE_POLICY_INSTRUCTION": re.compile(
         r"\b(ignore|disregard|override)\b.{0,40}\b(previous|system|developer|policy|instructions?)\b",
@@ -133,6 +137,7 @@ def create_knowledge_upload_records(
     effective_from: date | None,
     effective_to: date | None,
     idempotency_key: str | None,
+    dataset_id: str = PUBLIC_KNOWLEDGE_DATASET,
 ) -> KnowledgeUploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
@@ -161,6 +166,8 @@ def create_knowledge_upload_records(
         )
     if authority_level not in AUTHORITY_LEVELS:
         raise KnowledgeValidationError("VALIDATION_AUTHORITY_LEVEL", "Unsupported authority level.")
+    if dataset_id not in KNOWLEDGE_DATASETS:
+        raise KnowledgeValidationError("VALIDATION_DATASET", "Unsupported knowledge dataset.")
     if language not in {"en", "zh-Hant"}:
         raise KnowledgeValidationError("VALIDATION_LANGUAGE", "language must be en or zh-Hant.")
     if effective_from and effective_to and effective_from > effective_to:
@@ -187,7 +194,7 @@ def create_knowledge_upload_records(
                 name=(title.strip() or filename)[:255],
                 kind=Artifact.Kind.KNOWLEDGE_SOURCE,
                 classification="public_demo",
-                dataset_id="public-knowledge-demo-v1",
+                dataset_id=dataset_id,
             )
             version = ArtifactVersion.objects.create(
                 id=version_id,
@@ -199,7 +206,11 @@ def create_knowledge_upload_records(
                 size_bytes=upload.size,
                 sha256=sha256,
                 storage_key=storage_key,
-                source_system="public-demo-upload",
+                source_system=(
+                    "automated-smoke"
+                    if dataset_id == AUTOMATED_SMOKE_DATASET
+                    else "public-demo-upload"
+                ),
                 classification="public_demo",
                 malware_status=ArtifactVersion.MalwareStatus.BASIC_SCREENED,
             )
@@ -228,6 +239,7 @@ def create_knowledge_upload_records(
                     "artifact_version_id": str(version.id),
                     "sha256": sha256,
                     "document_type": document_type,
+                    "dataset_id": dataset_id,
                     "classification": "public_demo",
                     "acl_scopes": PUBLIC_DEMO_SCOPES,
                     "parser_version": PARSER_VERSION,
@@ -259,7 +271,14 @@ def scan_untrusted_text(text: str) -> list[str]:
 
 
 def _tokens(text: str) -> list[str]:
-    return [token.casefold() for token in TOKEN_PATTERN.findall(text) if len(token) > 1]
+    tokens: list[str] = []
+    for raw_token in TOKEN_PATTERN.findall(text):
+        token = raw_token.casefold()
+        if len(token) > 1:
+            tokens.append(token)
+        for run in CJK_RUN_PATTERN.findall(token):
+            tokens.extend(run[index : index + 2] for index in range(len(run) - 1))
+    return tokens
 
 
 def text_vector(text: str) -> list[float]:
@@ -394,6 +413,7 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
                 "document_type": document.document_type,
                 "authority_level": document.authority_level,
                 "artifact_version_id": str(document.artifact_version_id),
+                "dataset_id": document.artifact_version.artifact.dataset_id,
                 "active": True,
             },
         )
@@ -422,6 +442,7 @@ def search_knowledge(
     top_k: int,
     document_types: list[str],
     authority_levels: list[str],
+    dataset_ids: list[str] | None = None,
 ) -> KnowledgeSearch:
     query = query.strip()
     if not 2 <= len(query) <= 500:
@@ -438,11 +459,15 @@ def search_knowledge(
         raise KnowledgeValidationError("VALIDATION_TOP_K", "top_k must be between 1 and 10.")
     if set(document_types) - DOCUMENT_TYPES or set(authority_levels) - AUTHORITY_LEVELS:
         raise KnowledgeValidationError("VALIDATION_KNOWLEDGE_FILTER", "Unsupported filter value.")
+    selected_datasets = dataset_ids or [PUBLIC_KNOWLEDGE_DATASET]
+    if set(selected_datasets) - KNOWLEDGE_DATASETS:
+        raise KnowledgeValidationError("VALIDATION_KNOWLEDGE_FILTER", "Unsupported dataset filter.")
 
     principal_scopes = PUBLIC_DEMO_SCOPES
     filters: dict[str, list[str] | str | bool] = {
         "classification": "public_demo",
         "acl_scopes": principal_scopes,
+        "dataset_id": selected_datasets,
         "active": True,
     }
     if document_types:
@@ -452,6 +477,7 @@ def search_knowledge(
     if not KnowledgeDocument.objects.filter(
         ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
         classification="public_demo",
+        artifact_version__artifact__dataset_id__in=selected_datasets,
     ).exists():
         candidates = []
     else:
@@ -463,7 +489,9 @@ def search_knowledge(
         )
     coarse = {candidate.feature_set_id: candidate.coarse_score for candidate in candidates}
     chunks = KnowledgeChunk.objects.select_related("document__artifact_version__artifact").filter(
-        id__in=coarse, document__ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED
+        id__in=coarse,
+        document__ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
+        document__artifact_version__artifact__dataset_id__in=selected_datasets,
     )
     ranked: list[tuple[float, KnowledgeChunk, dict[str, float]]] = []
     today = timezone.localdate()
@@ -559,18 +587,23 @@ def search_knowledge(
         "limitations": [
             "Stage 5 uses deterministic feature hashing, not a learned semantic embedding model.",
             "Answers are extractive evidence summaries; LLM synthesis is not enabled.",
-            "Process, Trial, and CAE retrieval lanes are future stages.",
+            "Knowledge retrieval is isolated from Process/Trial and CAE evidence lanes.",
         ],
     }
     return KnowledgeSearch.objects.create(
         query=query,
         principal_scopes=principal_scopes,
-        filters={"document_types": document_types, "authority_levels": authority_levels},
+        filters={
+            "document_types": document_types,
+            "authority_levels": authority_levels,
+            "dataset_ids": selected_datasets,
+        },
         retrieval_config={
             "embedding_model": EMBEDDING_MODEL,
             "collection": settings.QDRANT_KNOWLEDGE_COLLECTION,
             "weights": {"lexical": 0.55, "vector": 0.25, "authority": 0.15, "freshness": 0.05},
             "top_k": top_k,
+            "dataset_ids": selected_datasets,
         },
         result=result,
         abstained=abstained,
@@ -583,6 +616,7 @@ def knowledge_document_payload(document: KnowledgeDocument) -> dict[str, object]
         "document_id": str(document.id),
         "artifact_id": str(version.artifact_id),
         "artifact_version_id": str(version.id),
+        "dataset_id": version.artifact.dataset_id,
         "title": version.artifact.name,
         "original_filename": version.original_filename,
         "format": version.format,

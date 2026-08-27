@@ -20,6 +20,7 @@ from .cae import (
     compare_cae_runs,
 )
 from .cae_connectors import SyntheticCAEConnector, seed_demo_cae_studies
+from .capabilities import engineering_capabilities_payload
 from .contracts import (
     artifact_payload,
     job_payload,
@@ -49,6 +50,8 @@ from .ingestion import UploadValidationError, create_upload_records
 from .knowledge import (
     AUTHORITY_LEVELS,
     DOCUMENT_TYPES,
+    KNOWLEDGE_DATASETS,
+    PUBLIC_KNOWLEDGE_DATASET,
     KnowledgeValidationError,
     create_knowledge_upload_records,
     knowledge_document_payload,
@@ -121,6 +124,47 @@ class SystemInfoView(APIView):
                 "environment": settings.APP_ENV,
                 "version": settings.APP_VERSION,
                 "api_version": "v1",
+            }
+        )
+
+
+class EngineeringCapabilitiesView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        return Response(engineering_capabilities_payload())
+
+
+class DemoStatusView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        readiness = collect_readiness()
+        return Response(
+            {
+                "schema_version": "1.0",
+                "environment": settings.APP_ENV,
+                "version": settings.APP_VERSION,
+                "status": readiness["status"],
+                "services": readiness["services"],
+                "demo_data": {
+                    "indexed_knowledge_documents": KnowledgeDocument.objects.filter(
+                        ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
+                        classification="public_demo",
+                        artifact_version__artifact__dataset_id="public-knowledge-demo-v1",
+                    ).count(),
+                    "process_trial_cases": TrialCase.objects.filter(
+                        classification="public_demo", connector_key="synthetic-process-trial"
+                    ).count(),
+                    "cae_studies": CAEStudy.objects.filter(classification="public_demo").count(),
+                    "hmi_extractions": HMIExtraction.objects.filter(
+                        image_artifact_version__classification="public_demo"
+                    ).count(),
+                },
+                "assistant_provider": get_assistant_provider().health().payload(),
+                "data_scope": "public_demo",
             }
         )
 
@@ -440,9 +484,11 @@ class KnowledgeDocumentListCreateView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request: Request) -> Response:
-        documents = KnowledgeDocument.objects.select_related("artifact_version__artifact").order_by(
-            "-created_at"
-        )[:50]
+        documents = (
+            KnowledgeDocument.objects.select_related("artifact_version__artifact")
+            .order_by("-created_at")
+            .filter(artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET)[:50]
+        )
         return Response(
             {
                 "schema_version": "1.0",
@@ -490,6 +536,7 @@ class KnowledgeDocumentListCreateView(APIView):
                 effective_from=optional_date("effective_from"),
                 effective_to=optional_date("effective_to"),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
+                dataset_id=str(request.data.get("dataset_id", PUBLIC_KNOWLEDGE_DATASET)),
             )
         except KnowledgeValidationError as exc:
             conflict = exc.code.startswith("CONFLICT_")
@@ -576,6 +623,7 @@ class KnowledgeSearchListCreateView(APIView):
                 top_k=top_k,
                 document_types=string_list("document_types", DOCUMENT_TYPES),
                 authority_levels=string_list("authority_levels", AUTHORITY_LEVELS),
+                dataset_ids=string_list("dataset_ids", KNOWLEDGE_DATASETS),
             )
         except (TypeError, ValueError):
             return _error_response(

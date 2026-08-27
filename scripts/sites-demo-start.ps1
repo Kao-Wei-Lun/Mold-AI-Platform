@@ -50,6 +50,18 @@ try {
     & docker @upArgs
     if ($LASTEXITCODE -ne 0) { throw "Sites Demo containers failed to start." }
 
+    $demoDataReady = $false
+    $seedDeadline = (Get-Date).AddMinutes(2)
+    while ((Get-Date) -lt $seedDeadline -and -not $demoDataReady) {
+        & docker @composeArgs exec -T api python manage.py seed_demo_data
+        if ($LASTEXITCODE -eq 0) {
+            $demoDataReady = $true
+            break
+        }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $demoDataReady) { throw "Governed Demo datasets could not be loaded." }
+
     $tunnelUrl = ""
     $deadline = (Get-Date).AddMinutes(2)
     while ((Get-Date) -lt $deadline -and -not $tunnelUrl) {
