@@ -152,6 +152,10 @@ Reconciliation 差異超過門檻時停止 promote/index publish，通知 Data S
 
 出口：穩定外部展示、完整 test report、企業 gap list。
 
+R2 剩餘工作已進一步拆分為 Stage 13–16；完成後的 Web UI 改良列為 Stage 17。詳細 contract、
+work breakdown、acceptance criteria 與 risk register 見
+[Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。
+
 ### R3 — Company data discovery and shadow pilot
 
 - PDM/File + 選定 MES/QMS/CAE Connector。

@@ -69,6 +69,20 @@ smoke documents, and removes silent Process/Trial defaults. See
 [stage-12-mcp-grounding-demo-data.md](stage-12-mcp-grounding-demo-data.md) for the observed ChatGPT
 failure modes, corrected contracts, and retest procedure.
 
+## Planned stages to Demo v1.0
+
+The detailed implementation backlog is maintained in the
+[Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md):
+
+- Stage 13: stable, token-safe ChatGPT-to-Web deep links.
+- Stage 14: an OpenAI Responses API provider behind the existing provider abstraction.
+- Stage 15: an isolated curated CAD corpus with manifest, provenance, Golden scenarios, and seed reconciliation.
+- Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
+- Stage 17: post-v1.0 Engineering Web design system and workflow-focused UI/UX improvement.
+
+Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
+so visual and interaction changes do not obscure backend, data, security, or release regressions.
+
 ## Prerequisites
 
 - Windows 11 with WSL2 and Docker Desktop.

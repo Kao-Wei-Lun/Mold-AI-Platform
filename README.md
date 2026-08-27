@@ -16,6 +16,10 @@
 
 目前文件為 `0.9 Draft Baseline`；企業資料來源、實際 CAD/Moldflow 版本、相似度 Ground Truth、權限政策與正式效能門檻仍需在需求訪談與資料盤點後核准。
 
+Demo v1.0 剩餘開發與完成後的 Web UI 改良，請從
+[`docs/planning/demo-v1/00_README.md`](docs/planning/demo-v1/00_README.md) 開始閱讀。該文件包將
+Stage 13–16 定義為 Demo v1.0 completion gates，Stage 17 定義為後續 Engineering Web UI/UX 改良。
+
 ## Development
 
 Stages 1–12 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,

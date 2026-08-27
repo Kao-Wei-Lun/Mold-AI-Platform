@@ -28,6 +28,10 @@
 9. [測試、評估與驗收](09_Test_Evaluation_Acceptance.md)：功能、效能、AI 指標、安全測試、驗收門檻與追溯矩陣。
 10. [介面與 Schema 範例](10_API_and_Schema_Examples.md)：Capability、Job、MCP Tool、UI Action、Similarity 與 Review 的 JSON 範例。
 
+目前 Stage 12 之後的可執行開發順序、工作拆解、Gate、風險與 Web UI 改良計畫，另見
+[Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。Planning 文件將本 SRS 的 MUST
+requirements轉為Stage 13–17實作與驗收項目；若兩者衝突，以本需求套件與最新核准變更為準。
+
 ## 3. 規格閱讀規則
 
 需求關鍵字採以下定義：
