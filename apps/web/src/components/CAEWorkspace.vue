@@ -109,7 +109,7 @@ onMounted(loadWorkspace);
 </script>
 
 <template>
-  <section class="cae-workspace" aria-labelledby="cae-title">
+  <section id="cae" class="cae-workspace" aria-labelledby="cae-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">CAE / Moldflow</p>

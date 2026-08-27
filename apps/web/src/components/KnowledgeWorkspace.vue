@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import {
   fetchKnowledgeDocuments,
   fetchKnowledgeJob,
+  fetchKnowledgeSearch,
   searchKnowledge,
   uploadKnowledge,
   type KnowledgeDocument,
@@ -12,6 +13,9 @@ import {
   type KnowledgeSearchResult,
 } from "../api/knowledge";
 import { downloadProtectedArtifact } from "../api/client";
+import type { DeepLinkContext } from "../deepLinks";
+
+const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
 
 const file = ref<File | null>(null);
 const title = ref("");
@@ -114,6 +118,23 @@ async function submitSearch(): Promise<void> {
   }
 }
 
+async function loadDeepLink(): Promise<void> {
+  if (props.deepLink?.target !== "knowledge") return;
+  error.value = null;
+  try {
+    searchResult.value = await fetchKnowledgeSearch(props.deepLink.refs.knowledge_search_id);
+    const citationId = props.deepLink.refs.citation_id;
+    selectedResult.value = citationId
+      ? searchResult.value.results.find((item) => item.citation_id === citationId) || null
+      : searchResult.value.results[0] || null;
+    if (citationId && !selectedResult.value) {
+      error.value = "The linked citation does not belong to this knowledge search.";
+    }
+  } catch {
+    error.value = "The linked knowledge result is unavailable or not authorized.";
+  }
+}
+
 function citationFor(item: KnowledgeResultItem) {
   return searchResult.value?.citations.find((citation) => citation.citation_id === item.citation_id);
 }
@@ -130,13 +151,22 @@ async function downloadCitation(): Promise<void> {
 }
 
 onMounted(loadDocuments);
+watch(
+  () => [
+    props.deepLink?.target,
+    props.deepLink?.refs.knowledge_search_id,
+    props.deepLink?.refs.citation_id,
+  ],
+  loadDeepLink,
+  { immediate: true },
+);
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 });
 </script>
 
 <template>
-  <section class="knowledge-workspace" aria-labelledby="knowledge-title">
+  <section id="knowledge" class="knowledge-workspace" aria-labelledby="knowledge-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">Knowledge / RAG</p>

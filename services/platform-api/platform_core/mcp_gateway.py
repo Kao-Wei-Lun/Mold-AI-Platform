@@ -16,6 +16,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from .deep_links import DeepLinkBuilder, deep_link_readiness
+
 
 def _is_placeholder(value: str) -> bool:
     lowered = value.lower()
@@ -41,7 +43,7 @@ class PlatformAPIClient:
     def __init__(
         self,
         base_url: str | None = None,
-        public_web_base_url: str | None = None,
+        public_web_entry_base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         api_token: str | None = None,
         forwarded_proto: str | None = None,
@@ -49,8 +51,10 @@ class PlatformAPIClient:
         self.base_url = (
             base_url or os.getenv("PLATFORM_API_BASE_URL", "http://api:8000/api/v1")
         ).rstrip("/")
-        self.public_web_base_url = (
-            public_web_base_url or os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
+        self.public_web_entry_base_url = (
+            public_web_entry_base_url
+            or os.getenv("PUBLIC_WEB_ENTRY_BASE_URL")
+            or os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
         ).rstrip("/")
         self.transport = transport
         self.api_token = api_token if api_token is not None else os.getenv("PLATFORM_API_TOKEN", "")
@@ -93,8 +97,12 @@ class PlatformAPIClient:
             raise PlatformAPIError("The Mold AI capability API returned an invalid response.")
         return body
 
-    def ui_url(self, path: str) -> str:
-        return f"{self.public_web_base_url}/{path.lstrip('/')}"
+    def deep_link(self, target: str, **refs: str | None) -> str:
+        allow_local = self.public_web_entry_base_url.startswith("http://localhost")
+        return DeepLinkBuilder(
+            self.public_web_entry_base_url,
+            allow_local=allow_local,
+        ).build(target, **refs)
 
 
 def _client() -> PlatformAPIClient:
@@ -151,7 +159,7 @@ async def list_engineering_capabilities() -> ToolResponse:
             f"with {mcp_count} capability-to-tool mappings."
         ),
         domain_result=result,
-        links={"ui": client.ui_url("")},
+        links={"ui": client.deep_link("home")},
     )
 
 
@@ -176,8 +184,11 @@ async def get_platform_status() -> ToolResponse:
             f"{demo_data.get('indexed_knowledge_documents', 0)} indexed knowledge documents and "
             f"{demo_data.get('process_trial_cases', 0)} process/trial cases are available."
         ),
-        domain_result=result,
-        links={"ui": client.ui_url("")},
+        domain_result={
+            **result,
+            "deep_links": deep_link_readiness(client.public_web_entry_base_url),
+        },
+        links={"ui": client.deep_link("home")},
     )
 
 
@@ -215,8 +226,8 @@ async def search_similar_molds(
         },
     )
     links = {
-        "job": client.ui_url(f"?job_id={result['job_id']}#similarity"),
-        "result": client.ui_url(f"?search_id={result['search_id']}#similarity"),
+        "job": client.deep_link("job", job_id=result["job_id"]),
+        "result": client.deep_link("similarity", search_id=result["search_id"]),
     }
     return ToolResponse(
         summary=f"Similarity search accepted as job {result['job_id']}.",
@@ -250,7 +261,7 @@ async def get_similarity_explanation(
                 "state": search.get("state"),
                 "candidate": None,
             },
-            links={"job": client.ui_url(f"?job_id={search.get('job_id')}#similarity")},
+            links={"job": client.deep_link("job", job_id=search.get("job_id"))},
         )
     result = search["result"]
     candidate = next(
@@ -281,8 +292,10 @@ async def get_similarity_explanation(
         ),
         domain_result=explanation,
         links={
-            "ui": client.ui_url(
-                f"?search_id={search_id}&candidate_id={candidate_artifact_version_id}#similarity"
+            "ui": client.deep_link(
+                "similarity",
+                search_id=search_id,
+                candidate_id=candidate_artifact_version_id,
             )
         },
     )
@@ -325,7 +338,7 @@ async def run_design_review(
     return ToolResponse(
         summary=f"Design review accepted as job {result['job_id']}.",
         domain_result=result,
-        links={"ui": client.ui_url(f"?review_id={result['review_id']}#design-review")},
+        links={"ui": client.deep_link("design_review", review_id=result["review_id"])},
     )
 
 
@@ -345,7 +358,7 @@ async def get_job_status(job_id: str) -> ToolResponse:
             f"({result.get('stage')})."
         ),
         domain_result=result,
-        links={"ui": client.ui_url(f"?job_id={job_id}")},
+        links={"ui": client.deep_link("job", job_id=job_id)},
     )
 
 
@@ -385,7 +398,7 @@ async def search_knowledge(
     return ToolResponse(
         summary=summary,
         domain_result=result,
-        links={"ui": client.ui_url(f"?knowledge_search_id={result['search_id']}#knowledge")},
+        links={"ui": client.deep_link("knowledge", knowledge_search_id=result["search_id"])},
     )
 
 
@@ -413,7 +426,7 @@ async def list_knowledge_documents() -> ToolResponse:
     return ToolResponse(
         summary=f"Found {len(indexed)} indexed public Demo knowledge documents.",
         domain_result=domain_result,
-        links={"ui": client.ui_url("#knowledge")},
+        links={"ui": client.deep_link("home")},
     )
 
 
@@ -489,7 +502,7 @@ async def search_process_trial_cases(
             f"Input source: {input_source}."
         ),
         domain_result=domain_result,
-        links={"ui": client.ui_url(f"?process_search_id={result['search_id']}#process-trial")},
+        links={"ui": client.deep_link("process_trial", process_search_id=result["search_id"])},
     )
 
 
@@ -515,6 +528,8 @@ def mcp_preflight_payload() -> dict[str, object]:
     platform_api_token_configured = _configured_secret(os.getenv("PLATFORM_API_TOKEN", ""))
     public_base_url = os.getenv("PUBLIC_MCP_BASE_URL", "")
     tunnel_id = os.getenv("SECURE_MCP_TUNNEL_ID", "")
+    entry_base_url = os.getenv("PUBLIC_WEB_ENTRY_BASE_URL", "")
+    deep_links = deep_link_readiness(entry_base_url)
     public_https = public_base_url.startswith("https://")
     tunnel_configured = bool(tunnel_id) and not _is_placeholder(tunnel_id)
     mode_valid = auth_mode in {"none", "bearer", "oauth"}
@@ -528,6 +543,7 @@ def mcp_preflight_payload() -> dict[str, object]:
         tunnel_configured
         and auth_mode == "none"
         and (not api_auth_required or platform_api_token_configured)
+        and bool(deep_links["ready"])
     )
     return {
         "schema_version": "1.0",
@@ -548,6 +564,7 @@ def mcp_preflight_payload() -> dict[str, object]:
             "public_https_configured": public_https,
             "secure_tunnel_configured": tunnel_configured,
         },
+        "deep_links": deep_links,
         "server_side_chatgpt_preflight_ready": chatgpt_ready,
         "openai_account_workspace_validation": "pending_external_check",
         "inspector_ready": auth_mode == "none" or (auth_mode == "bearer" and bearer_configured),

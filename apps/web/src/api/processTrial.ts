@@ -172,3 +172,11 @@ export async function searchProcessCases(query: ProcessQuery): Promise<ProcessSe
   if (!response.ok) throw new Error(await errorMessage(response));
   return await response.json();
 }
+
+export async function fetchProcessSearch(searchId: string): Promise<ProcessSearchResult> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/process-case-searches/${searchId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as ProcessSearchResult;
+}

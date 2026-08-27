@@ -71,6 +71,33 @@ button:disabled {
   padding: 5rem clamp(1.5rem, 5vw, 5rem);
 }
 
+.deep-link-state {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding: 22px 24px;
+  border: 1px solid #bfd8cc;
+  border-left: 4px solid #17845b;
+  border-radius: 14px;
+  background: #eef8f3;
+}
+
+.deep-link-state h2,
+.deep-link-state p {
+  margin-bottom: 0;
+}
+
+.deep-link-state code {
+  overflow-wrap: anywhere;
+}
+
+.deep-link-error {
+  border-color: #e2b8aa;
+  border-left-color: #b84f2f;
+  background: #fff4ef;
+}
+
 .assistant-panel {
   position: sticky;
   top: 0;

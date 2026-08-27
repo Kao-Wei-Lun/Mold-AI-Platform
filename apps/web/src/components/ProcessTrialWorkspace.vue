@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import {
   fetchProcessFixtureStatus,
+  fetchProcessSearch,
   fetchTrialCases,
   searchProcessCases,
   seedProcessFixtures,
@@ -12,6 +13,9 @@ import {
   type ProcessSearchResult,
   type TrialCase,
 } from "../api/processTrial";
+import type { DeepLinkContext } from "../deepLinks";
+
+const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
 
 const loadedCaseCount = ref(0);
 const sourceVersion = ref("");
@@ -102,6 +106,23 @@ async function submitSearch(): Promise<void> {
   }
 }
 
+async function loadDeepLink(): Promise<void> {
+  if (props.deepLink?.target !== "process_trial") return;
+  error.value = null;
+  try {
+    result.value = await fetchProcessSearch(props.deepLink.refs.process_search_id);
+    const caseId = props.deepLink.refs.case_id;
+    selected.value = caseId
+      ? result.value.results.find((item) => item.trial_case_id === caseId) || null
+      : result.value.results[0] || null;
+    if (caseId && !selected.value) {
+      error.value = "The linked case does not belong to this Process/Trial search.";
+    }
+  } catch {
+    error.value = "The linked Process/Trial result is unavailable or not authorized.";
+  }
+}
+
 function measurementText(values: Record<string, Measurement>): string {
   return Object.entries(values)
     .map(([code, measurement]) => `${code.replaceAll("_", " ")}: ${measurement.value} ${measurement.unit}`)
@@ -117,10 +138,19 @@ function stepRange(step: ControlledTrialStep): string {
 }
 
 onMounted(loadWorkspace);
+watch(
+  () => [
+    props.deepLink?.target,
+    props.deepLink?.refs.process_search_id,
+    props.deepLink?.refs.case_id,
+  ],
+  loadDeepLink,
+  { immediate: true },
+);
 </script>
 
 <template>
-  <section class="process-workspace" aria-labelledby="process-trial-title">
+  <section id="process-trial" class="process-workspace" aria-labelledby="process-trial-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">Process / Trial</p>

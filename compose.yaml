@@ -162,6 +162,7 @@ services:
     environment:
       PLATFORM_API_BASE_URL: http://api:8000/api/v1
       PUBLIC_WEB_BASE_URL: ${PUBLIC_WEB_BASE_URL:-http://localhost:5173}
+      PUBLIC_WEB_ENTRY_BASE_URL: ${PUBLIC_WEB_ENTRY_BASE_URL:-http://localhost:5173}
       MCP_PORT: 8001
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp-gateway:*}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost:*}

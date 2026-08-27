@@ -5,12 +5,14 @@ import type { CADModelResult } from "../api/cad";
 import {
   createDesignReview,
   createFindingDecision,
+  fetchDesignReview,
   fetchDesignReviewJob,
   type DesignReviewJob,
   type ReviewFinding,
 } from "../api/designReview";
+import type { DeepLinkContext } from "../deepLinks";
 
-const props = defineProps<{ query: CADModelResult | null }>();
+const props = defineProps<{ query: CADModelResult | null; deepLink?: DeepLinkContext | null }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const nominalWall = ref("");
@@ -88,6 +90,27 @@ async function submit(): Promise<void> {
   }
 }
 
+async function loadDeepLink(): Promise<void> {
+  if (props.deepLink?.target !== "design_review") return;
+  error.value = null;
+  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  try {
+    acceptJob(await fetchDesignReview(props.deepLink.refs.review_id));
+    const findingId = props.deepLink.refs.finding_id;
+    if (findingId && result.value) {
+      const finding = result.value.findings.find((item) => item.finding_id === findingId);
+      if (!finding) throw new Error("DEEP_LINK_CONTEXT_MISMATCH");
+      selectedFinding.value = finding;
+    }
+    schedulePoll();
+  } catch (caught) {
+    error.value =
+      caught instanceof Error && caught.message === "DEEP_LINK_CONTEXT_MISMATCH"
+        ? "The linked finding does not belong to this design review."
+        : "The linked design review is unavailable or not authorized.";
+  }
+}
+
 async function saveDecision(): Promise<void> {
   if (!result.value || !selectedFinding.value) return;
   savingDecision.value = true;
@@ -122,13 +145,23 @@ watch(
   },
 );
 
+watch(
+  () => [
+    props.deepLink?.target,
+    props.deepLink?.refs.review_id,
+    props.deepLink?.refs.finding_id,
+  ],
+  loadDeepLink,
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 });
 </script>
 
 <template>
-  <section class="design-review-workspace" aria-labelledby="design-review-title">
+  <section id="design-review" class="design-review-workspace" aria-labelledby="design-review-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">Deterministic design review</p>

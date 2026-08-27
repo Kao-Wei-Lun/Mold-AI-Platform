@@ -42,7 +42,7 @@ Useful commands:
 .\scripts\sites-demo-stop.ps1
 ```
 
-The stop command retains Docker volumes. A Quick Tunnel URL changes whenever the `web-tunnel` container is recreated; rerun the start script and update the Sites form.
+The stop command retains Docker volumes. A Quick Tunnel URL changes whenever the `web-tunnel` container is recreated; rerun the start script and update the Sites form. Stage 13 MCP links continue to use the stable Sites `/open` route, so this change does not require refreshing the ChatGPT MCP connection.
 
 ## Connect ChatGPT through Secure MCP Tunnel
 
@@ -98,6 +98,6 @@ If the tunnel is not listed, check the ChatGPT workspace association, Tunnels Re
 ## Known testing limits
 
 - Cloudflare Quick Tunnels are development/testing infrastructure: the hostname is random, there is no SLA, concurrent requests are limited, and SSE is not supported.
-- The current Sites portal verifies reachability with a browser `no-cors` request; the full Web performs the authoritative token validation.
+- The Sites portal performs an authenticated Mold AI `system/info` identity check before forwarding to the full Web.
 - Secure MCP Tunnel is for private developer-mode testing. Public plugin distribution requires the separate stable public endpoint/authentication review path.
 - Static Demo bearer auth is deliberately not Enterprise SSO. Do not load confidential company data into this public-network Demo topology.

@@ -6,11 +6,17 @@ import type { CADModelResult } from "../api/cad";
 import {
   createSimilaritySearch,
   fetchSimilarityJob,
+  fetchSimilaritySearch,
   type SimilarityJob,
   type SimilarityMatch,
 } from "../api/similarity";
+import type { DeepLinkContext } from "../deepLinks";
 
-const props = defineProps<{ query: CADModelResult | null; uiAction?: UIAction | null }>();
+const props = defineProps<{
+  query: CADModelResult | null;
+  uiAction?: UIAction | null;
+  deepLink?: DeepLinkContext | null;
+}>();
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
@@ -84,6 +90,29 @@ async function submit(): Promise<void> {
   }
 }
 
+async function loadDeepLink(): Promise<void> {
+  if (props.deepLink?.target !== "similarity") return;
+  error.value = null;
+  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  try {
+    acceptJob(await fetchSimilaritySearch(props.deepLink.refs.search_id));
+    const candidateId = props.deepLink.refs.candidate_id;
+    if (candidateId && result.value) {
+      const candidate = result.value.results.find(
+        (item) => item.artifact_version_id === candidateId,
+      );
+      if (!candidate) throw new Error("DEEP_LINK_CONTEXT_MISMATCH");
+      selectedMatch.value = candidate;
+    }
+    schedulePoll();
+  } catch (caught) {
+    error.value =
+      caught instanceof Error && caught.message === "DEEP_LINK_CONTEXT_MISMATCH"
+        ? "The linked candidate does not belong to this similarity search."
+        : "The linked similarity result is unavailable or not authorized.";
+  }
+}
+
 watch(
   () => props.query?.artifact_version_id,
   () => {
@@ -92,6 +121,16 @@ watch(
     error.value = null;
     if (pollTimer !== null) window.clearTimeout(pollTimer);
   },
+);
+
+watch(
+  () => [
+    props.deepLink?.target,
+    props.deepLink?.refs.search_id,
+    props.deepLink?.refs.candidate_id,
+  ],
+  loadDeepLink,
+  { immediate: true },
 );
 
 watch(

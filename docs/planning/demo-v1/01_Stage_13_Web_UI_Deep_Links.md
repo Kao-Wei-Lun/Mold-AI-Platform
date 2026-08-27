@@ -1,6 +1,6 @@
 # Stage 13 — Valid Web UI Deep Links
 
-- 狀態：Planned
+- 狀態：Implemented；production deployment 與 ChatGPT external UAT 待本階段 release gate 完成
 - 優先級：P0
 - 前置：Stage 12、私人 Sites、HTTPS Quick Tunnel、Secure MCP Tunnel 已可運作
 - 出口：ChatGPT MCP 回覆可安全開啟正確 Engineering Web context

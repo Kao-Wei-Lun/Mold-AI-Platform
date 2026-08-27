@@ -23,6 +23,18 @@ function Read-EnvValue([string]$Name) {
     return $line.Substring($line.IndexOf("=") + 1).Trim()
 }
 
+function Test-StableSitesEntry([string]$Value) {
+    $uri = $null
+    if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri)) { return $false }
+    return $uri.Scheme -eq "https" `
+        -and -not $uri.UserInfo `
+        -and $uri.AbsolutePath -eq "/" `
+        -and -not $uri.Query `
+        -and -not $uri.Fragment `
+        -and $uri.Host -ne "localhost" `
+        -and -not $uri.Host.EndsWith(".invalid")
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI was not found. Start Docker Desktop and retry."
 }
@@ -40,6 +52,11 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     $template = $template.Replace("DEMO_API_TOKEN=GENERATED_AT_FIRST_START", "DEMO_API_TOKEN=$(New-HexSecret 32)")
     [IO.File]::WriteAllText($envPath, $template, [Text.UTF8Encoding]::new($false))
     Write-Host "Created private runtime configuration: $envPath"
+}
+
+$sitesEntryUrl = Read-EnvValue "PUBLIC_WEB_ENTRY_BASE_URL"
+if (-not (Test-StableSitesEntry $sitesEntryUrl)) {
+    throw "Set PUBLIC_WEB_ENTRY_BASE_URL in $envPath to the stable HTTPS origin of your private Sites portal."
 }
 
 $upArgs = $composeArgs + @("up", "-d")
@@ -71,6 +88,7 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not $tunnelUrl) { throw "Quick Tunnel did not publish a URL within two minutes. Check web-tunnel logs." }
+    if ($tunnelUrl -eq $sitesEntryUrl) { throw "Sites entry and Workspace Quick Tunnel must be different URLs." }
 
     $demoToken = Read-EnvValue "DEMO_API_TOKEN"
     $mcpHostPort = Read-EnvValue "MCP_HOST_PORT"
@@ -96,8 +114,10 @@ finally { Pop-Location }
 
 Write-Host ""
 Write-Host "Sites Demo is ready." -ForegroundColor Green
+Write-Host "Stable entry: $sitesEntryUrl"
 Write-Host "HTTPS Tunnel: $tunnelUrl"
 Write-Host "Demo token:    $demoToken"
 Write-Host "MCP endpoint:  http://127.0.0.1:$mcpHostPort/mcp (loopback-only)"
-Write-Host "Paste the HTTPS Tunnel and Demo token into the private Sites portal."
+Write-Host "Paste the current HTTPS Tunnel and Demo token into the private Sites portal when prompted."
+Write-Host "Quick Tunnel changes do not require refreshing the ChatGPT MCP connection."
 Write-Host "Run scripts/mcp-secure-tunnel.ps1 in a second terminal for ChatGPT MCP."

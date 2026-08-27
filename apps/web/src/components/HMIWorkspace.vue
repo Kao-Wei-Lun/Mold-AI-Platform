@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="hmi-workspace" aria-labelledby="hmi-title">
+  <section id="hmi" class="hmi-workspace" aria-labelledby="hmi-title">
     <div class="section-heading">
       <div>
         <p class="eyebrow">Machine UI to Excel</p>

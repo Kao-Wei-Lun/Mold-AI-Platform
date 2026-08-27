@@ -69,12 +69,18 @@ smoke documents, and removes silent Process/Trial defaults. See
 [stage-12-mcp-grounding-demo-data.md](stage-12-mcp-grounding-demo-data.md) for the observed ChatGPT
 failure modes, corrected contracts, and retest procedure.
 
+Stage 13 adds a versioned Deep Link Contract, a stable owner-only Sites `/open` dispatcher,
+authenticated Workspace identity verification, GET-only record resumption, parent-child evidence
+validation, and explicit MCP deep-link readiness. See
+[stage-13-web-deep-links.md](stage-13-web-deep-links.md) for configuration, operator flow and
+ChatGPT acceptance steps.
+
 ## Planned stages to Demo v1.0
 
 The detailed implementation backlog is maintained in the
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md):
 
-- Stage 13: stable, token-safe ChatGPT-to-Web deep links.
+- Stage 13: implemented; stable, token-safe ChatGPT-to-Web deep links (external ChatGPT UAT after deployment).
 - Stage 14: an OpenAI Responses API provider behind the existing provider abstraction.
 - Stage 15: an isolated curated CAD corpus with manifest, provenance, Golden scenarios, and seed reconciliation.
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.

@@ -99,3 +99,12 @@ export async function fetchSimilarityJob(jobId: string): Promise<SimilarityJob> 
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as SimilarityJob;
 }
+
+export async function fetchSimilaritySearch(searchId: string): Promise<SimilarityJob> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/similarity-searches/${searchId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const payload = (await response.json()) as { job_id: string };
+  return fetchSimilarityJob(payload.job_id);
+}

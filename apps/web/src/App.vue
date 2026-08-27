@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import type { CADModelResult } from "./api/cad";
@@ -9,11 +9,13 @@ import AccessPanel from "./components/AccessPanel.vue";
 import CAEWorkspace from "./components/CAEWorkspace.vue";
 import CadWorkspace from "./components/CadWorkspace.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
+import DeepLinkStatus from "./components/DeepLinkStatus.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
+import { parseDeepLink } from "./deepLinks";
 
 const readiness = ref<ReadinessResponse | null>(null);
 const loading = ref(true);
@@ -26,6 +28,18 @@ const assistantContext = ref<AssistantContext>({
 });
 const pendingUIAction = ref<UIAction | null>(null);
 const accessReady = ref(false);
+const deepLinkState = parseDeepLink(window.location.search);
+
+const targetElementIds = {
+  home: "platform-status-title",
+  job: "deep-link-status",
+  similarity: "similarity",
+  design_review: "design-review",
+  knowledge: "knowledge",
+  process_trial: "process-trial",
+  cae: "cae",
+  hmi: "hmi",
+} as const;
 
 function executeUIAction(action: UIAction): void {
   pendingUIAction.value = action;
@@ -45,6 +59,15 @@ async function refreshHealth(): Promise<void> {
 }
 
 onMounted(refreshHealth);
+watch(
+  accessReady,
+  async (ready) => {
+    const target = deepLinkState.context?.target;
+    if (!ready || !target) return;
+    await nextTick();
+    document.getElementById(targetElementIds[target])?.scrollIntoView({ block: "start" });
+  },
+);
 </script>
 
 <template>
@@ -91,16 +114,27 @@ onMounted(refreshHealth);
 
       <AccessPanel @ready="accessReady = $event" />
 
+      <DeepLinkStatus
+        :context="deepLinkState.context"
+        :error="deepLinkState.error"
+        :access-ready="accessReady"
+      />
+
       <CadWorkspace v-if="accessReady" @ready="activeCAD = $event" />
       <SimilarityWorkspace
         v-if="accessReady"
         :query="activeCAD"
         :ui-action="pendingUIAction"
+        :deep-link="deepLinkState.context"
         @context-change="assistantContext = $event"
       />
-      <DesignReviewWorkspace v-if="accessReady" :query="activeCAD" />
-      <KnowledgeWorkspace v-if="accessReady" />
-      <ProcessTrialWorkspace v-if="accessReady" />
+      <DesignReviewWorkspace
+        v-if="accessReady"
+        :query="activeCAD"
+        :deep-link="deepLinkState.context"
+      />
+      <KnowledgeWorkspace v-if="accessReady" :deep-link="deepLinkState.context" />
+      <ProcessTrialWorkspace v-if="accessReady" :deep-link="deepLinkState.context" />
       <CAEWorkspace v-if="accessReady" />
       <HMIWorkspace v-if="accessReady" />
     </main>

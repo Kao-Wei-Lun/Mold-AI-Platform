@@ -119,6 +119,15 @@ export async function fetchDesignReviewJob(jobId: string): Promise<DesignReviewJ
   return (await response.json()) as DesignReviewJob;
 }
 
+export async function fetchDesignReview(reviewId: string): Promise<DesignReviewJob> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/design-reviews/${reviewId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const payload = (await response.json()) as DesignReviewResult;
+  return fetchDesignReviewJob(payload.job_id);
+}
+
 export async function createFindingDecision(
   reviewId: string,
   findingId: string,

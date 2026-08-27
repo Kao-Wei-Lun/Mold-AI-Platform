@@ -37,7 +37,11 @@ $mcp = Invoke-RestMethod -Uri "http://127.0.0.1:8002/preflight" -TimeoutSec 10
 if ($web.StatusCode -ne 200 -or $health.StatusCode -ne 200) { throw "Public Web or health check failed." }
 if ($secured.name -ne "Mold AI Platform") { throw "Authenticated API identity check failed." }
 if (-not $mcp.inspector_ready) { throw "Local MCP gateway preflight failed." }
+if (-not $mcp.deep_links.ready) { throw "Stable Sites deep-link entry is not ready." }
+if ($mcp.deep_links.entry_origin -match "\.invalid$" -or $mcp.deep_links.entry_origin -notmatch "^https://") {
+    throw "MCP deep-link entry is not a deployable HTTPS origin."
+}
 if (-not $web.Headers["Strict-Transport-Security"]) { throw "Web response is missing HSTS." }
 if (-not $web.Headers["Content-Security-Policy"]) { throw "Web response is missing CSP." }
 
-Write-Host "Sites Demo external smoke passed: Web 200, health 200, anonymous 401, authenticated API 200, MCP ready, HSTS/CSP present."
+Write-Host "Sites Demo external smoke passed: Web/API identity, auth boundary, MCP, stable deep links, HSTS and CSP are ready."

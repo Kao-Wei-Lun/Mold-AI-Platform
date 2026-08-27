@@ -19,6 +19,13 @@ from platform_core.mcp_gateway import (
     search_process_trial_cases,
 )
 
+JOB_ID = "11111111-1111-4111-8111-111111111111"
+REVIEW_ID = "22222222-2222-4222-8222-222222222222"
+SEARCH_ID = "33333333-3333-4333-8333-333333333333"
+CANDIDATE_A_ID = "44444444-4444-4444-8444-444444444444"
+CANDIDATE_B_ID = "55555555-5555-4555-8555-555555555555"
+PROCESS_SEARCH_ID = "66666666-6666-4666-8666-666666666666"
+
 
 class MCPGatewayTests(SimpleTestCase):
     def test_capability_and_status_tools_return_canonical_rest_results(self) -> None:
@@ -114,7 +121,7 @@ class MCPGatewayTests(SimpleTestCase):
                 200,
                 json={
                     "schema_version": "1.0",
-                    "search_id": "process-search-1",
+                    "search_id": PROCESS_SEARCH_ID,
                     "result_count": 2,
                     "results": [],
                 },
@@ -180,8 +187,8 @@ class MCPGatewayTests(SimpleTestCase):
                 json={
                     "schema_version": "1.0",
                     "status": "accepted",
-                    "review_id": "review-1",
-                    "job_id": "job-1",
+                    "review_id": REVIEW_ID,
+                    "job_id": JOB_ID,
                 },
             )
 
@@ -200,8 +207,8 @@ class MCPGatewayTests(SimpleTestCase):
                 )
             )
 
-        self.assertEqual(result.domain_result["job_id"], "job-1")
-        self.assertIn("review-1", result.links["ui"])
+        self.assertEqual(result.domain_result["job_id"], JOB_ID)
+        self.assertIn(REVIEW_ID, result.links["ui"])
 
     def test_job_tool_returns_canonical_result_and_absolute_deep_link(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -210,7 +217,7 @@ class MCPGatewayTests(SimpleTestCase):
                 200,
                 json={
                     "schema_version": "1.0",
-                    "job_id": "job-1",
+                    "job_id": JOB_ID,
                     "state": "running",
                     "stage": "reranking",
                     "progress": 70,
@@ -223,10 +230,13 @@ class MCPGatewayTests(SimpleTestCase):
             httpx.MockTransport(handler),
         )
         with patch("platform_core.mcp_gateway._client", return_value=client):
-            result = asyncio.run(get_job_status("job-1"))
+            result = asyncio.run(get_job_status(JOB_ID))
 
         self.assertEqual(result.domain_result["state"], "running")
-        self.assertEqual(result.links["ui"], "https://demo.example.test/?job_id=job-1")
+        self.assertEqual(
+            result.links["ui"],
+            f"https://demo.example.test/open?deep_link_version=1.0&target=job&job_id={JOB_ID}",
+        )
         self.assertIn("70%", result.summary)
 
     def test_explanation_tool_returns_only_requested_candidate(self) -> None:
@@ -235,8 +245,8 @@ class MCPGatewayTests(SimpleTestCase):
                 200,
                 json={
                     "schema_version": "1.0",
-                    "search_id": "search-1",
-                    "job_id": "job-1",
+                    "search_id": SEARCH_ID,
+                    "job_id": JOB_ID,
                     "state": "succeeded",
                     "result": {
                         "query_ref": {"artifact_name": "Query"},
@@ -244,20 +254,20 @@ class MCPGatewayTests(SimpleTestCase):
                         "index_version": "cad-demo-v1",
                         "results": [
                             {
-                                "artifact_version_id": "candidate-a",
+                                "artifact_version_id": CANDIDATE_A_ID,
                                 "artifact_name": "Reference A",
                                 "rank": 1,
                                 "overall_score": 0.92,
                             },
                             {
-                                "artifact_version_id": "candidate-b",
+                                "artifact_version_id": CANDIDATE_B_ID,
                                 "artifact_name": "Reference B",
                                 "rank": 2,
                                 "overall_score": 0.81,
                             },
                         ],
                         "limitations": [],
-                        "lineage_ref": "similarity-search:search-1",
+                        "lineage_ref": f"similarity-search:{SEARCH_ID}",
                     },
                 },
             )
@@ -268,7 +278,7 @@ class MCPGatewayTests(SimpleTestCase):
             httpx.MockTransport(handler),
         )
         with patch("platform_core.mcp_gateway._client", return_value=client):
-            result = asyncio.run(get_similarity_explanation("search-1", "candidate-a"))
+            result = asyncio.run(get_similarity_explanation(SEARCH_ID, CANDIDATE_A_ID))
 
         self.assertEqual(result.domain_result["candidate"]["artifact_name"], "Reference A")
         self.assertNotIn("results", result.domain_result)
@@ -323,6 +333,7 @@ class MCPGatewayTests(SimpleTestCase):
                 {
                     "MCP_AUTH_MODE": "none",
                     "SECURE_MCP_TUNNEL_ID": "tunnel_example",
+                    "PUBLIC_WEB_ENTRY_BASE_URL": "https://mold-ai.example.test",
                     "PUBLIC_MCP_BASE_URL": "",
                     "MCP_ALLOWED_HOSTS": "testserver:*",
                 },
@@ -337,5 +348,6 @@ class MCPGatewayTests(SimpleTestCase):
         payload = asyncio.run(exercise())
         self.assertEqual(payload["connection"]["path"], "secure_mcp_tunnel")
         self.assertTrue(payload["server_side_chatgpt_preflight_ready"])
+        self.assertTrue(payload["deep_links"]["ready"])
         self.assertEqual(payload["openai_account_workspace_validation"], "pending_external_check")
         self.assertIn("depends on OpenAI", " ".join(payload["limitations"]))

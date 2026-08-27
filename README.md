@@ -38,3 +38,6 @@ Traditional Chinese Demo knowledge, isolated smoke-test data, and explicit Proce
 provenance. See
 [`docs/development/README.md`](docs/development/README.md) for environment setup, test commands,
 service endpoints, and implementation boundaries.
+
+Stage 13 implements stable, versioned ChatGPT-to-Web deep links through the owner-only Sites
+portal. See [`docs/development/stage-13-web-deep-links.md`](docs/development/stage-13-web-deep-links.md).

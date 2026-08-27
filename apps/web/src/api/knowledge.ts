@@ -144,3 +144,11 @@ export async function searchKnowledge(
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as KnowledgeSearchResult;
 }
+
+export async function fetchKnowledgeSearch(searchId: string): Promise<KnowledgeSearchResult> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-searches/${searchId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as KnowledgeSearchResult;
+}

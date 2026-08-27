@@ -1,10 +1,14 @@
 'use client';
 
 import { type FormEvent, useMemo, useState } from 'react';
-import { buildWorkspaceUrl, normalizeTunnelUrl, type ConnectionStatus } from './remote-connection';
-
-const TUNNEL_KEY = 'mold-ai.sites.tunnel-url';
-const TOKEN_KEY = 'mold-ai.sites.demo-token';
+import {
+  buildWorkspaceUrl,
+  normalizeTunnelUrl,
+  TOKEN_KEY,
+  TUNNEL_KEY,
+  verifyWorkspaceConnection,
+  type ConnectionStatus,
+} from './remote-connection';
 const capabilities = [
   ['CAD ingestion', '上傳、版本化與特徵擷取'], ['Similarity', '可解釋的相似模具搜尋'],
   ['Design review', '規則檢查與人工覆核邊界'], ['Knowledge / RAG', '具來源依據的工程知識查詢'],
@@ -30,7 +34,7 @@ export default function Home() {
     }
     setStatus('checking'); setMessage('正在檢查 HTTPS Tunnel…');
     try {
-      await fetch(`${normalizedUrl}/api/v1/health/live`, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+      await verifyWorkspaceConnection(normalizedUrl, token);
       window.sessionStorage.setItem(TUNNEL_KEY, normalizedUrl);
       window.sessionStorage.setItem(TOKEN_KEY, token.trim());
       setStatus('ready'); setMessage('Tunnel 可連線；可開啟完整工程工作區。');
