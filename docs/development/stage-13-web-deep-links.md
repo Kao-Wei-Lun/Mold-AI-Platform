@@ -58,6 +58,14 @@ cd C:\project\Mold-AI-Platform
 .\scripts\sites-demo-status.ps1
 ```
 
+The start command does not print the bearer token into ordinary logs. Use
+`sites-demo-status.ps1 -ShowToken` only in the private operator terminal when entering it into
+Sites. If a token may have been exposed, rotate it and recreate the protected services with:
+
+```powershell
+.\scripts\sites-demo-start.ps1 -NoBuild -RotateDemoToken
+```
+
 When ChatGPT returns a link:
 
 1. Open it while signed in to the owner account for the private Site.

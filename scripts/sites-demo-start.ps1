@@ -1,6 +1,7 @@
 param(
     [string]$EnvFile = ".env.sites-demo",
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$RotateDemoToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +53,17 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     $template = $template.Replace("DEMO_API_TOKEN=GENERATED_AT_FIRST_START", "DEMO_API_TOKEN=$(New-HexSecret 32)")
     [IO.File]::WriteAllText($envPath, $template, [Text.UTF8Encoding]::new($false))
     Write-Host "Created private runtime configuration: $envPath"
+}
+
+if ($RotateDemoToken) {
+    $runtimeConfig = Get-Content -LiteralPath $envPath -Raw
+    $runtimeConfig = [regex]::Replace(
+        $runtimeConfig,
+        "(?m)^DEMO_API_TOKEN=.*$",
+        "DEMO_API_TOKEN=$(New-HexSecret 32)"
+    )
+    [IO.File]::WriteAllText($envPath, $runtimeConfig, [Text.UTF8Encoding]::new($false))
+    Write-Host "Rotated the private Demo access token."
 }
 
 $sitesEntryUrl = Read-EnvValue "PUBLIC_WEB_ENTRY_BASE_URL"
@@ -116,7 +128,7 @@ Write-Host ""
 Write-Host "Sites Demo is ready." -ForegroundColor Green
 Write-Host "Stable entry: $sitesEntryUrl"
 Write-Host "HTTPS Tunnel: $tunnelUrl"
-Write-Host "Demo token:    $demoToken"
+Write-Host "Demo token:    hidden (use sites-demo-status.ps1 -ShowToken only when needed)"
 Write-Host "MCP endpoint:  http://127.0.0.1:$mcpHostPort/mcp (loopback-only)"
 Write-Host "Paste the current HTTPS Tunnel and Demo token into the private Sites portal when prompted."
 Write-Host "Quick Tunnel changes do not require refreshing the ChatGPT MCP connection."
