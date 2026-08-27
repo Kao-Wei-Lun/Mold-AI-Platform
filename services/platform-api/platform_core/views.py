@@ -320,7 +320,14 @@ class AssistantCapabilitiesView(APIView):
                 "context_version": "1.0",
                 "ui_action_protocol_version": "1.0",
                 "provider": get_assistant_provider().health().payload(),
-                "supported_intents": ["explain_similarity", "get_job_status"],
+                "supported_intents": [
+                    "explain_similarity",
+                    "explain_design_review",
+                    "summarize_knowledge",
+                    "summarize_process_cases",
+                    "explain_cae_comparison",
+                    "get_job_status",
+                ],
             }
         )
 

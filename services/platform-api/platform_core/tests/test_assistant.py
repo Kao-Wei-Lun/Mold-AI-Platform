@@ -1,8 +1,10 @@
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
+from platform_core.assistant_providers import ProviderGeneration, ProviderHealth
 from platform_core.ingestion import create_upload_records
 from platform_core.models import AuditEvent, CADModel, FeatureSet, Job
 from platform_core.similarity import create_similarity_records, extract_feature_set
@@ -131,3 +133,113 @@ class AssistantTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["provider"]["status"], "degraded")
         self.assertEqual(response.json()["ui_action_protocol_version"], "1.0")
+        self.assertEqual(
+            response.json()["supported_intents"][:5],
+            [
+                "explain_similarity",
+                "explain_design_review",
+                "summarize_knowledge",
+                "summarize_process_cases",
+                "explain_cae_comparison",
+            ],
+        )
+
+    def test_openai_generation_replaces_language_but_keeps_domain_tool_result(self) -> None:
+        records, candidate_id = self.create_completed_search()
+        generated_answer = {
+            "summary": "Grounded provider explanation for the persisted 92.8% result.",
+            "facts": ["The persisted geometry lane is 96.2%."],
+            "interpretation": ["Available lanes support the persisted rank."],
+            "recommendations": ["Review the persisted geometric differences."],
+            "uncertainties": ["Visual embedding is not included."],
+            "evidence_refs": [f"similarity-search:{records.search.id}"],
+        }
+
+        class FakeProvider:
+            def health(self):
+                return ProviderHealth("openai-responses", "openai", True, "ok", None)
+
+            def generate(self, envelope):
+                self.envelope = envelope
+                return ProviderGeneration(
+                    status="succeeded",
+                    provider="openai-responses",
+                    mode="openai",
+                    reason=None,
+                    answer=generated_answer,
+                    latency_ms=12,
+                    usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+                    provider_profile="openai-demo-public-v1",
+                    model="configured-test-model",
+                    prompt_profile="mold-assistant-grounded-v1",
+                    data_policy_version="public-demo-minimized-v1",
+                    request_id="req-test",
+                )
+
+        fake = FakeProvider()
+        with patch("platform_core.assistant.get_assistant_provider", return_value=fake):
+            response = self.client.post(
+                "/api/v1/assistant/messages",
+                {
+                    "message": "Explain the selected result",
+                    "context": {
+                        "page": "similarity_search",
+                        "similarity_search_id": str(records.search.id),
+                        "selected_candidate_artifact_version_id": candidate_id,
+                    },
+                },
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["provider"]["mode"], "openai")
+        self.assertEqual(payload["answer"], generated_answer)
+        self.assertEqual(
+            payload["tool_calls"][0]["result_ref"], f"similarity-search:{records.search.id}"
+        )
+        self.assertEqual(fake.envelope.intent, "explain_similarity")
+        self.assertEqual(fake.envelope.evidence[0]["classification"], "public_demo")
+
+    def test_provider_failure_preserves_deterministic_engineering_answer(self) -> None:
+        records, candidate_id = self.create_completed_search()
+
+        class FailingProvider:
+            def health(self):
+                return ProviderHealth("openai-responses", "openai", True, "ok", None)
+
+            def generate(self, envelope):
+                return ProviderGeneration(
+                    status="failed",
+                    provider="openai-responses",
+                    mode="deterministic_fallback",
+                    reason="OPENAI_RATE_LIMITED",
+                    answer=None,
+                    latency_ms=4,
+                    usage={"input_tokens": None, "output_tokens": None, "total_tokens": None},
+                    provider_profile="openai-demo-public-v1",
+                    model="configured-test-model",
+                    prompt_profile="mold-assistant-grounded-v1",
+                    data_policy_version="public-demo-minimized-v1",
+                )
+
+        with patch(
+            "platform_core.assistant.get_assistant_provider", return_value=FailingProvider()
+        ):
+            response = self.client.post(
+                "/api/v1/assistant/messages",
+                {
+                    "message": "Explain the selected result",
+                    "context": {
+                        "page": "similarity_search",
+                        "similarity_search_id": str(records.search.id),
+                        "selected_candidate_artifact_version_id": candidate_id,
+                    },
+                },
+                content_type="application/json",
+            )
+
+        payload = response.json()
+        self.assertEqual(payload["provider"]["reason"], "OPENAI_RATE_LIMITED")
+        self.assertEqual(payload["provider"]["mode"], "deterministic_fallback")
+        self.assertIn("92.8%", payload["answer"]["summary"])

@@ -83,6 +83,21 @@ class DesignReviewTests(TestCase):
         self.assertEqual(draft.result, ReviewFinding.Result.NOT_EVALUATED)
         self.assertIsNone(draft.actual_value)
 
+        assistant = self.client.post(
+            "/api/v1/assistant/messages",
+            {
+                "message": "Explain this design review",
+                "context": {
+                    "page": "design_review",
+                    "review_id": str(records.review.id),
+                },
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(assistant.status_code, 200)
+        self.assertIn("Design review", assistant.json()["answer"]["summary"])
+        self.assertEqual(assistant.json()["tool_calls"][0]["name"], "get_design_review")
+
     def test_missing_local_measurements_are_never_treated_as_pass(self) -> None:
         records = create_design_review_records(self.version)
 

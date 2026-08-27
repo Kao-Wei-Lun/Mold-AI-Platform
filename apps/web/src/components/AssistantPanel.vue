@@ -21,6 +21,8 @@ const error = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const response = ref<AssistantResponse | null>(null);
 const provider = ref<ProviderStatus | null>(null);
+const waitStopped = ref(false);
+let requestController: AbortController | null = null;
 
 const effectiveContext = computed<AssistantContext>(() =>
   contextCleared.value
@@ -30,6 +32,26 @@ const effectiveContext = computed<AssistantContext>(() =>
 const contextReferences = computed(() =>
   Object.entries(effectiveContext.value).filter(([key]) => key.endsWith("_id")),
 );
+const providerLabel = computed(() => {
+  if (provider.value?.mode === "openai" && provider.value.llm_available) {
+    return response.value ? "OpenAI generated" : "OpenAI ready";
+  }
+  return "safe fallback";
+});
+const providerNote = computed(() => {
+  if (!provider.value || provider.value.llm_available) return null;
+  const messages: Record<string, string> = {
+    LLM_PROVIDER_DISABLED: "OpenAI generation is disabled for this deployment.",
+    DETERMINISTIC_MODE: "This deployment is intentionally using deterministic explanations.",
+    OPENAI_API_KEY_MISCONFIGURED: "The server-side OpenAI API key is missing or invalid.",
+    OPENAI_MODEL_REQUIRED: "No approved OpenAI model is configured on the server.",
+    OPENAI_RATE_LIMITED: "OpenAI rate-limited this request.",
+    OPENAI_TIMEOUT: "OpenAI did not complete before the server timeout.",
+    OPENAI_SERVER_ERROR: "OpenAI was temporarily unavailable.",
+    PROVIDER_INTERNAL_ERROR: "The generation adapter failed safely.",
+  };
+  return messages[provider.value.reason || ""] || "A deterministic engineering answer was used.";
+});
 
 async function loadCapabilities(): Promise<void> {
   try {
@@ -50,17 +72,36 @@ async function submit(): Promise<void> {
   const normalized = message.value.trim();
   if (!normalized) return;
   submitting.value = true;
+  waitStopped.value = false;
   error.value = null;
   actionError.value = null;
+  const controller = new AbortController();
+  requestController = controller;
   try {
-    response.value = await sendAssistantMessage(normalized, effectiveContext.value);
+    response.value = await sendAssistantMessage(
+      normalized,
+      effectiveContext.value,
+      controller.signal,
+    );
     provider.value = response.value.provider;
     message.value = "";
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Assistant request failed.";
+    if (!(caught instanceof DOMException && caught.name === "AbortError")) {
+      error.value = caught instanceof Error ? caught.message : "Assistant request failed.";
+    }
   } finally {
-    submitting.value = false;
+    if (requestController === controller) {
+      requestController = null;
+      submitting.value = false;
+    }
   }
+}
+
+function stopWaiting(): void {
+  requestController?.abort();
+  requestController = null;
+  submitting.value = false;
+  waitStopped.value = true;
 }
 
 function execute(action: UIAction): void {
@@ -94,12 +135,12 @@ onMounted(loadCapabilities);
         <h2 id="assistant-title">Mold AI Assistant</h2>
       </div>
       <span class="assistant-provider" :class="provider?.status || 'unavailable'">
-        {{ provider?.llm_available ? "LLM ready" : "safe fallback" }}
+        {{ providerLabel }}
       </span>
     </div>
 
-    <p v-if="provider && !provider.llm_available" class="provider-note">
-      LLM unavailable: deterministic engineering explanations remain available.
+    <p v-if="providerNote" class="provider-note">
+      {{ providerNote }} Deterministic engineering explanations remain available.
     </p>
 
     <details class="assistant-context" open>
@@ -117,6 +158,10 @@ onMounted(loadCapabilities);
       <details v-if="response.answer.facts.length">
         <summary>Facts and computed evidence</summary>
         <ul><li v-for="fact in response.answer.facts" :key="fact">{{ fact }}</li></ul>
+      </details>
+      <details v-if="response.answer.interpretation.length">
+        <summary>Interpretation</summary>
+        <ul><li v-for="item in response.answer.interpretation" :key="item">{{ item }}</li></ul>
       </details>
       <details v-if="response.answer.recommendations.length">
         <summary>Recommendations</summary>
@@ -141,8 +186,12 @@ onMounted(loadCapabilities);
 
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <p v-if="actionError" class="error-message" role="alert">{{ actionError }}</p>
+    <p v-if="waitStopped" class="provider-note" role="status">
+      You stopped waiting. This does not prove the server-side provider request was cancelled and
+      may not prevent API usage.
+    </p>
 
-    <form class="assistant-form" @submit.prevent="submit">
+    <form class="assistant-form" :aria-busy="submitting" @submit.prevent="submit">
       <label for="assistant-message">Ask about the selected engineering result</label>
       <textarea
         id="assistant-message"
@@ -153,6 +202,9 @@ onMounted(loadCapabilities);
       ></textarea>
       <button type="submit" :disabled="submitting || !message.trim()">
         {{ submitting ? "Analyzing..." : "Ask Assistant" }}
+      </button>
+      <button v-if="submitting" type="button" class="context-clear assistant-stop" @click="stopWaiting">
+        Stop waiting
       </button>
     </form>
   </aside>

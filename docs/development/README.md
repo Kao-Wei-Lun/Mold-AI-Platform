@@ -75,13 +75,19 @@ validation, and explicit MCP deep-link readiness. See
 [stage-13-web-deep-links.md](stage-13-web-deep-links.md) for configuration, operator flow and
 ChatGPT acceptance steps.
 
+Stage 14 adds an environment-selected OpenAI Responses adapter, versioned public-demo evidence
+envelopes, strict Structured Outputs validation, typed failure fallback, usage/request metadata,
+five grounded engineering explanation lanes, and truthful Web provider states. See
+[stage-14-openai-provider.md](stage-14-openai-provider.md) for key separation, configuration, free
+fake tests and the opt-in potentially billable live UAT.
+
 ## Planned stages to Demo v1.0
 
 The detailed implementation backlog is maintained in the
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md):
 
 - Stage 13: implemented; stable, token-safe ChatGPT-to-Web deep links (external ChatGPT UAT after deployment).
-- Stage 14: an OpenAI Responses API provider behind the existing provider abstraction.
+- Stage 14: implementation complete; account-bound OpenAI live UAT remains for Stage 16 evidence.
 - Stage 15: an isolated curated CAD corpus with manifest, provenance, Golden scenarios, and seed reconciliation.
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
 - Stage 17: post-v1.0 Engineering Web design system and workflow-focused UI/UX improvement.
@@ -205,7 +211,8 @@ versioned public Demo document
 ```text
 versioned UI references
 -> server-side context resolution
--> deterministic evidence-backed fallback answer
+-> versioned public-demo evidence envelope
+-> optional validated OpenAI generation or deterministic fallback
 -> validated UI Action
 
 ChatGPT / MCP client

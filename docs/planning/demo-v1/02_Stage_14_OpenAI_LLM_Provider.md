@@ -1,6 +1,6 @@
 # Stage 14 — OpenAI LLM Provider for the Embedded Engineering Assistant
 
-- 狀態：Planned
+- 狀態：Implementation complete；account-bound live UAT pending
 - 優先級：P0（若 Demo 宣稱有生成式 Copilot）
 - 前置：Stage 6 Provider interface、Stage 13 deep-link contract
 - 出口：可由環境啟用 OpenAI Provider，故障時安全降級且不影響工程結果
@@ -296,3 +296,20 @@ feat(web): add provider and generation states
 test(llm): add fake-provider safety and fallback suite
 docs: add OpenAI provider operations and live-test runbook
 ```
+
+## 12. Implementation evidence（2026-08-28）
+
+- `openai-responses` adapter uses `POST /v1/responses`, strict Structured Outputs, `store: false`,
+  bounded input/output, server request IDs, usage metadata, timeout and concurrency limits.
+- Provider/model/prompt/data-policy profiles are runtime configuration; no model name or key is
+  committed to source control.
+- Similarity、Design Review、Knowledge、Process/Trial、CAE all resolve persisted `public_demo`
+  evidence before optional generation. Provider failure preserves the deterministic answer.
+- Web distinguishes configured/generated/fallback states and supports truthful stop-waiting UX.
+- Default tests use `httpx.MockTransport`; `test_openai_live.py` is skipped unless
+  `RUN_OPENAI_LIVE_TESTS=1`, so the normal test gate does not generate OpenAI API usage.
+- Operator setup and the potentially billable live UAT are documented in
+  [Stage 14 operations](../../development/stage-14-openai-provider.md).
+
+Remaining acceptance evidence: run the opt-in live test with a separately approved OpenAI Project
+key/model, then record latency, usage and Project budget/limit ownership in Stage 16 UAT evidence.

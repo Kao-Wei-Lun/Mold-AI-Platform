@@ -13,9 +13,11 @@ import {
   type KnowledgeSearchResult,
 } from "../api/knowledge";
 import { downloadProtectedArtifact } from "../api/client";
+import type { AssistantContext } from "../api/assistant";
 import type { DeepLinkContext } from "../deepLinks";
 
 const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
+const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 
 const file = ref<File | null>(null);
 const title = ref("");
@@ -159,6 +161,20 @@ watch(
   ],
   loadDeepLink,
   { immediate: true },
+);
+watch(
+  () => [searchResult.value?.search_id, selectedResult.value?.citation_id],
+  () => {
+    if (!searchResult.value?.search_id) return;
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "knowledge_search",
+      ui_locale: "zh-TW",
+      ...(searchResult.value?.search_id
+        ? { knowledge_search_id: searchResult.value.search_id }
+        : {}),
+    });
+  },
 );
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);

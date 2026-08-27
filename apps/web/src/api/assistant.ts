@@ -7,11 +7,19 @@ export type AssistantContext = {
     | "cad_processing"
     | "similarity_search"
     | "design_review"
-    | "knowledge_search";
+    | "knowledge_search"
+    | "process_trial"
+    | "cae";
   query_artifact_version_id?: string;
   similarity_search_id?: string;
   selected_candidate_artifact_version_id?: string;
   job_id?: string;
+  review_id?: string;
+  finding_id?: string;
+  knowledge_search_id?: string;
+  process_search_id?: string;
+  cae_comparison_id?: string;
+  metric_code?: string;
   ui_locale: string;
 };
 
@@ -33,6 +41,17 @@ export type ProviderStatus = {
   llm_available: boolean;
   status: "ok" | "degraded" | "unavailable";
   reason: string | null;
+  provider_profile?: string | null;
+  model?: string | null;
+  prompt_profile?: string | null;
+  data_policy_version?: string | null;
+  latency_ms?: number;
+  usage?: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+  };
+  request_id?: string | null;
 };
 
 export type AssistantAnswer = {
@@ -89,11 +108,13 @@ export async function fetchAssistantCapabilities(): Promise<AssistantCapabilitie
 export async function sendAssistantMessage(
   message: string,
   context: AssistantContext,
+  signal?: AbortSignal,
 ): Promise<AssistantResponse> {
   const response = await apiFetch(`${apiBaseUrl}/api/v1/assistant/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ schema_version: "1.0", message, context }),
+    signal,
   });
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as AssistantResponse;

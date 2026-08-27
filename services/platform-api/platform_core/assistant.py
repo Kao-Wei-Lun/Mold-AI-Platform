@@ -7,9 +7,19 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .assistant_providers import get_assistant_provider
+from .assistant_providers import AssistantEvidenceEnvelope, get_assistant_provider
 from .contracts import job_payload
-from .models import AuditEvent, Job, SimilaritySearch
+from .models import (
+    AuditEvent,
+    CAEComparison,
+    Job,
+    KnowledgeDocument,
+    KnowledgeSearch,
+    ProcessCaseSearch,
+    ReviewFinding,
+    ReviewRun,
+    SimilaritySearch,
+)
 
 CONTEXT_VERSION = "1.0"
 ACTION_PROTOCOL_VERSION = "1.0"
@@ -19,6 +29,8 @@ ALLOWED_PAGES = {
     "similarity_search",
     "design_review",
     "knowledge_search",
+    "process_trial",
+    "cae",
 }
 ALLOWED_CONTEXT_FIELDS = {
     "context_version",
@@ -27,6 +39,12 @@ ALLOWED_CONTEXT_FIELDS = {
     "similarity_search_id",
     "selected_candidate_artifact_version_id",
     "job_id",
+    "review_id",
+    "finding_id",
+    "knowledge_search_id",
+    "process_search_id",
+    "cae_comparison_id",
+    "metric_code",
     "ui_locale",
 }
 UUID_CONTEXT_FIELDS = {
@@ -34,6 +52,11 @@ UUID_CONTEXT_FIELDS = {
     "similarity_search_id",
     "selected_candidate_artifact_version_id",
     "job_id",
+    "review_id",
+    "finding_id",
+    "knowledge_search_id",
+    "process_search_id",
+    "cae_comparison_id",
 }
 
 
@@ -83,6 +106,14 @@ def validate_context(raw_context: object) -> dict[str, str]:
             raise AssistantValidationError(
                 "VALIDATION_ASSISTANT_CONTEXT", f"{field} must be a UUID."
             ) from exc
+    metric_code = raw_context.get("metric_code")
+    if metric_code not in {None, ""}:
+        normalized_metric = str(metric_code)
+        if len(normalized_metric) > 128 or not normalized_metric.replace("_", "").isalnum():
+            raise AssistantValidationError(
+                "VALIDATION_ASSISTANT_CONTEXT", "metric_code has an unsupported format."
+            )
+        context["metric_code"] = normalized_metric
     return context
 
 
@@ -224,6 +255,301 @@ def _job_answer(
     )
 
 
+def _design_review_answer(
+    context: dict[str, str],
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    review_id = context.get("review_id")
+    if not review_id:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_INCOMPLETE", "Select a completed design review first."
+        )
+    try:
+        review = (
+            ReviewRun.objects.select_related("cad_model__artifact_version")
+            .prefetch_related("findings__rule_version")
+            .get(pk=review_id)
+        )
+    except ReviewRun.DoesNotExist as exc:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND", "The selected design review is not available."
+        ) from exc
+    if review.review_status != ReviewRun.Status.SUCCEEDED:
+        raise AssistantValidationError(
+            "ASSISTANT_RESULT_NOT_READY", "The selected design review has not completed."
+        )
+    if review.cad_model.artifact_version.classification != "public_demo":
+        raise AssistantValidationError(
+            "ASSISTANT_EVIDENCE_NOT_ALLOWED", "Only public Demo review evidence is supported."
+        )
+    findings = list(review.findings.all())
+    finding_id = context.get("finding_id")
+    if finding_id:
+        findings = [finding for finding in findings if str(finding.id) == finding_id]
+        if not findings:
+            raise AssistantValidationError(
+                "ASSISTANT_CONTEXT_NOT_FOUND", "The selected finding is not in this review."
+            )
+    counts: dict[str, int] = {}
+    for finding in findings:
+        counts[finding.result] = counts.get(finding.result, 0) + 1
+    failed = [finding for finding in findings if finding.result == ReviewFinding.Result.FAIL]
+    answer = {
+        "summary": (
+            f"Design review {review.id} completed with "
+            + ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+            + "."
+        ),
+        "facts": [
+            f"{finding.rule_version.title}: {finding.result}. {finding.message}"
+            for finding in findings
+        ],
+        "interpretation": [
+            "These results were produced by deterministic rules; the Assistant does not change "
+            "PASS, FAIL, or NOT_EVALUATED decisions."
+        ],
+        "recommendations": list(
+            dict.fromkeys(finding.rule_version.recommendation for finding in failed)
+        ),
+        "uncertainties": [
+            f"{finding.rule_version.rule_id}: {', '.join(finding.quality_flags)}"
+            for finding in findings
+            if finding.quality_flags
+        ],
+        "evidence_refs": [
+            f"design-review:{review.id}",
+            *[ref for finding in findings for ref in finding.evidence_refs],
+        ],
+    }
+    return (
+        answer,
+        [],
+        [
+            {
+                "name": "get_design_review",
+                "status": "succeeded",
+                "arguments": {"review_id": review_id},
+                "result_ref": f"design-review:{review.id}",
+            }
+        ],
+    )
+
+
+def _knowledge_answer(
+    context: dict[str, str],
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    search_id = context.get("knowledge_search_id")
+    if not search_id:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_INCOMPLETE", "Select a completed knowledge search first."
+        )
+    try:
+        search = KnowledgeSearch.objects.get(pk=search_id)
+    except KnowledgeSearch.DoesNotExist as exc:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND", "The selected knowledge search is not available."
+        ) from exc
+    citations = search.result.get("citations", [])
+    document_ids = [item.get("document_id") for item in citations if item.get("document_id")]
+    if document_ids:
+        authorized_count = KnowledgeDocument.objects.filter(
+            id__in=document_ids, classification="public_demo"
+        ).count()
+        if authorized_count != len(set(document_ids)):
+            raise AssistantValidationError(
+                "ASSISTANT_EVIDENCE_NOT_ALLOWED", "Only public Demo knowledge is supported."
+            )
+    claims = search.result.get("claims", [])
+    answer = {
+        "summary": search.result.get("answer", "No authorized knowledge evidence was found."),
+        "facts": [item.get("text", "") for item in claims if item.get("text")],
+        "interpretation": [],
+        "recommendations": [],
+        "uncertainties": list(search.result.get("limitations", [])),
+        "evidence_refs": [item.get("citation_id") for item in citations if item.get("citation_id")],
+    }
+    return (
+        answer,
+        [],
+        [
+            {
+                "name": "get_knowledge_search",
+                "status": "succeeded",
+                "arguments": {"knowledge_search_id": search_id},
+                "result_ref": f"knowledge-search:{search.id}",
+            }
+        ],
+    )
+
+
+def _process_answer(
+    context: dict[str, str],
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    search_id = context.get("process_search_id")
+    if not search_id:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_INCOMPLETE", "Select a completed process case search first."
+        )
+    try:
+        search = ProcessCaseSearch.objects.get(pk=search_id)
+    except ProcessCaseSearch.DoesNotExist as exc:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND", "The selected process search is not available."
+        ) from exc
+    result = search.result
+    if result.get("lineage", {}).get("source_type") != "synthetic":
+        raise AssistantValidationError(
+            "ASSISTANT_EVIDENCE_NOT_ALLOWED", "Only synthetic public Demo cases are supported."
+        )
+    cases = result.get("results", [])
+    recommendation = result.get("recommendation", {})
+    answer = {
+        "summary": (
+            recommendation.get("message")
+            or f"Found {result.get('result_count', len(cases))} comparable process cases."
+        ),
+        "facts": [
+            f"{item.get('case_code')}: score {float(item.get('score', 0)) * 100:.1f}%, "
+            f"outcome {item.get('outcome')}."
+            for item in cases[:5]
+        ],
+        "interpretation": [
+            "Similarity and historical outcomes are associations, not proven root causes."
+        ],
+        "recommendations": [
+            step.get("instruction", "")
+            for step in recommendation.get("controlled_trial_steps", [])
+            if step.get("instruction")
+        ],
+        "uncertainties": list(result.get("limitations", [])),
+        "evidence_refs": [
+            f"process-case-search:{search.id}",
+            *[ref for item in cases for ref in item.get("evidence_refs", [])],
+        ],
+    }
+    return (
+        answer,
+        [],
+        [
+            {
+                "name": "get_process_case_search",
+                "status": "succeeded",
+                "arguments": {"process_search_id": search_id},
+                "result_ref": f"process-case-search:{search.id}",
+            }
+        ],
+    )
+
+
+def _cae_answer(
+    context: dict[str, str],
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    comparison_id = context.get("cae_comparison_id")
+    if not comparison_id:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_INCOMPLETE", "Select a CAE comparison first."
+        )
+    try:
+        comparison = CAEComparison.objects.select_related(
+            "baseline_run__study", "candidate_run__study"
+        ).get(pk=comparison_id)
+    except CAEComparison.DoesNotExist as exc:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND", "The selected CAE comparison is not available."
+        ) from exc
+    if {
+        comparison.baseline_run.study.classification,
+        comparison.candidate_run.study.classification,
+    } != {"public_demo"}:
+        raise AssistantValidationError(
+            "ASSISTANT_EVIDENCE_NOT_ALLOWED", "Only public Demo CAE evidence is supported."
+        )
+    result = comparison.result
+    metrics = result.get("metric_comparisons", [])
+    metric_code = context.get("metric_code")
+    if metric_code:
+        metrics = [item for item in metrics if item.get("metric_code") == metric_code]
+        if not metrics:
+            raise AssistantValidationError(
+                "ASSISTANT_CONTEXT_NOT_FOUND", "The selected metric is not in this comparison."
+            )
+    summary = result.get("comparison_summary", {})
+    answer = {
+        "summary": (
+            f"CAE comparison is {'compatible' if comparison.compatible else 'not compatible'}; "
+            f"{summary.get('comparable_metric_count', 0)} metrics are comparable."
+        ),
+        "facts": [
+            f"{item.get('metric_label', item.get('metric_code'))}: baseline "
+            f"{item.get('baseline', {}).get('value')} {item.get('unit')}, candidate "
+            f"{item.get('candidate', {}).get('value')} {item.get('unit')}, delta "
+            f"{item.get('delta')} ({item.get('finding')})."
+            for item in metrics
+        ],
+        "interpretation": [
+            "Metric deltas are deterministic comparisons and do not establish causal effects."
+        ],
+        "recommendations": [],
+        "uncertainties": [
+            *result.get("limitations", []),
+            *[str(item) for item in result.get("incompatibilities", [])],
+        ],
+        "evidence_refs": [
+            f"cae-comparison:{comparison.id}",
+            *[ref for item in metrics for ref in item.get("evidence_refs", [])],
+        ],
+    }
+    return (
+        answer,
+        [],
+        [
+            {
+                "name": "get_cae_comparison",
+                "status": "succeeded",
+                "arguments": {"cae_comparison_id": comparison_id},
+                "result_ref": f"cae-comparison:{comparison.id}",
+            }
+        ],
+    )
+
+
+def _evidence_envelope(
+    intent: str,
+    context: dict[str, str],
+    answer: dict[str, object],
+    tool_calls: list[dict[str, object]],
+) -> AssistantEvidenceEnvelope | None:
+    if not tool_calls:
+        return None
+    record_ref = str(tool_calls[0]["result_ref"])
+    content = json.dumps(answer, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    fact_values = [answer.get("summary", ""), *answer.get("facts", [])]
+    return AssistantEvidenceEnvelope(
+        schema_version="1.0",
+        intent=intent,
+        locale=context.get("ui_locale", "zh-TW"),
+        context_refs={key: value for key, value in context.items() if key.endswith("_id")},
+        facts=tuple(
+            {
+                "fact_id": f"fact:{intent}:{index}",
+                "type": "computed_result",
+                "value": value,
+                "evidence_refs": [record_ref],
+            }
+            for index, value in enumerate(fact_values)
+            if value
+        ),
+        evidence=(
+            {
+                "evidence_ref": record_ref,
+                "evidence_type": "persisted_domain_result",
+                "classification": "public_demo",
+                "content": content,
+            },
+        ),
+        required_limitations=tuple(str(item) for item in answer.get("uncertainties", [])),
+    )
+
+
 def create_assistant_response(message: str, raw_context: object) -> dict[str, object]:
     normalized = message.strip()
     if not normalized:
@@ -234,33 +560,79 @@ def create_assistant_response(message: str, raw_context: object) -> dict[str, ob
         )
     context = validate_context(raw_context)
     lowered = normalized.casefold()
-    explain_terms = ("why", "explain", "rank", "為什麼", "排名", "第一")
     job_terms = ("job", "status", "progress", "工作", "狀態", "進度")
+    intent = "unsupported"
 
-    if any(term in lowered for term in explain_terms):
+    if context.get("review_id"):
+        intent = "explain_design_review"
+        answer, ui_actions, tool_calls = _design_review_answer(context)
+    elif context.get("knowledge_search_id"):
+        intent = "summarize_knowledge"
+        answer, ui_actions, tool_calls = _knowledge_answer(context)
+    elif context.get("process_search_id"):
+        intent = "summarize_process_cases"
+        answer, ui_actions, tool_calls = _process_answer(context)
+    elif context.get("cae_comparison_id"):
+        intent = "explain_cae_comparison"
+        answer, ui_actions, tool_calls = _cae_answer(context)
+    elif context.get("similarity_search_id"):
+        intent = "explain_similarity"
         answer, ui_actions, tool_calls = _similarity_answer(context)
     elif any(term in lowered for term in job_terms) and context.get("job_id"):
+        intent = "get_job_status"
         answer, ui_actions, tool_calls = _job_answer(context)
     else:
         answer = {
             "summary": (
-                "The deterministic demo Assistant can explain the selected similarity result "
-                "or report the selected job status."
+                "Select a persisted Similarity, Design Review, Knowledge, Process/Trial, CAE, "
+                "or Job result before asking the engineering Assistant to explain it."
             ),
             "facts": [
                 "Only the visible UI references in the context envelope are resolved server-side."
             ],
             "interpretation": [],
             "recommendations": [
-                "Select a similarity candidate, then ask why it ranked at its current position."
+                "Open a completed result in the workspace and ask a question about that result."
             ],
             "uncertainties": [
-                "Natural-language planning is unavailable while the LLM provider is disabled."
+                "Free-form planning and arbitrary tool execution are outside the Demo scope."
             ],
             "evidence_refs": [],
         }
         ui_actions = []
         tool_calls = []
+
+    provider = get_assistant_provider()
+    envelope = _evidence_envelope(intent, context, answer, tool_calls)
+    if envelope is None:
+        provider_payload = provider.health().payload()
+        provider_payload.update(
+            {
+                "mode": "deterministic_fallback",
+                "llm_available": False,
+                "status": "degraded",
+                "reason": "UNSUPPORTED_OR_UNGROUNDED_INTENT",
+            }
+        )
+    else:
+        try:
+            generated = provider.generate(envelope)
+        except Exception:  # Provider failures must never turn the Assistant endpoint into a 500.
+            generated = None
+        if generated is None:
+            provider_payload = provider.health().payload()
+            provider_payload.update(
+                {
+                    "mode": "deterministic_fallback",
+                    "llm_available": False,
+                    "status": "degraded",
+                    "reason": "PROVIDER_INTERNAL_ERROR",
+                }
+            )
+        else:
+            provider_payload = generated.provider_payload()
+            if generated.answer is not None:
+                answer = generated.answer
 
     serialized = json.dumps({"message": normalized, "context": context}, sort_keys=True)
     target_refs = [f"{key}:{value}" for key, value in context.items() if key.endswith("_id")]
@@ -269,9 +641,16 @@ def create_assistant_response(message: str, raw_context: object) -> dict[str, ob
         actor_id="demo-web-user",
         target_refs=target_refs,
         detail={
-            "provider": get_assistant_provider().health().payload(),
+            "provider": provider_payload,
             "tool_names": [call["name"] for call in tool_calls],
             "context_version": CONTEXT_VERSION,
+            "intent": intent,
+            "evidence_count": len(envelope.evidence) if envelope else 0,
+            "evidence_hash": (
+                hashlib.sha256(json.dumps(envelope.payload(), sort_keys=True).encode()).hexdigest()
+                if envelope
+                else None
+            ),
         },
         payload_hash=hashlib.sha256(serialized.encode()).hexdigest(),
     )
@@ -279,7 +658,7 @@ def create_assistant_response(message: str, raw_context: object) -> dict[str, ob
         "schema_version": "1.0",
         "assistant_message_id": str(uuid.uuid4()),
         "context": context,
-        "provider": get_assistant_provider().health().payload(),
+        "provider": provider_payload,
         "answer": answer,
         "tool_calls": tool_calls,
         "ui_actions": ui_actions,

@@ -108,6 +108,18 @@ class CAETests(TestCase):
         self.assertEqual(audit.detail["comparable_metric_count"], 6)
         self.assertEqual(len(audit.payload_hash), 64)
 
+        assistant = self.client.post(
+            "/api/v1/assistant/messages",
+            {
+                "message": "Explain this CAE comparison",
+                "context": {"page": "cae", "cae_comparison_id": payload["comparison_id"]},
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(assistant.status_code, 200)
+        self.assertIn("compatible", assistant.json()["answer"]["summary"])
+        self.assertEqual(assistant.json()["tool_calls"][0]["name"], "get_cae_comparison")
+
         detail = self.client.get(f"/api/v1/cae-comparisons/{payload['comparison_id']}")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json(), payload)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import type { AssistantContext } from "../api/assistant";
 
 import {
   fetchProcessFixtureStatus,
@@ -16,6 +17,7 @@ import {
 import type { DeepLinkContext } from "../deepLinks";
 
 const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
+const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 
 const loadedCaseCount = ref(0);
 const sourceVersion = ref("");
@@ -146,6 +148,18 @@ watch(
   ],
   loadDeepLink,
   { immediate: true },
+);
+watch(
+  () => [result.value?.search_id, selected.value?.trial_case_id],
+  () => {
+    if (!result.value?.search_id) return;
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "process_trial",
+      ui_locale: "zh-TW",
+      ...(result.value?.search_id ? { process_search_id: result.value.search_id } : {}),
+    });
+  },
 );
 </script>
 

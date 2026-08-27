@@ -108,6 +108,18 @@ class ProcessTrialTests(TestCase):
         self.assertEqual(audit.detail["result_count"], payload["result_count"])
         self.assertEqual(len(audit.payload_hash), 64)
 
+        assistant = self.client.post(
+            "/api/v1/assistant/messages",
+            {
+                "message": "Summarize the comparable process cases",
+                "context": {"page": "process_trial", "process_search_id": payload["search_id"]},
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(assistant.status_code, 200)
+        self.assertEqual(assistant.json()["tool_calls"][0]["name"], "get_process_case_search")
+        self.assertIn("TRIAL-DEMO-001", assistant.json()["answer"]["facts"][0])
+
         persisted = self.client.get(f"/api/v1/process-case-searches/{payload['search_id']}")
         self.assertEqual(persisted.status_code, 200)
         self.assertEqual(persisted.json(), payload)

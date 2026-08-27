@@ -38,7 +38,7 @@ Stage 1–12 已提供：
 已確認的剩餘缺口：
 
 1. MCP 回傳的 Web deep link 使用 `dynamic-quick-tunnel.invalid`。
-2. Assistant 尚未有可執行的 OpenAI LLM Provider adapter。
+2. Assistant Provider adapter 已完成；仍需以核准 Project key/model 做 account-bound live UAT。
 3. CAD Demo 尚未有獨立、治理、可重置的 curated corpus 與 golden scenarios。
 4. Demo 啟停、狀態、reset、backup、外部 UAT 與 release evidence 尚未整合成單一流程。
 5. Web UI 可用但仍偏向逐 Stage 累積的工程畫面；Demo v1.0 完成後需要一致的 UI/UX 改良。

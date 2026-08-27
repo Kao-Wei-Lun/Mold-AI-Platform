@@ -94,6 +94,7 @@ describe("AssistantPanel", () => {
     const request = fetchMock.mock.calls[1][1] as RequestInit;
     const body = JSON.parse(String(request.body));
     expect(body.context).toEqual(context);
+    expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(wrapper.text()).toContain("92.8%");
     expect(wrapper.text()).toContain("safe fallback");
 
@@ -124,5 +125,91 @@ describe("AssistantPanel", () => {
 
     expect(wrapper.text()).toContain("No selected engineering object");
     expect(wrapper.props("context")).toEqual(context);
+  });
+
+  it("shows OpenAI generation separately from a deterministic fallback", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          provider: {
+            provider: "openai-responses",
+            mode: "openai",
+            llm_available: true,
+            status: "ok",
+            reason: null,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1.0",
+          assistant_message_id: "message-openai",
+          context,
+          provider: {
+            provider: "openai-responses",
+            mode: "openai",
+            llm_available: true,
+            status: "ok",
+            reason: null,
+            model: "configured-at-runtime",
+          },
+          answer: {
+            summary: "Grounded generated explanation.",
+            facts: ["The persisted score is 92.8%."],
+            interpretation: ["The available feature lanes support the ranking."],
+            recommendations: [],
+            uncertainties: ["Engineer review is required."],
+            evidence_refs: ["similarity-search:demo"],
+          },
+          tool_calls: [],
+          ui_actions: [],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(AssistantPanel, { props: { context } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("OpenAI ready");
+    await wrapper.get("textarea").setValue("Explain this result");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("OpenAI generated");
+    expect(wrapper.text()).toContain("The available feature lanes support the ranking.");
+  });
+
+  it("stops waiting without claiming the server request was cancelled", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          provider: {
+            provider: "openai-responses",
+            mode: "openai",
+            llm_available: true,
+            status: "ok",
+            reason: null,
+          },
+        }),
+      )
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(AssistantPanel, { props: { context } });
+    await flushPromises();
+
+    await wrapper.get("textarea").setValue("Explain this result");
+    await wrapper.get("form").trigger("submit");
+    await wrapper.get(".assistant-stop").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("does not prove the server-side provider request was cancelled");
+    expect(wrapper.find(".assistant-stop").exists()).toBe(false);
   });
 });

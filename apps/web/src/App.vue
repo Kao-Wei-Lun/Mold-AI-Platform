@@ -132,10 +132,19 @@ watch(
         v-if="accessReady"
         :query="activeCAD"
         :deep-link="deepLinkState.context"
+        @context-change="assistantContext = $event"
       />
-      <KnowledgeWorkspace v-if="accessReady" :deep-link="deepLinkState.context" />
-      <ProcessTrialWorkspace v-if="accessReady" :deep-link="deepLinkState.context" />
-      <CAEWorkspace v-if="accessReady" />
+      <KnowledgeWorkspace
+        v-if="accessReady"
+        :deep-link="deepLinkState.context"
+        @context-change="assistantContext = $event"
+      />
+      <ProcessTrialWorkspace
+        v-if="accessReady"
+        :deep-link="deepLinkState.context"
+        @context-change="assistantContext = $event"
+      />
+      <CAEWorkspace v-if="accessReady" @context-change="assistantContext = $event" />
       <HMIWorkspace v-if="accessReady" />
     </main>
     <AssistantPanel

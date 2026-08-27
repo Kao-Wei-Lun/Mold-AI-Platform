@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import type { AssistantContext } from "../api/assistant";
 
 import {
   compareCAERuns,
@@ -10,6 +11,8 @@ import {
   type CAERun,
   type CAEStudy,
 } from "../api/cae";
+
+const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 
 const studies = ref<CAEStudy[]>([]);
 const loadedStudyCount = ref(0);
@@ -106,6 +109,20 @@ function percentText(value: number | null): string {
 }
 
 onMounted(loadWorkspace);
+watch(
+  () => comparison.value?.comparison_id,
+  () => {
+    if (!comparison.value?.comparison_id) return;
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "cae",
+      ui_locale: "zh-TW",
+      ...(comparison.value?.comparison_id
+        ? { cae_comparison_id: comparison.value.comparison_id }
+        : {}),
+    });
+  },
+);
 </script>
 
 <template>

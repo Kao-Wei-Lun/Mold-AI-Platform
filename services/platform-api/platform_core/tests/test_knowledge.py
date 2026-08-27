@@ -12,7 +12,7 @@ from platform_core.knowledge import (
     create_knowledge_upload_records,
     search_knowledge,
 )
-from platform_core.models import Job
+from platform_core.models import Job, KnowledgeSearch
 from platform_core.tasks import process_knowledge_job
 from platform_core.vector_store import VectorCandidate
 
@@ -36,6 +36,39 @@ class KnowledgeTests(TestCase):
     def tearDown(self) -> None:
         self.settings_override.disable()
         self.media_directory.cleanup()
+
+    def test_assistant_summarizes_only_persisted_authorized_knowledge_evidence(self) -> None:
+        search = KnowledgeSearch.objects.create(
+            query="rib guidance",
+            principal_scopes=["public-demo"],
+            result={
+                "answer": "Found one authorized source passage.",
+                "claims": [
+                    {
+                        "text": "Review rib thickness against nominal wall thickness.",
+                        "evidence_refs": ["citation:demo"],
+                    }
+                ],
+                "citations": [{"citation_id": "citation:demo"}],
+                "limitations": ["Synthetic public Demo evidence only."],
+            },
+        )
+
+        assistant = self.client.post(
+            "/api/v1/assistant/messages",
+            {
+                "message": "Summarize the knowledge result",
+                "context": {
+                    "page": "knowledge_search",
+                    "knowledge_search_id": str(search.id),
+                },
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(assistant.status_code, 200)
+        self.assertIn("authorized", assistant.json()["answer"]["summary"])
+        self.assertEqual(assistant.json()["tool_calls"][0]["name"], "get_knowledge_search")
 
     def create_document(
         self,

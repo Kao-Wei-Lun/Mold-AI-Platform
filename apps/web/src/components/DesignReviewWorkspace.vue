@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from "vue";
 
 import type { CADModelResult } from "../api/cad";
+import type { AssistantContext } from "../api/assistant";
 import {
   createDesignReview,
   createFindingDecision,
@@ -13,6 +14,7 @@ import {
 import type { DeepLinkContext } from "../deepLinks";
 
 const props = defineProps<{ query: CADModelResult | null; deepLink?: DeepLinkContext | null }>();
+const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const nominalWall = ref("");
@@ -142,6 +144,22 @@ watch(
     selectedFinding.value = null;
     error.value = null;
     if (pollTimer !== null) window.clearTimeout(pollTimer);
+  },
+);
+
+watch(
+  () => [result.value?.review_id, selectedFinding.value?.finding_id],
+  () => {
+    if (!result.value?.review_id) return;
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "design_review",
+      ui_locale: "zh-TW",
+      ...(result.value?.review_id ? { review_id: result.value.review_id } : {}),
+      ...(selectedFinding.value?.finding_id
+        ? { finding_id: selectedFinding.value.finding_id }
+        : {}),
+    });
   },
 );
 
