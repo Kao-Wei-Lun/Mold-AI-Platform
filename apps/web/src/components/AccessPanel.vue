@@ -8,6 +8,13 @@ import {
   fetchSecurityPreflight,
   type SecurityPreflight,
 } from "../api/security";
+import {
+  fetchCurrentAccount,
+  loginLocalAccount,
+  logoutLocalAccount,
+  refreshCsrfToken,
+  type LocalAccount,
+} from "../api/identity";
 import { useI18n } from "../i18n";
 import FormField from "./FormField.vue";
 
@@ -17,6 +24,9 @@ withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
 const emit = defineEmits<{ ready: [ready: boolean] }>();
 const preflight = ref<SecurityPreflight | null>(null);
 const token = ref("");
+const username = ref("");
+const password = ref("");
+const account = ref<LocalAccount | null>(null);
 const connecting = ref(false);
 const connected = ref(false);
 const error = ref<string | null>(null);
@@ -26,6 +36,15 @@ const failedChecks = computed(() =>
     .filter(([, passed]) => !passed)
     .map(([name]) => name.replaceAll("_", " ")),
 );
+const roleSummary = computed(() =>
+  (account.value?.roles || []).map((role) => role.replaceAll("_", " ")).join(" · "),
+);
+const accessDescription = computed(() => {
+  if (preflight.value?.auth.mode === "local") {
+    return account.value ? t("Individual account session") : t("Individual account required");
+  }
+  return preflight.value?.auth.required ? t("Bearer token required") : t("Local authentication disabled");
+});
 
 async function verifyStoredToken(): Promise<void> {
   const stored = getDemoAccessToken();
@@ -44,7 +63,14 @@ async function loadPreflight(): Promise<void> {
   error.value = null;
   try {
     preflight.value = await fetchSecurityPreflight();
-    if (!preflight.value.auth.required) {
+    if (preflight.value.auth.mode === "local") {
+      clearDemoAccessToken();
+      const current = await fetchCurrentAccount();
+      account.value = current.authenticated ? current.account : null;
+      connected.value = Boolean(account.value);
+      if (connected.value) await refreshCsrfToken();
+      emit("ready", connected.value);
+    } else if (!preflight.value.auth.required) {
       connected.value = true;
       emit("ready", true);
     } else {
@@ -56,7 +82,7 @@ async function loadPreflight(): Promise<void> {
   }
 }
 
-async function connect(): Promise<void> {
+async function connectBearer(): Promise<void> {
   if (!token.value.trim()) return;
   connecting.value = true;
   error.value = null;
@@ -74,7 +100,41 @@ async function connect(): Promise<void> {
   }
 }
 
-function disconnect(): void {
+async function signIn(): Promise<void> {
+  if (!username.value.trim() || !password.value) return;
+  connecting.value = true;
+  error.value = null;
+  try {
+    account.value = await loginLocalAccount(username.value, password.value);
+    password.value = "";
+    connected.value = true;
+    emit("ready", true);
+  } catch (caught) {
+    account.value = null;
+    connected.value = false;
+    error.value = caught instanceof Error ? caught.message : t("Local account sign-in failed.");
+    emit("ready", false);
+  } finally {
+    connecting.value = false;
+  }
+}
+
+async function disconnect(): Promise<void> {
+  error.value = null;
+  if (preflight.value?.auth.mode === "local") {
+    connecting.value = true;
+    try {
+      await logoutLocalAccount();
+      account.value = null;
+      connected.value = false;
+      emit("ready", false);
+    } catch (caught) {
+      error.value = caught instanceof Error ? caught.message : t("Sign out failed.");
+    } finally {
+      connecting.value = false;
+    }
+    return;
+  }
   clearDemoAccessToken();
   connected.value = false;
   emit("ready", !preflight.value?.auth.required);
@@ -82,8 +142,12 @@ function disconnect(): void {
 
 function onUnauthorized(): void {
   clearDemoAccessToken();
+  account.value = null;
   connected.value = false;
-  error.value = t("The Demo session expired or was rejected. Enter the access token again.");
+  error.value =
+    preflight.value?.auth.mode === "local"
+      ? t("Your account session expired or was revoked. Sign in again.")
+      : t("The Demo session expired or was rejected. Enter the access token again.");
   emit("ready", false);
 }
 
@@ -99,18 +163,60 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
   <section class="access-panel" :class="{ 'access-panel-compact': compact && connected }" aria-labelledby="access-title">
     <div>
       <p v-if="!compact || !connected" class="eyebrow">{{ t("Release security") }}</p>
-      <h2 id="access-title">{{ compact && connected ? t("Private Demo connected") : t("Demo access boundary") }}</h2>
+      <h2 id="access-title">
+        {{ compact && account ? account.display_name : compact && connected ? t("Private Demo connected") : t("Demo access boundary") }}
+      </h2>
       <p v-if="preflight">
         <span class="access-state" :class="connected ? 'connected' : 'locked'">
           {{ connected ? t("Access ready") : t("Access locked") }}
         </span>
-        <span>
-          {{ preflight.auth.required ? t("Bearer token required") : t("Local authentication disabled") }}
-        </span>
+        <span>{{ account ? roleSummary : accessDescription }}</span>
       </p>
     </div>
 
-    <form v-if="preflight?.auth.required && !connected" class="access-form" @submit.prevent="connect">
+    <form
+      v-if="preflight?.auth.mode === 'local' && !connected"
+      class="access-form local-account-form"
+      @submit.prevent="signIn"
+    >
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Username')" required>
+        <input
+          :id="fieldId"
+          v-model="username"
+          type="text"
+          autocomplete="username"
+          required
+          maxlength="150"
+          :aria-describedby="describedBy"
+          :aria-invalid="invalid"
+        />
+      </FormField>
+      <FormField
+        v-slot="{ fieldId, describedBy, invalid }"
+        :label="t('Password')"
+        required
+        :helper="t('Use your individual Demo account. Credentials are not stored in the browser.')"
+      >
+        <input
+          :id="fieldId"
+          v-model="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          :aria-describedby="describedBy"
+          :aria-invalid="invalid"
+        />
+      </FormField>
+      <button type="submit" :disabled="connecting || !username.trim() || !password" :aria-busy="connecting">
+        {{ connecting ? t("Signing in…") : t("Sign in") }}
+      </button>
+    </form>
+
+    <form
+      v-else-if="preflight?.auth.mode === 'required' && !connected"
+      class="access-form"
+      @submit.prevent="connectBearer"
+    >
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Demo access token')" required :helper="t('The token is kept only for this Demo session.')">
         <input :id="fieldId" v-model="token" type="password" autocomplete="current-password" required :aria-describedby="describedBy" :aria-invalid="invalid" />
       </FormField>
@@ -122,9 +228,10 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
       v-else-if="preflight?.auth.required && connected"
       type="button"
       class="secondary-button"
+      :disabled="connecting"
       @click="disconnect"
     >
-      {{ t("Clear Demo session") }}
+      {{ preflight.auth.mode === "local" ? t("Sign out") : t("Clear Demo session") }}
     </button>
 
     <details v-if="preflight && (!compact || !connected)" class="release-preflight">

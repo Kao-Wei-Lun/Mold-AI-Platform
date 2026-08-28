@@ -1,4 +1,6 @@
 const TOKEN_STORAGE_KEY = "mold-ai.demo-access-token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+let csrfToken = "";
 
 export function getDemoAccessToken(): string {
   return typeof window === "undefined" ? "" : window.sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";
@@ -10,6 +12,14 @@ export function setDemoAccessToken(token: string): void {
 
 export function clearDemoAccessToken(): void {
   window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+export function setCsrfToken(token: string): void {
+  csrfToken = token.trim();
+}
+
+export function clearCsrfToken(): void {
+  csrfToken = "";
 }
 
 export function consumeDemoAccessBootstrap(): boolean {
@@ -27,8 +37,16 @@ export function consumeDemoAccessBootstrap(): boolean {
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getDemoAccessToken();
+  const method = (init.method || "GET").toUpperCase();
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(input, { ...init, headers });
+  if (!SAFE_METHODS.has(method) && csrfToken && !headers.has("X-CSRFToken")) {
+    headers.set("X-CSRFToken", csrfToken);
+  }
+  const response = await fetch(input, {
+    ...init,
+    credentials: init.credentials || "include",
+    headers,
+  });
   if (response.status === 401 && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("mold-ai:unauthorized"));
   }

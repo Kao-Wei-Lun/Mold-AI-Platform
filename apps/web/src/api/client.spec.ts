@@ -1,8 +1,10 @@
 import {
   apiFetch,
   clearDemoAccessToken,
+  clearCsrfToken,
   consumeDemoAccessBootstrap,
   downloadProtectedArtifact,
+  setCsrfToken,
   setDemoAccessToken,
 } from "./client";
 
@@ -18,11 +20,13 @@ function response(status = 200, headers: Record<string, string> = {}): Response 
 describe("authenticated API client", () => {
   beforeEach(() => {
     clearDemoAccessToken();
+    clearCsrfToken();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     clearDemoAccessToken();
+    clearCsrfToken();
   });
 
   it("adds the session-only Demo bearer token without overriding an explicit header", async () => {
@@ -56,6 +60,22 @@ describe("authenticated API client", () => {
 
     expect(listener).toHaveBeenCalledOnce();
     window.removeEventListener("mold-ai:unauthorized", listener);
+  });
+
+  it("uses credentialed requests and adds CSRF only to unsafe methods", async () => {
+    setCsrfToken("csrf-session-token");
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/api/v1/system/info");
+    await apiFetch("/api/v1/assistant/messages", { method: "POST" });
+
+    expect(fetchMock.mock.calls[0][1]?.credentials).toBe("include");
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("X-CSRFToken")).toBe(false);
+    expect(fetchMock.mock.calls[1][1]?.credentials).toBe("include");
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get("X-CSRFToken")).toBe(
+      "csrf-session-token",
+    );
   });
 
   it("downloads protected artifacts through the authenticated request path", async () => {

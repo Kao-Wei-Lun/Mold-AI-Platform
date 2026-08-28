@@ -19,6 +19,7 @@ PUBLIC_API_PATHS = {
     "/api/v1/auth/csrf",
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
+    "/api/v1/auth/me",
 }
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")

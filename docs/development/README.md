@@ -286,3 +286,8 @@ Stage 18 Phase 1A adds individual local Demo accounts, secure Django sessions, C
 governed roles and data scopes, account lifecycle/session revocation, identity Audit and a one-time
 administrator bootstrap while preserving the legacy controlled bearer mode. See
 [`stage-18-phase-1a-identity-foundation.md`](stage-18-phase-1a-identity-foundation.md).
+
+Stage 18 Phase 1B connects those local sessions to the Engineering Web with session restoration,
+individual sign-in/sign-out, account and role context, credentialed requests and automatic CSRF
+protection while retaining the existing disabled and bearer modes. See
+[`stage-18-phase-1b-web-account-session.md`](stage-18-phase-1b-web-account-session.md).
