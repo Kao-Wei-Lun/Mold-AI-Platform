@@ -4,6 +4,7 @@ describe("Engineering Workspace routes", () => {
   it("resolves canonical paths and trailing slashes", () => {
     expect(resolveWorkspaceRoute("/engineering/cad").id).toBe("cad");
     expect(resolveWorkspaceRoute("/governance/rules/").id).toBe("rules");
+    expect(resolveWorkspaceRoute("/governance/identity").id).toBe("identity");
     expect(resolveWorkspaceRoute("/missing").id).toBe("not_found");
   });
 

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import type { AssistantContext, UIAction } from "./api/assistant";
 import type { CADModelResult } from "./api/cad";
+import type { LocalAccount } from "./api/identity";
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import AccessPanel from "./components/AccessPanel.vue";
 import AssistantPanel from "./components/AssistantPanel.vue";
@@ -11,6 +12,7 @@ import CadWorkspace from "./components/CadWorkspace.vue";
 import DeepLinkStatus from "./components/DeepLinkStatus.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
+import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
@@ -36,6 +38,7 @@ const error = ref<string | null>(null);
 const activeCAD = ref<CADModelResult | null>(null);
 const pendingUIAction = ref<UIAction | null>(null);
 const accessReady = ref(false);
+const currentAccount = ref<LocalAccount | null>(null);
 const assistantOpen = ref(true);
 const navigationOpen = ref(false);
 const deepLinkState = parseDeepLink(window.location.search);
@@ -53,7 +56,11 @@ const assistantContext = ref<AssistantContext>({
 const navigationGroups = computed(() =>
   ["Overview", "Engineering", "Governance"].map((group) => ({
     group,
-    routes: workspaceRoutes.filter((route) => route.group === group),
+    routes: workspaceRoutes.filter(
+      (route) =>
+        route.group === group &&
+        (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")),
+    ),
   })),
 );
 const activeDeepLink = computed(() => {
@@ -214,7 +221,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           <span v-if="activeDeepLink" class="opened-from-mcp">{{ t("Opened from ChatGPT MCP") }}</span>
         </header>
 
-        <AccessPanel :compact="true" @ready="accessReady = $event" />
+        <AccessPanel
+          :compact="true"
+          @ready="accessReady = $event"
+          @account="currentAccount = $event"
+        />
         <DeepLinkStatus
           :context="activeDeepLink"
           :error="deepLinkVisible ? deepLinkState.error : null"
@@ -293,6 +304,10 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <CAEWorkspace v-else-if="currentRoute.id === 'cae' && accessReady" @context-change="assistantContext = $event" />
         <HMIWorkspace v-else-if="currentRoute.id === 'hmi' && accessReady" />
         <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" />
+        <IdentityManagementWorkspace
+          v-else-if="currentRoute.id === 'identity' && accessReady"
+          :current-account="currentAccount"
+        />
         <section v-else-if="currentRoute.id === 'not_found'" class="workspace-state error-state">
           <strong>{{ t("Unsupported page") }}</strong><span>{{ t("The URL does not map to a Mold AI workspace.") }}</span>
           <button type="button" @click="navigate('home')">{{ t("Return to Demo guide") }}</button>

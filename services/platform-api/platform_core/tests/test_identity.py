@@ -70,6 +70,8 @@ class LocalIdentityTests(TestCase):
         self.assertEqual(account["id"], str(profile.id))
         self.assertEqual(account["roles"], ["mold_engineer"])
         self.assertEqual(account["data_scopes"], ["public-demo"])
+        self.assertEqual(account["role_assignments"][0]["role_code"], "mold_engineer")
+        self.assertTrue(account["role_assignments"][0]["id"])
         self.assertIn("public-demo:write", account["permissions"])
         me = self.client.get("/api/v1/auth/me")
         self.assertTrue(me.json()["authenticated"])
@@ -145,6 +147,35 @@ class LocalIdentityTests(TestCase):
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()["display_name"], "Alice Chen")
 
+        assigned = self.client.post(
+            "/api/v1/admin/role-assignments",
+            {
+                "account_id": account["id"],
+                "role_code": "viewer",
+                "scope_code": "public-demo",
+                "reason": "Add read-only verification duties",
+            },
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertEqual(assigned.status_code, 201)
+        assignment_id = assigned.json()["id"]
+        refreshed = self.client.get(f"/api/v1/admin/users/{account['id']}")
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertEqual(
+            {item["role_code"] for item in refreshed.json()["role_assignments"]},
+            {"data_editor", "viewer"},
+        )
+
+        revoked = self.client.delete(
+            f"/api/v1/admin/role-assignments/{assignment_id}",
+            {"reason": "Verification duties completed"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertEqual(revoked.status_code, 204)
+        self.assertIsNotNone(RoleAssignment.objects.get(id=assignment_id).revoked_at)
+
         disabled = self.client.post(
             f"/api/v1/admin/users/{account['id']}/disable",
             {"reason": "Access no longer required"},
@@ -160,6 +191,8 @@ class LocalIdentityTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(event_type="identity.account_disabled.v1").exists()
         )
+        self.assertTrue(AuditEvent.objects.filter(event_type="identity.role_assigned.v1").exists())
+        self.assertTrue(AuditEvent.objects.filter(event_type="identity.role_revoked.v1").exists())
 
     def test_non_admin_cannot_access_identity_admin_api(self) -> None:
         viewer, _ = create_account("not-admin", "viewer")

@@ -61,6 +61,17 @@ const localAccount = {
   roles: ["mold_engineer"],
   permissions: ["public-demo:read", "public-demo:write"],
   data_scopes: ["public-demo"],
+  role_assignments: [
+    {
+      id: "assignment-1",
+      role_code: "mold_engineer",
+      role_name: "Mold Engineer",
+      scope_code: "public-demo",
+      scope_name: "Public Synthetic Demo",
+      valid_from: null,
+      valid_to: null,
+    },
+  ],
   last_login_at: null,
   created_at: "2026-08-28T00:00:00Z",
 };

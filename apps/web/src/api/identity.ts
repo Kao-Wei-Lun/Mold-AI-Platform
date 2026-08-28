@@ -12,14 +12,54 @@ export type LocalAccount = {
   roles: string[];
   permissions: string[];
   data_scopes: string[];
+  role_assignments: RoleAssignment[];
   last_login_at: string | null;
   created_at: string;
+};
+
+export type RoleAssignment = {
+  id: string;
+  role_code: string;
+  role_name: string;
+  scope_code: string;
+  scope_name: string;
+  valid_from: string | null;
+  valid_to: string | null;
 };
 
 export type CurrentAccountResponse = {
   authenticated: boolean;
   authentication_method: "session" | "bearer_gateway" | "none";
   account: LocalAccount | null;
+};
+
+export type AccessRole = {
+  code: string;
+  name: string;
+  description: string;
+  permissions: string[];
+};
+
+export type DataScope = {
+  id: string;
+  code: string;
+  name: string;
+  classification: string;
+};
+
+export type IdentityCatalog = {
+  roles: AccessRole[];
+  data_scopes: DataScope[];
+};
+
+export type CreateAccountInput = {
+  username: string;
+  email: string;
+  display_name: string;
+  password: string;
+  role_code: string;
+  scope_code: string;
+  reason: string;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
@@ -85,4 +125,80 @@ export async function logoutLocalAccount(): Promise<void> {
   if (!response.ok && response.status !== 204) {
     throw new Error(`Sign out returned HTTP ${response.status}`);
   }
+}
+
+async function identityRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await apiFetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers,
+  });
+  const payload = response.status === 204 ? null : await response.json();
+  if (!response.ok) {
+    throw new Error(errorMessage(payload, `Identity request returned HTTP ${response.status}`));
+  }
+  return payload as T;
+}
+
+export async function fetchAccounts(): Promise<LocalAccount[]> {
+  const payload = await identityRequest<{ results: LocalAccount[] }>("/api/v1/admin/users");
+  return payload.results;
+}
+
+export function fetchIdentityCatalog(): Promise<IdentityCatalog> {
+  return identityRequest<IdentityCatalog>("/api/v1/admin/identity-catalog");
+}
+
+export function createAccount(input: CreateAccountInput): Promise<LocalAccount> {
+  return identityRequest<LocalAccount>("/api/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAccount(
+  accountId: string,
+  input: Pick<LocalAccount, "row_version" | "display_name" | "email" | "locale" | "timezone">,
+): Promise<LocalAccount> {
+  return identityRequest<LocalAccount>(`/api/v1/admin/users/${accountId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function changeAccountState(
+  accountId: string,
+  action: "activate" | "suspend" | "disable" | "revoke-sessions",
+  reason: string,
+): Promise<{ account: LocalAccount; revoked_sessions: number }> {
+  return identityRequest(`/api/v1/admin/users/${accountId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function assignRole(
+  accountId: string,
+  roleCode: string,
+  scopeCode: string,
+  reason: string,
+): Promise<{ id: string }> {
+  return identityRequest("/api/v1/admin/role-assignments", {
+    method: "POST",
+    body: JSON.stringify({
+      account_id: accountId,
+      role_code: roleCode,
+      scope_code: scopeCode,
+      reason,
+    }),
+  });
+}
+
+export function revokeRole(assignmentId: string, reason: string): Promise<null> {
+  return identityRequest(`/api/v1/admin/role-assignments/${assignmentId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
 }

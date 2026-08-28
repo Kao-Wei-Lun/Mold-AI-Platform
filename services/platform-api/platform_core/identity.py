@@ -68,6 +68,7 @@ def identity_context(user: AbstractBaseUser) -> dict[str, object]:
         "roles": roles,
         "permissions": permissions,
         "data_scopes": data_scopes,
+        "assignments": assignments,
     }
 
 
@@ -87,6 +88,20 @@ def account_payload(user: AbstractBaseUser) -> dict[str, object]:
         "roles": context["roles"],
         "permissions": sorted(context["permissions"]),
         "data_scopes": context["data_scopes"],
+        "role_assignments": [
+            {
+                "id": str(assignment.id),
+                "role_code": assignment.role_id,
+                "role_name": assignment.role.name,
+                "scope_code": assignment.data_scope.code,
+                "scope_name": assignment.data_scope.name,
+                "valid_from": (
+                    assignment.valid_from.isoformat() if assignment.valid_from else None
+                ),
+                "valid_to": assignment.valid_to.isoformat() if assignment.valid_to else None,
+            }
+            for assignment in context["assignments"]
+        ],
         "last_login_at": user.last_login.isoformat() if user.last_login else None,
         "created_at": user.date_joined.isoformat(),
     }

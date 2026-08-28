@@ -21,7 +21,10 @@ import FormField from "./FormField.vue";
 const { t } = useI18n();
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
-const emit = defineEmits<{ ready: [ready: boolean] }>();
+const emit = defineEmits<{
+  ready: [ready: boolean];
+  account: [account: LocalAccount | null];
+}>();
 const preflight = ref<SecurityPreflight | null>(null);
 const token = ref("");
 const username = ref("");
@@ -69,9 +72,11 @@ async function loadPreflight(): Promise<void> {
       account.value = current.authenticated ? current.account : null;
       connected.value = Boolean(account.value);
       if (connected.value) await refreshCsrfToken();
+      emit("account", account.value);
       emit("ready", connected.value);
     } else if (!preflight.value.auth.required) {
       connected.value = true;
+      emit("account", null);
       emit("ready", true);
     } else {
       await verifyStoredToken();
@@ -108,10 +113,12 @@ async function signIn(): Promise<void> {
     account.value = await loginLocalAccount(username.value, password.value);
     password.value = "";
     connected.value = true;
+    emit("account", account.value);
     emit("ready", true);
   } catch (caught) {
     account.value = null;
     connected.value = false;
+    emit("account", null);
     error.value = caught instanceof Error ? caught.message : t("Local account sign-in failed.");
     emit("ready", false);
   } finally {
@@ -127,6 +134,7 @@ async function disconnect(): Promise<void> {
       await logoutLocalAccount();
       account.value = null;
       connected.value = false;
+      emit("account", null);
       emit("ready", false);
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : t("Sign out failed.");
@@ -136,6 +144,7 @@ async function disconnect(): Promise<void> {
     return;
   }
   clearDemoAccessToken();
+  emit("account", null);
   connected.value = false;
   emit("ready", !preflight.value?.auth.required);
 }
@@ -144,6 +153,7 @@ function onUnauthorized(): void {
   clearDemoAccessToken();
   account.value = null;
   connected.value = false;
+  emit("account", null);
   error.value =
     preflight.value?.auth.mode === "local"
       ? t("Your account session expired or was revoked. Sign in again.")

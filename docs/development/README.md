@@ -291,3 +291,8 @@ Stage 18 Phase 1B connects those local sessions to the Engineering Web with sess
 individual sign-in/sign-out, account and role context, credentialed requests and automatic CSRF
 protection while retaining the existing disabled and bearer modes. See
 [`stage-18-phase-1b-web-account-session.md`](stage-18-phase-1b-web-account-session.md).
+
+Stage 18 Phase 1C adds the permission-gated Accounts & access workspace for governed account
+creation and profile updates, scoped role assignment/revocation, lifecycle actions, session
+revocation, direct-route session restoration and self-lockout protection. See
+[`stage-18-phase-1c-identity-management-ui.md`](stage-18-phase-1c-identity-management-ui.md).

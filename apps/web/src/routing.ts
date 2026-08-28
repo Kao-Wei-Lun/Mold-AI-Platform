@@ -10,6 +10,7 @@ export type WorkspaceRouteId =
   | "cae"
   | "hmi"
   | "rules"
+  | "identity"
   | "status"
   | "not_found";
 
@@ -105,6 +106,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     eyebrow: "Governance / Mold rules",
     title: "Understand the rules that govern design review",
     description: "Browse the approved profile, versioned thresholds, ownership and source references.",
+  },
+  {
+    id: "identity",
+    path: "/governance/identity",
+    label: "Accounts & access",
+    group: "Governance",
+    eyebrow: "Governance / Identity and access",
+    title: "Manage individual accounts and governed access",
+    description: "Control local Demo identities, roles, data scopes and active sessions with audit evidence.",
   },
   {
     id: "status",

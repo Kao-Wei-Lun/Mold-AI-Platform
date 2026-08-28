@@ -19,6 +19,32 @@ const preflight = {
   auth: { required: false },
   mcp: { secure_tunnel_configured: true, oauth_implemented: false },
 };
+const adminAccount = {
+  id: "account-admin",
+  username: "admin",
+  email: "admin@example.test",
+  display_name: "Demo Administrator",
+  status: "active",
+  locale: "zh-TW",
+  timezone: "Asia/Taipei",
+  row_version: 1,
+  roles: ["platform_admin"],
+  permissions: ["public-demo:read", "public-demo:write", "identity:manage"],
+  data_scopes: ["public-demo"],
+  role_assignments: [
+    {
+      id: "assignment-admin",
+      role_code: "platform_admin",
+      role_name: "Platform Admin",
+      scope_code: "public-demo",
+      scope_name: "Public Synthetic Demo",
+      valid_from: null,
+      valid_to: null,
+    },
+  ],
+  last_login_at: "2026-08-28T04:00:00Z",
+  created_at: "2026-08-28T00:00:00Z",
+};
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => payload } as Response;
@@ -79,6 +105,62 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/governance/rules");
     expect(wrapper.text()).toContain("Understand the rules that govern design review");
     expect(wrapper.find(".cad-workspace").exists()).toBe(false);
+  });
+
+  it("restores an administrator session before loading a direct identity route", async () => {
+    window.history.replaceState(null, "", "/governance/identity");
+    const localPreflight = {
+      ...preflight,
+      auth: {
+        mode: "local",
+        required: true,
+        token_configured: false,
+        local_accounts_enabled: true,
+        local_admin_configured: true,
+        scopes: ["public-demo"],
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("security/preflight")) return jsonResponse(localPreflight);
+        if (url.endsWith("/auth/me")) {
+          return jsonResponse({ authenticated: true, account: adminAccount });
+        }
+        if (url.endsWith("/auth/csrf")) return jsonResponse({ csrf_token: "identity-csrf" });
+        if (url.endsWith("/admin/users")) return jsonResponse({ results: [adminAccount] });
+        if (url.endsWith("/admin/identity-catalog")) {
+          return jsonResponse({
+            roles: [
+              {
+                code: "platform_admin",
+                name: "Platform Admin",
+                description: "Identity management",
+                permissions: adminAccount.permissions,
+              },
+            ],
+            data_scopes: [
+              {
+                id: "scope-1",
+                code: "public-demo",
+                name: "Public Synthetic Demo",
+                classification: "public_demo",
+              },
+            ],
+          });
+        }
+        if (url.includes("health/ready")) return jsonResponse(readiness);
+        return jsonResponse({});
+      }),
+    );
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.get('a[href="/governance/identity"]').text()).toContain("Accounts & access");
+    expect(wrapper.text()).toContain("Demo Administrator");
+    expect(wrapper.find(".identity-management-workspace table").exists()).toBe(true);
   });
 
   it("shows an actionable error when the health API cannot be reached", async () => {
