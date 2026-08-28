@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -453,6 +454,120 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_type}:{self.id}"
+
+
+class AccountProfile(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        SUSPENDED = "suspended", "Suspended"
+        DISABLED = "disabled", "Disabled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="mold_ai_profile",
+        on_delete=models.PROTECT,
+    )
+    display_name = models.CharField(max_length=150, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    locale = models.CharField(max_length=16, default="zh-TW")
+    timezone = models.CharField(max_length=64, default="Asia/Taipei")
+    row_version = models.PositiveIntegerField(default=1)
+    disabled_at = models.DateTimeField(null=True, blank=True)
+    disabled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="disabled_mold_ai_accounts",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    disable_reason = models.CharField(max_length=512, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["user__username"]
+
+    def __str__(self) -> str:
+        return f"{self.user.username} ({self.id})"
+
+
+class DataScope(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=128, unique=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    classification = models.CharField(max_length=32, default="public_demo")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self) -> str:
+        return self.code
+
+
+class AccessRole(models.Model):
+    code = models.CharField(max_length=64, primary_key=True)
+    name = models.CharField(max_length=128)
+    description = models.TextField(blank=True)
+    permissions = models.JSONField(default=list)
+    is_system = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self) -> str:
+        return self.code
+
+
+class RoleAssignment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="mold_ai_role_assignments",
+        on_delete=models.PROTECT,
+    )
+    role = models.ForeignKey(AccessRole, related_name="assignments", on_delete=models.PROTECT)
+    data_scope = models.ForeignKey(DataScope, related_name="assignments", on_delete=models.PROTECT)
+    valid_from = models.DateTimeField(null=True, blank=True)
+    valid_to = models.DateTimeField(null=True, blank=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="granted_mold_ai_roles",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    reason = models.CharField(max_length=512)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="revoked_mold_ai_roles",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    revoke_reason = models.CharField(max_length=512, blank=True)
+
+    class Meta:
+        ordering = ["user__username", "role_id", "data_scope__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "role", "data_scope"],
+                condition=models.Q(revoked_at__isnull=True),
+                name="unique_active_role_assignment",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user.username}:{self.role_id}@{self.data_scope.code}"
 
 
 class KnowledgeDocument(models.Model):

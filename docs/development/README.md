@@ -279,3 +279,10 @@ service/dependency + Celery worker + dataset + external/MCP readiness
 -> audited recovery evidence
 -> bounded HTTP/concurrency/queue performance baseline
 ```
+
+## Implemented local identity foundation
+
+Stage 18 Phase 1A adds individual local Demo accounts, secure Django sessions, CSRF enforcement,
+governed roles and data scopes, account lifecycle/session revocation, identity Audit and a one-time
+administrator bootstrap while preserving the legacy controlled bearer mode. See
+[`stage-18-phase-1a-identity-foundation.md`](stage-18-phase-1a-identity-foundation.md).

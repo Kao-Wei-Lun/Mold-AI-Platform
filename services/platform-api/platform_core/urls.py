@@ -1,5 +1,16 @@
 from django.urls import path
 
+from .identity_views import (
+    AccountDetailView,
+    AccountListCreateView,
+    AccountStateView,
+    CsrfTokenView,
+    CurrentAccountView,
+    IdentityCatalogView,
+    LocalLoginView,
+    LocalLogoutView,
+    RoleAssignmentCreateRevokeView,
+)
 from .views import (
     ArtifactVersionDownloadView,
     AssistantCapabilitiesView,
@@ -43,6 +54,28 @@ from .views import (
 app_name = "platform_core"
 
 urlpatterns = [
+    path("auth/csrf", CsrfTokenView.as_view(), name="auth-csrf"),
+    path("auth/login", LocalLoginView.as_view(), name="auth-login"),
+    path("auth/logout", LocalLogoutView.as_view(), name="auth-logout"),
+    path("auth/me", CurrentAccountView.as_view(), name="auth-me"),
+    path("admin/users", AccountListCreateView.as_view(), name="admin-user-list-create"),
+    path("admin/users/<uuid:account_id>", AccountDetailView.as_view(), name="admin-user-detail"),
+    path(
+        "admin/users/<uuid:account_id>/<str:action>",
+        AccountStateView.as_view(),
+        name="admin-user-state",
+    ),
+    path("admin/identity-catalog", IdentityCatalogView.as_view(), name="identity-catalog"),
+    path(
+        "admin/role-assignments",
+        RoleAssignmentCreateRevokeView.as_view(),
+        name="role-assignment-create",
+    ),
+    path(
+        "admin/role-assignments/<uuid:assignment_id>",
+        RoleAssignmentCreateRevokeView.as_view(),
+        name="role-assignment-revoke",
+    ),
     path("health/live", LiveView.as_view(), name="health-live"),
     path("health/ready", ReadyView.as_view(), name="health-ready"),
     path("system/info", SystemInfoView.as_view(), name="system-info"),

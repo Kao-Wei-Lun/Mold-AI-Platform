@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 import secrets
 import uuid
@@ -9,13 +8,19 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.middleware.csrf import CsrfViewMiddleware
+
+from .identity import audit_identity_event, identity_context
 
 PUBLIC_API_PATHS = {
     "/api/v1/health/live",
     "/api/v1/health/ready",
     "/api/v1/security/preflight",
+    "/api/v1/auth/csrf",
+    "/api/v1/auth/login",
+    "/api/v1/auth/logout",
 }
-SAFE_METHODS = {"GET", "HEAD"}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -63,8 +68,6 @@ def _audit_denial(
     required_scope: str | None,
 ) -> None:
     try:
-        from .models import AuditEvent
-
         detail = {
             "request_id": request_id,
             "method": request.method,
@@ -74,15 +77,11 @@ def _audit_denial(
             "required_scope": required_scope,
             "client_type": request.headers.get("X-Mold-AI-Client", "browser")[:64],
         }
-        digest = hashlib.sha256(
-            f"{request_id}:{request.method}:{request.path}:{code}".encode()
-        ).hexdigest()
-        AuditEvent.objects.create(
-            event_type="security.access_denied.v1",
-            actor_id="unauthenticated",
+        audit_identity_event(
+            "security.access_denied.v1",
+            actor_id=getattr(request, "mold_ai_actor_id", "unauthenticated"),
             target_refs=[f"api-path:{request.path[:256]}"],
             detail=detail,
-            payload_hash=digest,
         )
     except Exception:
         # Authentication must fail closed even when the audit store is unavailable.
@@ -92,6 +91,19 @@ def _audit_denial(
 def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
     auth_mode = settings.DEMO_AUTH_MODE
     token_configured = _configured_secret(settings.DEMO_API_TOKEN)
+    local_admin_configured = False
+    try:
+        from .models import RoleAssignment
+
+        local_admin_configured = RoleAssignment.objects.filter(
+            role_id="platform_admin",
+            revoked_at__isnull=True,
+            user__is_active=True,
+            user__mold_ai_profile__status="active",
+        ).exists()
+    except Exception:
+        # Preflight remains available before migrations and reports the missing identity setup.
+        local_admin_configured = False
     external_mode = settings.APP_ENV not in {"development", "test"}
     cors_origins = list(settings.CORS_ALLOWED_ORIGINS)
     public_web_https = settings.PUBLIC_WEB_BASE_URL.startswith("https://")
@@ -105,10 +117,11 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
     )
     checks = {
         "external_environment_selected": external_mode,
-        "auth_mode_valid": auth_mode in {"disabled", "required"},
+        "auth_mode_valid": auth_mode in {"disabled", "required", "local"},
         "api_token_configured": auth_mode != "required" or token_configured,
-        "demo_scopes_complete": {"public-demo:read", "public-demo:write"}
-        <= settings.DEMO_API_TOKEN_SCOPES,
+        "local_admin_configured": auth_mode != "local" or local_admin_configured,
+        "demo_scopes_complete": auth_mode != "required"
+        or {"public-demo:read", "public-demo:write"} <= settings.DEMO_API_TOKEN_SCOPES,
         "debug_disabled": not settings.DEBUG,
         "secret_key_hardened": _configured_secret(settings.SECRET_KEY)
         and settings.SECRET_KEY != "unsafe-development-key",
@@ -129,6 +142,7 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "external_environment_selected",
         "auth_mode_valid",
         "api_token_configured",
+        "local_admin_configured",
         "demo_scopes_complete",
         "debug_disabled",
         "secret_key_hardened",
@@ -141,14 +155,15 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "public_web_https",
         "mcp_connection_configured",
     ]
-    production_ready = auth_mode == "required" and all(
+    production_ready = auth_mode in {"required", "local"} and all(
         bool(checks[name]) for name in required_for_external
     )
     quick_tunnel_checks = {
         "external_environment_selected": checks["external_environment_selected"],
         "quick_tunnel_mode_selected": settings.QUICK_TUNNEL_MODE,
-        "auth_required": auth_mode == "required",
+        "auth_required": auth_mode in {"required", "local"},
         "api_token_configured": checks["api_token_configured"],
+        "local_admin_configured": checks["local_admin_configured"],
         "demo_scopes_complete": checks["demo_scopes_complete"],
         "debug_disabled": checks["debug_disabled"],
         "secret_key_hardened": checks["secret_key_hardened"],
@@ -165,8 +180,11 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "environment": settings.APP_ENV,
         "auth": {
             "mode": auth_mode,
-            "required": auth_mode == "required",
+            "required": auth_mode in {"required", "local"},
             "token_configured": token_configured,
+            "local_accounts_enabled": auth_mode == "local",
+            "local_admin_configured": local_admin_configured,
+            "methods": ["session"] if auth_mode == "local" else ["bearer"],
             "scopes": sorted(settings.DEMO_API_TOKEN_SCOPES),
         },
         "request_security": {
@@ -188,7 +206,9 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
             "testing_only": True,
         },
         "limitations": [
-            "Static Demo bearer tokens are for controlled demonstrations, not enterprise SSO.",
+            "Local accounts are for the controlled Demo and do not replace enterprise SSO.",
+            "Static Demo bearer tokens remain a legacy controlled-Demo entry credential, "
+            "not a person.",
             "Public ChatGPT MCP with user data requires OAuth 2.1; this stage does not fake it.",
             "Secure MCP Tunnel availability still depends on OpenAI account and workspace policy.",
         ],
@@ -204,9 +224,14 @@ class DemoAccessMiddleware:
         request.mold_ai_request_id = request_id
         request.mold_ai_actor_id = "anonymous"
         request.mold_ai_scopes = set()
+        request.mold_ai_permissions = set()
+        request.mold_ai_data_scopes = set()
 
         response: HttpResponse
-        if self._requires_authentication(request):
+        csrf_response = self._csrf_response(request, request_id)
+        if csrf_response is not None:
+            response = csrf_response
+        elif self._requires_authentication(request):
             response = self._authenticate(request, request_id)
         else:
             response = self.get_response(request)
@@ -219,7 +244,7 @@ class DemoAccessMiddleware:
     @staticmethod
     def _requires_authentication(request: HttpRequest) -> bool:
         return (
-            settings.DEMO_AUTH_MODE == "required"
+            settings.DEMO_AUTH_MODE in {"required", "local"}
             and request.path.startswith("/api/v1/")
             and request.path not in PUBLIC_API_PATHS
             and request.method != "OPTIONS"
@@ -229,6 +254,61 @@ class DemoAccessMiddleware:
         required_scope = (
             "public-demo:read" if request.method in SAFE_METHODS else "public-demo:write"
         )
+        if request.user.is_authenticated:
+            context = identity_context(request.user)
+            profile = context["profile"]
+            if profile.status != "active" or not request.user.is_active:
+                _audit_denial(
+                    request,
+                    request_id=request_id,
+                    code="ACCOUNT_NOT_ACTIVE",
+                    required_scope=required_scope,
+                )
+                return _error_response(
+                    "ACCOUNT_NOT_ACTIVE",
+                    "The local account is not active.",
+                    403,
+                    request_id,
+                )
+            permissions = set(context["permissions"])
+            request.mold_ai_actor_id = str(context["actor_id"])
+            request.mold_ai_permissions = permissions
+            request.mold_ai_scopes = permissions & {
+                "public-demo:read",
+                "public-demo:write",
+            }
+            request.mold_ai_data_scopes = set(context["data_scopes"])
+            if required_scope not in permissions:
+                _audit_denial(
+                    request,
+                    request_id=request_id,
+                    code="PERMISSION_SCOPE_REQUIRED",
+                    required_scope=required_scope,
+                )
+                return _error_response(
+                    "PERMISSION_SCOPE_REQUIRED",
+                    "The account does not grant the required operation scope.",
+                    403,
+                    request_id,
+                    required_scope=required_scope,
+                )
+            return self.get_response(request)
+
+        if settings.DEMO_AUTH_MODE == "local":
+            _audit_denial(
+                request,
+                request_id=request_id,
+                code="AUTH_SESSION_REQUIRED",
+                required_scope=required_scope,
+            )
+            return _error_response(
+                "AUTH_SESSION_REQUIRED",
+                "A local account session is required.",
+                401,
+                request_id,
+                required_scope=required_scope,
+            )
+
         configured_token = settings.DEMO_API_TOKEN
         if not _configured_secret(configured_token):
             return _error_response(
@@ -285,4 +365,32 @@ class DemoAccessMiddleware:
 
         request.mold_ai_actor_id = settings.DEMO_API_ACTOR_ID
         request.mold_ai_scopes = set(settings.DEMO_API_TOKEN_SCOPES)
+        request.mold_ai_permissions = set(settings.DEMO_API_TOKEN_SCOPES)
+        request.mold_ai_data_scopes = {"public-demo"}
         return self.get_response(request)
+
+    @staticmethod
+    def _csrf_response(request: HttpRequest, request_id: str) -> HttpResponse | None:
+        if request.method in SAFE_METHODS or settings.DEMO_AUTH_MODE != "local":
+            return None
+        if not request.user.is_authenticated and request.path not in {
+            "/api/v1/auth/login",
+            "/api/v1/auth/logout",
+        }:
+            return None
+        checker = CsrfViewMiddleware(lambda _: HttpResponse())
+        rejected = checker.process_view(request, lambda _: HttpResponse(), (), {})
+        if rejected is None:
+            return None
+        _audit_denial(
+            request,
+            request_id=request_id,
+            code="CSRF_FAILED",
+            required_scope=None,
+        )
+        return _error_response(
+            "CSRF_FAILED",
+            "The request did not include a valid CSRF token.",
+            403,
+            request_id,
+        )
