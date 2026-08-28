@@ -12,6 +12,25 @@ function Assert-LastExitCode {
     }
 }
 
+function Assert-UnifiedApplicationImage {
+    param(
+        [Parameter(Mandatory)][object]$Config,
+        [Parameter(Mandatory)][string]$Profile
+    )
+
+    $applicationServices = @("api", "worker", "worker-cad", "mcp-gateway", "web")
+    $applicationImages = @(
+        $applicationServices |
+            ForEach-Object { $Config.services.$_.image } |
+            Where-Object { $_ } |
+            Sort-Object -Unique
+    )
+
+    if ($applicationImages.Count -ne 1 -or $applicationImages[0] -notlike "mold-ai-platform-app:*") {
+        throw "$Profile must resolve API, Web, MCP Gateway and workers to one mold-ai-platform-app image. Resolved: $($applicationImages -join ', ')"
+    }
+}
+
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Backend virtual environment not found. Run scripts/dev.ps1 first."
 }
@@ -66,9 +85,19 @@ try {
     docker compose -f compose.yaml -f compose.release.yaml `
         --env-file release.env.example config --quiet
     Assert-LastExitCode "Release Docker Compose validation"
+    $releaseConfigJson = docker compose -f compose.yaml -f compose.release.yaml `
+        --env-file release.env.example config --format json
+    Assert-LastExitCode "Release Docker Compose rendering"
+    Assert-UnifiedApplicationImage -Config ($releaseConfigJson | ConvertFrom-Json) -Profile "Release"
+
     docker compose -f compose.yaml -f compose.sites-demo.yaml `
         --env-file .env.sites-demo.example config --quiet
     Assert-LastExitCode "Sites Demo Docker Compose validation"
+    $sitesDemoConfigJson = docker compose -f compose.yaml -f compose.sites-demo.yaml `
+        --env-file .env.sites-demo.example config --format json
+    Assert-LastExitCode "Sites Demo Docker Compose rendering"
+    Assert-UnifiedApplicationImage -Config ($sitesDemoConfigJson | ConvertFrom-Json) -Profile "Sites Demo"
+
     docker compose -f compose.yaml -f compose.restore-drill.yaml config --quiet
     Assert-LastExitCode "Restore drill Docker Compose validation"
 

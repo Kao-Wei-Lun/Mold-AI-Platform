@@ -1,5 +1,12 @@
 name: mold-ai-platform
 
+x-unified-app-image: &unified-app-image
+  image: mold-ai-platform-app:${APP_VERSION:-latest}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: production
+
 services:
   gateway:
     image: caddy:2-alpine
@@ -30,9 +37,7 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     command: ["./scripts/start-api-production.sh"]
     volumes: !override
@@ -51,9 +56,7 @@ services:
       retries: 12
 
   worker:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !override
       - runtime-data:/data
@@ -62,9 +65,7 @@ services:
         condition: service_healthy
 
   worker-cad:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !override
       - runtime-data:/data
@@ -73,18 +74,14 @@ services:
         condition: service_healthy
 
   mcp-gateway:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !reset []
     environment:
       PLATFORM_API_TOKEN: ${DEMO_API_TOKEN:?Set DEMO_API_TOKEN}
 
   web:
-    build:
-      context: ./apps/web
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     command: ["nginx", "-g", "daemon off;"]
     volumes: !reset []

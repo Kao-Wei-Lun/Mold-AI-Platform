@@ -301,3 +301,10 @@ Stage 18 Phases 1D–1E replace the shared Sites browser token with local-accoun
 isolate the MCP-to-Platform service identity, and add the ChatGPT Plugin UI external-open
 experience. See
 [`stage-18-external-identity-plugin-ui.md`](stage-18-external-identity-plugin-ui.md).
+
+## Unified production application image
+
+Stage 19 packages the compiled Engineering Web, Platform API, MCP Gateway and both worker runtimes
+into one versioned production application image while retaining separate containers for each
+runtime role. See
+[`stage-19-unified-application-image.md`](stage-19-unified-application-image.md).

@@ -1,5 +1,12 @@
 name: mold-ai-platform-sites-demo
 
+x-unified-app-image: &unified-app-image
+  image: mold-ai-platform-app:${APP_VERSION:-0.13.0-demo}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: production
+
 services:
   db:
     restart: unless-stopped
@@ -11,9 +18,7 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     command: ["./scripts/start-api-sites-demo.sh"]
     volumes: !override
@@ -65,25 +70,19 @@ services:
       OPENAI_PROMPT_PROFILE: ${OPENAI_PROMPT_PROFILE:-mold-assistant-grounded-v1}
 
   worker:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !override
       - runtime-data:/data
 
   worker-cad:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !override
       - runtime-data:/data
 
   mcp-gateway:
-    build:
-      context: ./services/platform-api
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     volumes: !reset []
     ports: !override
@@ -100,9 +99,7 @@ services:
       MCP_ALLOWED_ORIGINS: http://localhost:*
 
   web:
-    build:
-      context: ./apps/web
-      target: production
+    <<: *unified-app-image
     restart: unless-stopped
     command: ["nginx", "-g", "daemon off;"]
     volumes: !reset []
