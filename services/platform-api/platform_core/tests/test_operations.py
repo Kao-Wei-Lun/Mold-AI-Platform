@@ -16,6 +16,7 @@ class ReleaseSnapshotTests(TestCase):
         self.assertIn("curated_cad", payload["datasets"])
         self.assertIn("ruleset_checksum", payload["profiles"]["design_review"])
         self.assertIn("status", payload["readiness"])
+        self.assertEqual(payload["job_recovery"]["counts"]["total"], 0)
         self.assertIn("environment_files", payload["excluded_sensitive_material"])
         for forbidden in (
             "OPENAI_API_KEY",

@@ -4,7 +4,8 @@ param(
     [switch]$LocalDevelopment,
     [switch]$AllowDirtyWorkingTree,
     [switch]$SkipAutomatedTests,
-    [switch]$SkipSmoke
+    [switch]$SkipSmoke,
+    [switch]$SkipPerformance
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,6 +76,25 @@ $smokeResult.checked_at = (Get-Date).ToUniversalTime().ToString("o")
     [Text.UTF8Encoding]::new($false)
 )
 
+$performancePath = Join-Path $evidenceDir "performance-baseline.json"
+if ($SkipPerformance) {
+    $performance = [ordered]@{ schema_version = "1.0"; status = "skipped" }
+    [IO.File]::WriteAllText($performancePath, ($performance | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+} else {
+    $performanceParameters = @{
+        EnvFile = $EnvFile
+        LocalDevelopment = $LocalDevelopment
+        Json = $true
+        OutputPath = $performancePath
+    }
+    $performanceJson = (& (Join-Path $PSScriptRoot "demo-performance.ps1") @performanceParameters | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw "Performance baseline gate failed." }
+    $performance = $performanceJson | ConvertFrom-Json
+    if ($performance.status -ne "passed" -or $performance.redaction.secrets_included -or $performance.redaction.urls_included) {
+        throw "Performance evidence failed or violated its redaction contract."
+    }
+}
+
 $composeArgs = @(Get-DemoComposeArgs -EnvPath (Join-Path $repoRoot $EnvFile) -LocalDevelopment:$LocalDevelopment)
 Push-Location -LiteralPath $repoRoot
 try {
@@ -99,6 +119,7 @@ $uat = @"
 - Mode: $($status.mode)
 - Automated tests: $($testResult.status)
 - Running-stack smoke: $($smokeResult.status)
+- Performance baseline: $($performance.status)
 - Curated CAD: $($snapshot.datasets.curated_cad.ready)/$($snapshot.datasets.curated_cad.expected)
 - MCP tools: $($status.mcp.tool_count)
 - External Sites/ChatGPT UAT: $externalState
@@ -140,10 +161,12 @@ $releaseManifest = [ordered]@{
     working_tree_clean = $status.git.clean
     automated_tests = $testResult.status
     smoke = $smokeResult.status
+    performance = $performance.status
     external_uat = $externalState
     live_provider_uat = $liveProviderState
     release_candidate = (
         $testResult.status -eq "passed" -and $smokeResult.status -eq "passed" -and
+        $performance.status -eq "passed" -and
         $status.git.clean -and -not $LocalDevelopment
     )
     files = $evidenceFiles

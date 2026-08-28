@@ -52,6 +52,7 @@ from .hmi import (
     review_hmi_fields,
 )
 from .ingestion import UploadValidationError, create_upload_records
+from .job_recovery import stale_job_snapshot
 from .knowledge import (
     AUTHORITY_LEVELS,
     DOCUMENT_TYPES,
@@ -170,6 +171,7 @@ class DemoStatusView(APIView):
                     ).count(),
                 },
                 "assistant_provider": get_assistant_provider().health().payload(),
+                "job_recovery": stale_job_snapshot(),
                 "data_scope": "public_demo",
             }
         )

@@ -52,3 +52,8 @@ Stage 16 Phase A adds unified Demo operations, secret-free status/evidence, chec
 artifact backup, an isolated restore drill, Qdrant recovery and a backup-first operations reset.
 See
 [`docs/development/stage-16-operations-uat-phase-a.md`](docs/development/stage-16-operations-uat-phase-a.md).
+
+Stage 16 Phase B adds explicit core/external/optional readiness, live Celery worker checks, bounded
+and audited stale-job recovery, and a sanitized HTTP/concurrency/queue performance baseline that is
+included in acceptance evidence. See
+[`docs/development/stage-16-operations-uat-phase-b.md`](docs/development/stage-16-operations-uat-phase-b.md).

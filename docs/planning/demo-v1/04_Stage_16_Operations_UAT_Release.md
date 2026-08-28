@@ -1,6 +1,6 @@
 # Stage 16 — Demo Operations, Security, UAT and v1.0 Release
 
-- 狀態：Phase A implemented（local operations/backup/restore/reset/evidence）；external release gates pending
+- 狀態：Phase A implemented；Phase B readiness/stale-job/performance baseline implemented；manual external release gates pending
 - 優先級：P0
 - 前置：Stage 13–15 完成
 - 出口：可在全新 Windows host 重建、操作、重置、驗收並交付 Demo v1.0
@@ -345,10 +345,30 @@ curated fixtures、canonical Process/CAE、rule profiles 與既有 113 個 Audit
 尚未完成並保留為後續 Phase B：
 
 - `datasets` 與 `full-demo-volume` reset modes。
-- worker stale-job recovery policy 與 fault-injection automation。
-- performance p50/p95/resource baseline。
+- automated Qdrant/Quick Tunnel fault-injection 與 CAD/Similarity hardware microbenchmark。
 - owner-only Sites 的不同網路 UAT、ChatGPT account/workspace MCP UAT。
 - opt-in paid OpenAI live UAT、正式 sanitized evidence review 與 `1.0.0-demo` tag。
 
 操作細節見
 [Stage 16 Phase A operations](../../development/stage-16-operations-uat-phase-a.md)。
+
+## 13. Phase B implementation evidence（2026-08-28）
+
+- `demo-status.ps1` 現在顯示 dependency、兩個 Celery worker、全部 canonical dataset counts、
+  core/external/optional readiness、Sites/Quick Tunnel、MCP deep link、Secure MCP Tunnel 與 client process。
+- 新增 `recover_stale_jobs` dry-run/confirmed apply 命令；queued job 可重派、running job 依 attempt policy
+  重派或以 typed error fail，且 applied run 會新增 Audit Event。
+- Release snapshot 與 Demo status API 包含不含 Job ID 的 stale-job counts/policy。
+- 新增 `demo-performance.ps1`，記錄五組 API p50/p95、三個 concurrent sessions 與五個 queued jobs，
+  且不保存 URL、token 或 key。
+- `demo-acceptance.ps1` 預設執行 performance gate 並將結果納入 checksummed evidence manifest；
+  performance skipped/failed 不得成為 release candidate。
+
+本次外部 Sites Demo 實測：五組 API 各 10 samples 零錯誤，p95 約 110–366 ms；三個 concurrent
+sessions 全數成功，五個 queued jobs 全數完成。數值僅為此 Windows/Docker host 的 Demo baseline，
+不是企業容量承諾。
+
+仍未完成：datasets/full-volume reset、Qdrant/Quick Tunnel automated fault injection、CAD parse/similarity
+hardware microbenchmark、不同網路與 ChatGPT workspace manual UAT、optional live provider UAT 與
+`1.0.0-demo` tag。操作細節見
+[Stage 16 Phase B operations](../../development/stage-16-operations-uat-phase-b.md)。

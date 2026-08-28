@@ -255,3 +255,14 @@ versioned HMI image + fixed Demo profile
 -> explicit human confirmation/correction gate
 -> versioned XLSX with reviewed values and lineage
 ```
+
+## Implemented Demo operations and recovery
+
+```text
+service/dependency + Celery worker + dataset + external/MCP readiness
+-> explicit core/external/optional status
+-> dry-run stale-job inspection
+-> confirmed requeue or typed terminal failure
+-> audited recovery evidence
+-> bounded HTTP/concurrency/queue performance baseline
+```

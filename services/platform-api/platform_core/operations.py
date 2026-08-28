@@ -9,6 +9,7 @@ from .assistant_providers import get_assistant_provider
 from .cad_fixtures import curated_cad_status
 from .design_review import get_demo_rule_profile
 from .health import collect_readiness
+from .job_recovery import stale_job_snapshot
 from .models import (
     Artifact,
     ArtifactVersion,
@@ -79,6 +80,7 @@ def release_snapshot_payload() -> dict[str, object]:
             "artifact_versions": artifact_versions.count(),
             "jobs": Job.objects.count(),
         },
+        "job_recovery": stale_job_snapshot(),
         "artifact_manifest": [
             {
                 "artifact_id": str(version.artifact_id),

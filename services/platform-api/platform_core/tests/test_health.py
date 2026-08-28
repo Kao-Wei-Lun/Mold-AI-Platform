@@ -73,3 +73,4 @@ class HealthEndpointTests(TestCase):
         self.assertEqual(body["data_scope"], "public_demo")
         self.assertEqual(body["demo_data"]["indexed_knowledge_documents"], 0)
         self.assertIn("assistant_provider", body)
+        self.assertEqual(body["job_recovery"]["counts"]["total"], 0)
