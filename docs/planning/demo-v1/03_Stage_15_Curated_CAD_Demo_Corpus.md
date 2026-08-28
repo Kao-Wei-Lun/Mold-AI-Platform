@@ -1,6 +1,6 @@
 # Stage 15 — Curated CAD Demo Corpus and Golden Scenarios
 
-- 狀態：Planned
+- 狀態：Implementation complete（running-stack UAT 併入 Stage 16）
 - 優先級：P0
 - 前置：Stage 2–4 CAD/Similarity/Review contracts
 - 出口：全新環境可重複 seed 一套獨立、治理、可預測的 CAD Demo corpus
@@ -285,3 +285,26 @@ test(cad): add golden similarity and review scenarios
 feat(web): add explicit curated CAD guided flow
 docs: add corpus provenance and operator guide
 ```
+
+## 14. Implementation evidence（2026-08-28）
+
+Stage 15 已實作 16 個正常 synthetic STL fixtures 與 2 個隔離 error controls，dataset
+version 為 `2026.08.1`。Manifest 保存 generator、provenance、license、fixture role、scenario、
+expected geometry、Golden contract 與每個重建檔案的 SHA-256。
+
+已完成：
+
+- `seed_cad_demo` 與 read-only `--verify-only`，包含 fresh、idempotent replay 與部分
+  FeatureSet reconciliation。
+- 兩組 query、strong、usable、negative ranking group invariants；驗證 query self exclusion。
+- Rib/draft 的 PASS、FAIL、boundary、NOT_EVALUATED 四組 deterministic review scenarios。
+- `curated-cad-demo-v1`、`curated-cad-demo-errors-v1`、`automated-cad-smoke-v1`、
+  `manual-cad-upload-v1` 分離；一般 catalog 預設排除 smoke artifacts。
+- API 回傳 fixture source/provenance，Demo Status 回傳 expected/ready/indexed/reconciled。
+- Web 提供明確的「Load curated Demo queries」流程，只顯示 query role，且載入後不會
+  自動啟用任何 artifact。
+- smoke script 上傳與 search filter 均改用 `automated-cad-smoke-v1`。
+
+操作、故障排除與驗證命令見
+[Stage 15 operations](../../development/stage-15-curated-cad-corpus.md)。Fresh-volume、實際
+Qdrant、Web→Similarity→Review 與 ChatGPT MCP 的整體 UAT 留在 Stage 16 release gate。

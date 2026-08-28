@@ -41,3 +41,9 @@ service endpoints, and implementation boundaries.
 
 Stage 13 implements stable, versioned ChatGPT-to-Web deep links through the owner-only Sites
 portal. See [`docs/development/stage-13-web-deep-links.md`](docs/development/stage-13-web-deep-links.md).
+
+Stage 14 adds the grounded OpenAI Responses provider with deterministic fallback. Stage 15 adds a
+versioned 16-model synthetic CAD corpus, two isolated error controls, reproducible checksums,
+idempotent reconciliation, Golden Similarity/Design Review scenarios, smoke dataset isolation and
+an explicit curated-query Web flow. See
+[`docs/development/stage-15-curated-cad-corpus.md`](docs/development/stage-15-curated-cad-corpus.md).

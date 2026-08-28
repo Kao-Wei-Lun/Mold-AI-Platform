@@ -17,6 +17,7 @@ from platform_core.mcp_gateway import (
     list_knowledge_documents,
     run_design_review,
     search_process_trial_cases,
+    search_similar_molds,
 )
 
 JOB_ID = "11111111-1111-4111-8111-111111111111"
@@ -209,6 +210,30 @@ class MCPGatewayTests(SimpleTestCase):
 
         self.assertEqual(result.domain_result["job_id"], JOB_ID)
         self.assertIn(REVIEW_ID, result.links["ui"])
+
+    def test_similarity_tool_defaults_to_the_curated_cad_dataset(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content)
+            self.assertEqual(payload["filters"]["dataset_ids"], ["curated-cad-demo-v1"])
+            return httpx.Response(
+                202,
+                json={
+                    "schema_version": "1.0",
+                    "status": "accepted",
+                    "search_id": SEARCH_ID,
+                    "job_id": JOB_ID,
+                },
+            )
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            result = asyncio.run(search_similar_molds("artifact-version-1"))
+
+        self.assertEqual(result.domain_result["search_id"], SEARCH_ID)
 
     def test_job_tool_returns_canonical_result_and_absolute_deep_link(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from platform_core.cad_fixtures import seed_curated_cad_demo
 from platform_core.cae_connectors import seed_demo_cae_studies
 from platform_core.knowledge_fixtures import seed_demo_knowledge
 from platform_core.process_connectors import seed_demo_process_trials
@@ -12,12 +13,14 @@ class Command(BaseCommand):
         knowledge = seed_demo_knowledge()
         process = seed_demo_process_trials()
         cae = seed_demo_cae_studies()
+        cad = seed_curated_cad_demo()
         self.stdout.write(
             self.style.SUCCESS(
                 "Demo data ready: "
                 f"knowledge={knowledge.indexed}, "
                 f"process={process.created + process.existing}, "
                 f"cae={cae.created + cae.existing}, "
+                f"cad={cad.created + cad.existing}, "
                 f"relabeled_smoke={knowledge.relabeled_smoke_documents}"
             )
         )

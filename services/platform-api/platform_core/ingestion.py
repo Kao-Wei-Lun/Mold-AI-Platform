@@ -111,6 +111,8 @@ def create_upload_records(
     product_type: str = "",
     material_code: str = "",
     idempotency_key: str | None = None,
+    source_system: str = "upload",
+    source_context: dict[str, object] | None = None,
 ) -> UploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
@@ -150,7 +152,7 @@ def create_upload_records(
                 size_bytes=upload.size,
                 sha256=sha256,
                 storage_key=storage_key,
-                source_system="upload",
+                source_system=(source_system.strip() or "upload")[:128],
                 classification=artifact.classification,
                 malware_status=ArtifactVersion.MalwareStatus.BASIC_SCREENED,
             )
@@ -167,6 +169,7 @@ def create_upload_records(
                     "artifact_version_id": str(version.id),
                     "sha256": version.sha256,
                     "format": version.format,
+                    "source": source_context or {"type": "manual_upload"},
                 },
                 idempotency_key=normalized_key,
             )

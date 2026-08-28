@@ -126,8 +126,14 @@ def job_payload(job: Job) -> dict[str, object]:
 def artifact_payload(artifact: Artifact) -> dict[str, object]:
     versions = list(artifact.versions.all())
     jobs = []
+    source: dict[str, object] | None = None
     for version in versions:
-        jobs.extend(job_payload(job) for job in version.input_jobs.all())
+        for job in version.input_jobs.all():
+            jobs.append(job_payload(job))
+            if job.capability_id == "cad.parse" and isinstance(job.input_snapshot, dict):
+                candidate = job.input_snapshot.get("source")
+                if isinstance(candidate, dict):
+                    source = candidate
     return {
         "artifact_id": str(artifact.id),
         "name": artifact.name,
@@ -137,6 +143,7 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "product_type": artifact.product_type,
         "material_code": artifact.material_code,
         "created_at": artifact.created_at.isoformat(),
+        "source": source,
         "versions": [artifact_version_payload(version) for version in versions],
         "jobs": jobs,
     }

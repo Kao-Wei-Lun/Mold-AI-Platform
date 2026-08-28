@@ -13,6 +13,11 @@ from rest_framework.views import APIView
 
 from .assistant import AssistantValidationError, create_assistant_response
 from .assistant_providers import get_assistant_provider
+from .cad_fixtures import (
+    AUTOMATED_CAD_SMOKE_DATASET,
+    MANUAL_CAD_DATASET,
+    curated_cad_status,
+)
 from .cae import (
     CAEValidationError,
     cae_study_payload,
@@ -150,6 +155,7 @@ class DemoStatusView(APIView):
                 "status": readiness["status"],
                 "services": readiness["services"],
                 "demo_data": {
+                    "curated_cad": curated_cad_status(),
                     "indexed_knowledge_documents": KnowledgeDocument.objects.filter(
                         ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
                         classification="public_demo",
@@ -359,8 +365,14 @@ class CADArtifactListCreateView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request: Request) -> Response:
+        dataset_id = request.query_params.get("dataset_id", "").strip()
+        artifacts = Artifact.objects.filter(kind=Artifact.Kind.CAD_SOURCE)
+        if dataset_id:
+            artifacts = artifacts.filter(dataset_id=dataset_id[:128])
+        else:
+            artifacts = artifacts.exclude(dataset_id=AUTOMATED_CAD_SMOKE_DATASET)
         artifacts = (
-            Artifact.objects.filter(kind=Artifact.Kind.CAD_SOURCE)
+            artifacts
             .prefetch_related(
                 "versions__input_jobs",
                 "versions__cad_model__preview_artifact_version",
@@ -395,7 +407,7 @@ class CADArtifactListCreateView(APIView):
             records = create_upload_records(
                 upload,
                 artifact_name=str(request.data.get("artifact_name", "")),
-                dataset_id=str(request.data.get("dataset_id", "public-demo-v1")),
+                dataset_id=str(request.data.get("dataset_id", MANUAL_CAD_DATASET)),
                 product_type=str(request.data.get("product_type", "")),
                 material_code=str(request.data.get("material_code", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,

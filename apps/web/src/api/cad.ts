@@ -79,6 +79,14 @@ export type CADArtifactSummary = {
   product_type: string;
   material_code: string;
   created_at: string;
+  source: {
+    type: string;
+    fixture_id?: string;
+    role?: string;
+    scenario?: string;
+    rank_group?: string;
+    dataset_version?: string;
+  } | null;
   jobs: CADJob[];
 };
 
@@ -123,8 +131,9 @@ export async function fetchCADJob(jobId: string): Promise<CADJob> {
   return (await response.json()) as CADJob;
 }
 
-export async function fetchRecentCAD(): Promise<CADArtifactSummary[]> {
-  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
+export async function fetchRecentCAD(datasetId?: string): Promise<CADArtifactSummary[]> {
+  const query = datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : "";
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts${query}`, {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await errorMessage(response));

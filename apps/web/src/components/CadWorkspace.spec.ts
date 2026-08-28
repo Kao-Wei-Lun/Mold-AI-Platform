@@ -134,6 +134,7 @@ describe("CadWorkspace", () => {
               product_type: "housing",
               material_code: "PC_ABS",
               created_at: "2026-08-26T00:00:00Z",
+              source: null,
               jobs: [
                 {
                   schema_version: "1.0",
@@ -191,10 +192,94 @@ describe("CadWorkspace", () => {
     await wrapper.get(".recent-cad-loader > button").trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("Existing housing");
+    await wrapper.get(".recent-cad-loader select").setValue("job-existing");
     await wrapper.get(".recent-cad-loader button:last-child").trigger("click");
 
     expect(wrapper.emitted("ready")?.[0]?.[0]).toMatchObject({
       artifact_version_id: "version-existing",
+    });
+  });
+
+  it("loads only curated query roles and requires explicit activation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        schema_version: "1.0",
+        items: [
+          {
+            artifact_id: "artifact-query",
+            name: "SIM-A Query Housing",
+            kind: "cad_source",
+            classification: "public_demo",
+            dataset_id: "curated-cad-demo-v1",
+            product_type: "housing",
+            material_code: "PC_ABS",
+            created_at: "2026-08-28T00:00:00Z",
+            source: { type: "curated_fixture", fixture_id: "sim-a-query", role: "query", scenario: "SIM-A" },
+            jobs: [
+              {
+                schema_version: "1.0",
+                job_id: "job-query",
+                capability: "cad.parse@1.0.0",
+                state: "succeeded",
+                stage: "completed",
+                progress: 100,
+                attempt: 1,
+                artifact_version_id: "version-query",
+                correlation_id: "correlation-query",
+                error: null,
+                result: {
+                  cad_model_id: "cad-query",
+                  artifact_version_id: "version-query",
+                  cad_format: "stl",
+                  unit_system: "unknown",
+                  parser: { name: "trimesh", version: "4.12.2" },
+                  geometry_status: "succeeded",
+                  bounding_box: {
+                    min: { x: 0, y: 0, z: 0 },
+                    max: { x: 20, y: 12, z: 6 },
+                    size: { x: 20, y: 12, z: 6 },
+                  },
+                  volume: 1440,
+                  surface_area: 864,
+                  face_count: 12,
+                  edge_count: 18,
+                  surface_type_histogram: { triangle: 12 },
+                  quality_flags: ["UNIT_UNCERTAIN"],
+                  preview: { download_url: "/preview-query" },
+                  similarity_index: { status: "indexed" },
+                },
+              },
+            ],
+          },
+          {
+            artifact_id: "artifact-candidate",
+            name: "SIM-A Strong 1",
+            dataset_id: "curated-cad-demo-v1",
+            source: { type: "curated_fixture", role: "candidate", scenario: "SIM-A" },
+            jobs: [],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
+
+    await wrapper.findAll(".recent-cad-loader > button")[1].trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("dataset_id=curated-cad-demo-v1"),
+      expect.anything(),
+    );
+    expect(wrapper.text()).toContain("SIM-A Query Housing");
+    expect(wrapper.text()).not.toContain("SIM-A Strong 1");
+    expect(wrapper.emitted("ready")).toBeUndefined();
+    expect(wrapper.get(".recent-cad-loader button:last-child").attributes("disabled")).toBeDefined();
+
+    await wrapper.get(".recent-cad-loader select").setValue("job-query");
+    await wrapper.get(".recent-cad-loader button:last-child").trigger("click");
+    expect(wrapper.emitted("ready")?.[0]?.[0]).toMatchObject({
+      artifact_version_id: "version-query",
     });
   });
 });

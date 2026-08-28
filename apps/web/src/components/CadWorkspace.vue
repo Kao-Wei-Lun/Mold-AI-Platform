@@ -9,7 +9,7 @@ const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const selectedFile = ref<File | null>(null);
 const artifactName = ref("");
-const datasetId = ref("public-demo-v1");
+const datasetId = ref("manual-cad-upload-v1");
 const productType = ref("");
 const materialCode = ref("");
 const uploading = ref(false);
@@ -19,6 +19,7 @@ const job = ref<CADJob | null>(null);
 const recentJobs = ref<Array<{ job: CADJob; label: string }>>([]);
 const selectedRecentJobId = ref("");
 const loadingRecent = ref(false);
+const catalogLabel = ref("recent processed CAD");
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
@@ -84,25 +85,27 @@ async function submit(): Promise<void> {
   }
 }
 
-async function browseRecent(): Promise<void> {
+async function browseRecent(curated = false): Promise<void> {
   loadingRecent.value = true;
   error.value = null;
   try {
-    const artifacts = await fetchRecentCAD();
+    const artifacts = await fetchRecentCAD(curated ? "curated-cad-demo-v1" : undefined);
+    catalogLabel.value = curated ? "curated Demo queries" : "recent processed CAD";
     recentJobs.value = artifacts.flatMap((artifact) =>
       artifact.jobs
         .filter(
           (candidate) =>
             candidate.capability.startsWith("cad.parse@") &&
             candidate.state === "succeeded" &&
-            candidate.result?.similarity_index?.status === "indexed",
+            candidate.result?.similarity_index?.status === "indexed" &&
+            (!curated || artifact.source?.role === "query"),
         )
         .map((candidate) => ({
           job: candidate,
-          label: `${artifact.name} · ${artifact.dataset_id}`,
+          label: `${artifact.name} · ${artifact.source?.scenario || artifact.dataset_id}`,
         })),
     );
-    selectedRecentJobId.value = recentJobs.value[0]?.job.job_id || "";
+    selectedRecentJobId.value = "";
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "Unable to load recent CAD artifacts.";
   } finally {
@@ -134,19 +137,23 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="recent-cad-loader">
-      <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent">
+      <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent(false)">
         {{ loadingRecent ? "Loading..." : "Browse recent processed CAD" }}
+      </button>
+      <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent(true)">
+        Load curated Demo queries
       </button>
       <template v-if="recentJobs.length">
         <label>
-          <span>Indexed CAD artifact</span>
+          <span>Select {{ catalogLabel }}</span>
           <select v-model="selectedRecentJobId">
+            <option value="" disabled>Choose a CAD query</option>
             <option v-for="candidate in recentJobs" :key="candidate.job.job_id" :value="candidate.job.job_id">
               {{ candidate.label }}
             </option>
           </select>
         </label>
-        <button type="button" @click="activateRecent">Use as query</button>
+        <button type="button" :disabled="!selectedRecentJobId" @click="activateRecent">Use as query</button>
       </template>
       <span v-else-if="!loadingRecent" class="muted">Or upload a new STEP/STL below.</span>
     </div>

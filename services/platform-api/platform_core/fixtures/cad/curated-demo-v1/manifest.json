@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "curated-cad-demo-v1",
+  "dataset_version": "2026.08.1",
+  "generator": {
+    "name": "mold-demo-fixture-generator",
+    "version": "1.0.0",
+    "algorithm": "deterministic-ascii-stl-boxes-v1"
+  },
+  "provenance": {
+    "source": "programmatically generated synthetic geometry",
+    "license": "CC0-1.0",
+    "classification": "public_demo",
+    "engineering_use": "demonstration and automated verification only"
+  },
+  "fixtures": [
+    {"id":"sim-a-query","name":"SIM-A Query Housing","filename":"sim-a-query.stl","role":"query","scenario":"SIM-A","rank_group":"query","product_type":"housing","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[20,12,6]}],"expected":{"bbox_size":[20,12,6],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"d851001216e432b75a6f148761fa489ffb5de83f681dea0d3cfc451871004969"},
+    {"id":"sim-a-strong-1","name":"SIM-A Strong 1","filename":"sim-a-strong-1.stl","role":"candidate","scenario":"SIM-A","rank_group":"strong","product_type":"housing","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[20.5,12,6]}],"expected":{"bbox_size":[20.5,12,6],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"74b2a1280fc997ebee31e0d24fe1ed73defa602c2220ca99c7e14a9f5d78b44a"},
+    {"id":"sim-a-strong-2","name":"SIM-A Strong 2","filename":"sim-a-strong-2.stl","role":"candidate","scenario":"SIM-A","rank_group":"strong","product_type":"housing","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[19.5,12.2,6.1]}],"expected":{"bbox_size":[19.5,12.2,6.1],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"a883055ea3b4195ab4ab3352bfcd1b429950848a832b879dea8d075cd327fa8c"},
+    {"id":"sim-a-usable-1","name":"SIM-A Usable 1","filename":"sim-a-usable-1.stl","role":"candidate","scenario":"SIM-A","rank_group":"usable","product_type":"housing","material_code":"ABS","boxes":[{"origin":[0,0,0],"size":[24,14,7]}],"expected":{"bbox_size":[24,14,7],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"c5ade1fa7307f5e1176ac1978d301c186fd2e99d890d44082637b773995760c5"},
+    {"id":"sim-a-usable-2","name":"SIM-A Usable 2","filename":"sim-a-usable-2.stl","role":"candidate","scenario":"SIM-A","rank_group":"usable","product_type":"housing","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[18,10,8]}],"expected":{"bbox_size":[18,10,8],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"13905f9dc6e7dbe7751ad71766d3200bf8c30678d020546bd2f1367f5b910e18"},
+    {"id":"sim-a-negative-1","name":"SIM-A Negative Plate","filename":"sim-a-negative-1.stl","role":"negative_control","scenario":"SIM-A","rank_group":"negative","product_type":"plate","material_code":"PP","boxes":[{"origin":[0,0,0],"size":[50,5,3]}],"expected":{"bbox_size":[50,5,3],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"8e7145b0bc243ce3fd7c8369f57808a2995e374c8dce2572af90cb5ace0b3efd"},
+    {"id":"sim-a-negative-2","name":"SIM-A Negative Tower","filename":"sim-a-negative-2.stl","role":"negative_control","scenario":"SIM-A","rank_group":"negative","product_type":"tower","material_code":"PA66","boxes":[{"origin":[0,0,0],"size":[8,8,24]}],"expected":{"bbox_size":[8,8,24],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"ff1285e2fb43ffc1c0bb0fa590df5cd409140411d464c307921bcb386af30d57"},
+    {"id":"sim-b-query","name":"SIM-B Query Twin Cavity","filename":"sim-b-query.stl","role":"query","scenario":"SIM-B","rank_group":"query","product_type":"twin_cavity","material_code":"POM","boxes":[{"origin":[0,0,0],"size":[10,14,8]},{"origin":[12,0,0],"size":[10,14,8]}],"expected":{"bbox_size":[22,14,8],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"5a9bff749627eb246877c1dbade82dfdc53cc3899c6bdac221ab46a9cdc3c3e1"},
+    {"id":"sim-b-strong-1","name":"SIM-B Strong 1","filename":"sim-b-strong-1.stl","role":"candidate","scenario":"SIM-B","rank_group":"strong","product_type":"twin_cavity","material_code":"POM","boxes":[{"origin":[0,0,0],"size":[10.2,14,8]},{"origin":[12.2,0,0],"size":[10.2,14,8]}],"expected":{"bbox_size":[22.4,14,8],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"751aae25dd76a1b8c360460748a25049785dbc62d092eb5d70bab04c8680f036"},
+    {"id":"sim-b-strong-2","name":"SIM-B Strong 2","filename":"sim-b-strong-2.stl","role":"candidate","scenario":"SIM-B","rank_group":"strong","product_type":"twin_cavity","material_code":"POM","boxes":[{"origin":[0,0,0],"size":[9.8,13.8,8.2]},{"origin":[11.8,0,0],"size":[9.8,13.8,8.2]}],"expected":{"bbox_size":[21.6,13.8,8.2],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"e17a74462979ec8ee3cf417f3baf4b72e59bde38f4825899691cc41e89c63883"},
+    {"id":"sim-b-usable-1","name":"SIM-B Usable 1","filename":"sim-b-usable-1.stl","role":"candidate","scenario":"SIM-B","rank_group":"usable","product_type":"twin_cavity","material_code":"POM","boxes":[{"origin":[0,0,0],"size":[22,14,8]}],"expected":{"bbox_size":[22,14,8],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"6ab1df67eb6571ea818162a5aed01910c39fafff38c09782b49108b2548ec39d"},
+    {"id":"sim-b-usable-2","name":"SIM-B Usable 2","filename":"sim-b-usable-2.stl","role":"candidate","scenario":"SIM-B","rank_group":"usable","product_type":"twin_cavity","material_code":"POM","boxes":[{"origin":[0,0,0],"size":[8,14,8]},{"origin":[10,0,0],"size":[8,14,8]},{"origin":[20,0,0],"size":[8,14,8]}],"expected":{"bbox_size":[28,14,8],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"5549f2a59274738402f96c705fb63bf1a122d03f7d73afae6f5e95a4087af8f8"},
+    {"id":"sim-b-negative-1","name":"SIM-B Negative Plate","filename":"sim-b-negative-1.stl","role":"negative_control","scenario":"SIM-B","rank_group":"negative","product_type":"plate","material_code":"PP","boxes":[{"origin":[0,0,0],"size":[40,30,2]}],"expected":{"bbox_size":[40,30,2],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"0c779380b9ceeb07b5756a8c9643332d19150a7cdfad09613ac42b7e18da1689"},
+    {"id":"sim-b-negative-2","name":"SIM-B Negative Cube","filename":"sim-b-negative-2.stl","role":"negative_control","scenario":"SIM-B","rank_group":"negative","product_type":"cube","material_code":"PA66","boxes":[{"origin":[0,0,0],"size":[12,12,12]}],"expected":{"bbox_size":[12,12,12],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"f68731c3c74794c45ebe318e1f89c08b8987ffbe20e05bcbd5553107530cda7b"},
+    {"id":"review-reference-pass","name":"Review Reference PASS","filename":"review-reference-pass.stl","role":"review_reference","scenario":"REVIEW","rank_group":"reference","product_type":"review_coupon","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[20,10,5]}],"expected":{"bbox_size":[20,10,5],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"68f57a926bfc1f3a14d91714a3253ca6e90975ee48baf056bd03fc5ec9d02137"},
+    {"id":"review-reference-boundary","name":"Review Reference Boundary","filename":"review-reference-boundary.stl","role":"review_reference","scenario":"REVIEW","rank_group":"reference","product_type":"review_coupon","material_code":"PC_ABS","boxes":[{"origin":[0,0,0],"size":[18,9,4.5]}],"expected":{"bbox_size":[18,9,4.5],"required_flags":["UNIT_UNCERTAIN"]},"sha256":"0f953b4b6feb0b21730bb638a05facb34352f59b4cfbbed4dacc57f216396e66"}
+  ],
+  "error_controls": [
+    {"id":"error-open-shell","name":"Error Control Open Shell","filename":"error-open-shell.stl","expected_error":"OPEN_SHELL","dataset_id":"curated-cad-demo-errors-v1","generator":"open_box","size":[10,8,4],"sha256":"1efb6fb46472408a733d78509341de6512f6967777b9915ba880ed947c18e9a4"},
+    {"id":"error-invalid-signature","name":"Error Control Invalid Signature","filename":"error-invalid-signature.stl","expected_error":"VALIDATION_FILE_SIGNATURE","dataset_id":"curated-cad-demo-errors-v1","generator":"invalid_signature","sha256":"65f7a197eb237610ab42180e63756ec857ee126bca136e1f95a79b753d293f1d"}
+  ],
+  "golden_similarity": [
+    {"scenario":"SIM-A","query_id":"sim-a-query","required_group_order":["strong","usable","negative"]},
+    {"scenario":"SIM-B","query_id":"sim-b-query","required_group_order":["strong","usable","negative"]}
+  ],
+  "golden_design_review": [
+    {"scenario":"PASS","fixture_id":"review-reference-pass","context":{"nominal_wall_thickness_mm":2.0,"max_rib_thickness_mm":1.0,"minimum_draft_angle_deg":2.0},"expected":{"DEMO-RIB-RATIO-012":"PASS","DEMO-DRAFT-MIN-013":"PASS"}},
+    {"scenario":"FAIL","fixture_id":"review-reference-pass","context":{"nominal_wall_thickness_mm":2.0,"max_rib_thickness_mm":1.5,"minimum_draft_angle_deg":0.5},"expected":{"DEMO-RIB-RATIO-012":"FAIL","DEMO-DRAFT-MIN-013":"FAIL"}},
+    {"scenario":"BOUNDARY","fixture_id":"review-reference-boundary","context":{"nominal_wall_thickness_mm":2.0,"max_rib_thickness_mm":1.2,"minimum_draft_angle_deg":1.0},"expected":{"DEMO-RIB-RATIO-012":"PASS","DEMO-DRAFT-MIN-013":"PASS"}},
+    {"scenario":"NOT_EVALUATED","fixture_id":"review-reference-boundary","context":{},"expected":{"DEMO-RIB-RATIO-012":"NOT_EVALUATED","DEMO-DRAFT-MIN-013":"NOT_EVALUATED"}}
+  ]
+}

@@ -218,7 +218,7 @@ async def search_similar_molds(
             "idempotency_key": f"mcp-sim-{uuid.uuid4()}",
             "query": {"cad_artifact_version_id": cad_artifact_version_id},
             "filters": {
-                "dataset_ids": dataset_ids or ["public-demo-v1"],
+                "dataset_ids": dataset_ids or ["curated-cad-demo-v1"],
                 "product_types": product_types or [],
                 "material_codes": material_codes or [],
             },

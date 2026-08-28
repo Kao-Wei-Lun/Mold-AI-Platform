@@ -97,6 +97,7 @@ try {
     $uploadJson = curl.exe --silent --show-error --fail `
         --form "file=@$cadFile;type=model/stl" `
         --form "artifact_name=Stage 2 smoke tetrahedron" `
+        --form "dataset_id=automated-cad-smoke-v1" `
         --form "idempotency_key=$idempotencyKey" `
         "http://localhost:8000/api/v1/cad-artifacts"
 
@@ -158,6 +159,7 @@ os._exit(0)
     $stepUploadJson = curl.exe --silent --show-error --fail `
         --form "file=@$stepFile;type=model/step" `
         --form "artifact_name=Stage 2 smoke STEP box" `
+        --form "dataset_id=automated-cad-smoke-v1" `
         --form "idempotency_key=stage2-step-smoke-$([guid]::NewGuid())" `
         "http://localhost:8000/api/v1/cad-artifacts"
     if ($LASTEXITCODE -ne 0) {
@@ -201,7 +203,7 @@ $similarityRequest = @{
     }
     profile = "demo-general@1.0"
     filters = @{
-        dataset_ids = @("public-demo-v1")
+        dataset_ids = @("automated-cad-smoke-v1")
     }
     top_k = 5
 } | ConvertTo-Json -Depth 5

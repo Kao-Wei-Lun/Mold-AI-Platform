@@ -88,7 +88,9 @@ The detailed implementation backlog is maintained in the
 
 - Stage 13: implemented; stable, token-safe ChatGPT-to-Web deep links (external ChatGPT UAT after deployment).
 - Stage 14: implementation complete; account-bound OpenAI live UAT remains for Stage 16 evidence.
-- Stage 15: an isolated curated CAD corpus with manifest, provenance, Golden scenarios, and seed reconciliation.
+- Stage 15: implementation complete; the isolated curated CAD corpus, manifest/checksums,
+  provenance, Golden scenarios, idempotent seed/verification and Web query picker are available.
+  Running-stack release evidence remains in Stage 16.
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
 - Stage 17: post-v1.0 Engineering Web design system and workflow-focused UI/UX improvement.
 
