@@ -20,6 +20,10 @@ Enterprise 版本將 Demo 的可替換資料與單機元件正式化，支援公
 
 ### 3.1 Identity and access
 
+帳號生命週期、本機 Demo 與 Enterprise 聯合身分、RBAC + ABAC、職責分離、Session、
+服務帳號及 MCP delegated identity 的詳細規格，見
+[12_Identity_Access_Account_Management_SRS.md](12_Identity_Access_Account_Management_SRS.md)。
+
 - **E-IAM-001**：應整合公司 OIDC/SAML SSO；使用穩定 subject ID，不以 email 作唯一外鍵。
 - **E-IAM-002**：應支援使用者、群組、角色與 attribute-based policy；至少可依 customer、supplier、business unit、project、confidentiality、data purpose 限制。
 - **E-IAM-003**：Service account、worker、connector 與人員帳號應分離，使用最小權限及可輪替 credential。

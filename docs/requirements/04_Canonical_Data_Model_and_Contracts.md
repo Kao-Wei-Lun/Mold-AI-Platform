@@ -1,5 +1,9 @@
 # 04 — Canonical Data Model 與 Data Contract
 
+完整 Web 資料管理、版本、狀態、匯入、封存及刪除政策另見
+[11_Data_Management_SRS.md](11_Data_Management_SRS.md)；身分與授權實體見
+[12_Identity_Access_Account_Management_SRS.md](12_Identity_Access_Account_Management_SRS.md)。
+
 ## 1. 目的
 
 Canonical Model 是 Public Demo Data 與 Company Data 之間的穩定邊界。Connector 負責來源解析與 mapping；Capability 只依賴 Canonical Contract，不直接讀取 ABC、PDM、MES 或特定資料表。

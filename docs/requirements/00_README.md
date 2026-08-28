@@ -27,6 +27,9 @@
 8. [資料 Connector、遷移與 Roadmap](08_Data_Connectors_Migration_Roadmap.md)：Public→Company Connector 切換、資料成熟度與分階段落地。
 9. [測試、評估與驗收](09_Test_Evaluation_Acceptance.md)：功能、效能、AI 指標、安全測試、驗收門檻與追溯矩陣。
 10. [介面與 Schema 範例](10_API_and_Schema_Examples.md)：Capability、Job、MCP Tool、UI Action、Similarity 與 Review 的 JSON 範例。
+11. [資料管理中心 SRS](11_Data_Management_SRS.md)：主檔、模具／CAD、規則、Trial、CAE、Knowledge、HMI、匯入匯出、版本、封存與完整受控管理。
+12. [帳號、身分與存取管理 SRS](12_Identity_Access_Account_Management_SRS.md)：本機帳號、Enterprise SSO、RBAC + ABAC、職責分離、Session、服務帳號及 MCP delegated identity。
+13. [資料管理與 IAM 實作、測試及驗收計畫](13_Data_Management_Implementation_Test_Acceptance.md)：分階段交付、Migration、測試矩陣、UAT、Git Gate、Release 與 Definition of Done。
 
 目前 Stage 12 之後的可執行開發順序、工作拆解、Gate、風險與 Web UI 改良計畫，另見
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。Planning 文件將本 SRS 的 MUST
@@ -45,6 +48,9 @@ requirements轉為Stage 13–17實作與驗收項目；若兩者衝突，以本�
 - `CAP-xxx`：AI Capability 共通需求。
 - `SEC/JOB/OPS-xxx`：安全、工作與營運需求。
 - `TST/ACC-xxx`：測試與驗收要求。
+- `DM-xxx`：資料管理、版本、匯入、封存與治理需求。
+- `IAM-xxx`：帳號、身分、認證、授權與存取稽核需求。
+- `UAT-DM/IAM-xxx`：資料管理與帳號存取的使用者驗收情境。
 
 所有百分比、延遲與準確率門檻皆是 **初始工程目標**；導入公司資料後，必須以 Golden Dataset、硬體基準與業務風險重新校準，不得宣稱為未經驗證的產品保證。
 
@@ -84,4 +90,4 @@ requirements轉為Stage 13–17實作與驗收項目；若兩者衝突，以本�
 
 ## 7. 建議使用方式
 
-第一次評審先讀 01、02、04、09；Demo 開發團隊再讀 05、06、07、10；資料與企業架構團隊以 03、04、07、08 為主。所有需求變更應更新需求 ID、變更紀錄與 09 的追溯矩陣。
+第一次評審先讀 01、02、04、09；Demo 開發團隊再讀 05、06、07、10；資料與企業架構團隊以 03、04、07、08、11、12 為主。要把工程資料改為 Web 可管理時，應先共同評審 11、12，再按 13 分階段實作。所有需求變更應更新需求 ID、變更紀錄及對應追溯矩陣。

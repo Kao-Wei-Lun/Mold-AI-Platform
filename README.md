@@ -13,6 +13,8 @@
 - Embedded Engineering Assistant、MCP Gateway、LLM Provider abstraction、UI Action Protocol
 - 權限、稽核、Lineage、安全、Job/Worker/Queue、部署
 - Public→Company Connector 切換、Roadmap、測試與驗收
+- 受控資料管理中心：主檔、模具／CAD、規則、Trial、CAE、Knowledge、HMI、匯入、版本與封存
+- 帳號與存取管理：Demo 本機帳號、Enterprise SSO、RBAC + ABAC、職責分離、Session 與服務帳號
 
 目前文件為 `0.9 Draft Baseline`；企業資料來源、實際 CAD/Moldflow 版本、相似度 Ground Truth、權限政策與正式效能門檻仍需在需求訪談與資料盤點後核准。
 
