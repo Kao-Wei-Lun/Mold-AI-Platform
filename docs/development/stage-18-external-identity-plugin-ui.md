@@ -29,6 +29,10 @@ Tunnel origin. It never prints the service credential.
 If no Platform Admin exists, keep the containers running and execute the one-time interactive
 bootstrap. The command accepts no password argument and does not store a default password:
 
+During this one-time state, API startup reports `ADMIN BOOTSTRAP PENDING`. This exception is
+accepted only when `local_admin_configured` is the sole failed quick-tunnel check; every other
+security failure still stops the container.
+
 ```powershell
 docker compose -f compose.yaml -f compose.sites-demo.yaml --env-file .env.sites-demo exec api `
   python manage.py bootstrap_local_admin --username <your-name>

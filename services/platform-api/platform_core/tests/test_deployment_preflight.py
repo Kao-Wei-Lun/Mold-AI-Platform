@@ -5,6 +5,7 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase, override_settings
 
 STRONG_TOKEN = "stage10-demo-token-0123456789abcdef"
+SERVICE_TOKEN = "mcp-service-token-0123456789abcdef"
 
 
 class DeploymentPreflightCommandTests(SimpleTestCase):
@@ -59,3 +60,45 @@ class DeploymentPreflightCommandTests(SimpleTestCase):
         call_command("deployment_preflight", "--profile", "quick-tunnel", "--strict", stdout=output)
 
         self.assertIn("Demo quick-tunnel: READY", output.getvalue())
+
+    @override_settings(
+        APP_ENV="external-demo",
+        QUICK_TUNNEL_MODE=True,
+        ALLOWED_HOSTS=[".trycloudflare.com", "api"],
+        DEMO_AUTH_MODE="local",
+        PLATFORM_SERVICE_TOKEN=SERVICE_TOKEN,
+        PLATFORM_SERVICE_TOKEN_SCOPES={"public-demo:read", "public-demo:write"},
+        DEBUG=False,
+        SECRET_KEY="quick-tunnel-secret-0123456789abcdef",
+        TRUST_PROXY_HEADERS=True,
+        SECURE_SSL_REDIRECT=True,
+        SESSION_COOKIE_SECURE=True,
+        CSRF_COOKIE_SECURE=True,
+        SECURE_HSTS_SECONDS=86400,
+    )
+    def test_quick_tunnel_can_start_for_one_time_local_admin_bootstrap(self) -> None:
+        output = StringIO()
+
+        call_command(
+            "deployment_preflight",
+            "--profile",
+            "quick-tunnel",
+            "--strict",
+            "--allow-local-admin-bootstrap",
+            stdout=output,
+        )
+
+        self.assertIn("Demo quick-tunnel: ADMIN BOOTSTRAP PENDING", output.getvalue())
+        self.assertIn("Failed checks: local_admin_configured", output.getvalue())
+
+    @override_settings(DEMO_AUTH_MODE="required")
+    def test_bootstrap_exception_never_bypasses_other_failed_checks(self) -> None:
+        with self.assertRaises(CommandError):
+            call_command(
+                "deployment_preflight",
+                "--profile",
+                "quick-tunnel",
+                "--strict",
+                "--allow-local-admin-bootstrap",
+                stdout=StringIO(),
+            )

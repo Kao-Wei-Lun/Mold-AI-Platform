@@ -2,7 +2,10 @@
 set -eu
 
 python manage.py migrate --noinput
-python manage.py deployment_preflight --profile quick-tunnel --strict
+python manage.py deployment_preflight \
+    --profile quick-tunnel \
+    --strict \
+    --allow-local-admin-bootstrap
 exec gunicorn mold_platform.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers "${GUNICORN_WORKERS:-3}" \
