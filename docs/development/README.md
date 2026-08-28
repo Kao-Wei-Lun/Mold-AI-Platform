@@ -91,6 +91,9 @@ The detailed implementation backlog is maintained in the
 - Stage 15: implementation complete; the isolated curated CAD corpus, manifest/checksums,
   provenance, Golden scenarios, idempotent seed/verification and Web query picker are available.
   Running-stack release evidence remains in Stage 16.
+- Stage 16 Phase A: unified start/status/stop, sanitized release snapshot/evidence, PostgreSQL plus
+  artifact backup, isolated restore drill, forced Qdrant rebuild and confirmed operations reset are
+  implemented. External/manual and final release gates remain Phase B.
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
 - Stage 17: post-v1.0 Engineering Web design system and workflow-focused UI/UX improvement.
 

@@ -15,9 +15,7 @@ CURATED_CAD_DATASET = "curated-cad-demo-v1"
 CURATED_CAD_ERROR_DATASET = "curated-cad-demo-errors-v1"
 AUTOMATED_CAD_SMOKE_DATASET = "automated-cad-smoke-v1"
 MANUAL_CAD_DATASET = "manual-cad-upload-v1"
-MANIFEST_PATH = (
-    Path(__file__).parent / "fixtures" / "cad" / "curated-demo-v1" / "manifest.json"
-)
+MANIFEST_PATH = Path(__file__).parent / "fixtures" / "cad" / "curated-demo-v1" / "manifest.json"
 
 
 class CADFixtureValidationError(RuntimeError):
@@ -45,9 +43,7 @@ def _number(value: float | int) -> str:
 
 def _triangle(name: str, vertices: list[tuple[float, float, float]]) -> list[str]:
     lines = ["  facet normal 0.000000 0.000000 0.000000", "    outer loop"]
-    lines.extend(
-        f"      vertex {_number(x)} {_number(y)} {_number(z)}" for x, y, z in vertices
-    )
+    lines.extend(f"      vertex {_number(x)} {_number(y)} {_number(z)}" for x, y, z in vertices)
     lines.extend(["    endloop", "  endfacet"])
     return lines
 
@@ -62,12 +58,18 @@ def _box_triangles(
     p001, p101 = (x, y, z + dz), (x + dx, y, z + dz)
     p011, p111 = (x, y + dy, z + dz), (x + dx, y + dy, z + dz)
     triangles = [
-        [p000, p110, p100], [p000, p010, p110],
-        [p001, p101, p111], [p001, p111, p011],
-        [p000, p100, p101], [p000, p101, p001],
-        [p010, p011, p111], [p010, p111, p110],
-        [p000, p001, p011], [p000, p011, p010],
-        [p100, p110, p111], [p100, p111, p101],
+        [p000, p110, p100],
+        [p000, p010, p110],
+        [p001, p101, p111],
+        [p001, p111, p011],
+        [p000, p100, p101],
+        [p000, p101, p001],
+        [p010, p011, p111],
+        [p010, p111, p110],
+        [p000, p001, p011],
+        [p000, p011, p010],
+        [p100, p110, p111],
+        [p100, p111, p101],
     ]
     return triangles[:2] + triangles[4:] if open_top else triangles
 
@@ -168,9 +170,11 @@ def _verify_geometry(version: ArtifactVersion, fixture: dict[str, object]) -> No
             raise CADFixtureValidationError(f"Fixture {fixture['id']} is missing {flag}.")
 
 
-def _ensure_indexed(version: ArtifactVersion, *, verify_only: bool) -> bool:
+def _ensure_indexed(
+    version: ArtifactVersion, *, verify_only: bool, force_reindex: bool = False
+) -> bool:
     feature = version.cad_model.feature_sets.filter(feature_type="cad_similarity").first()
-    if feature and feature.index_status == FeatureSet.IndexStatus.INDEXED:
+    if feature and feature.index_status == FeatureSet.IndexStatus.INDEXED and not force_reindex:
         return False
     if verify_only:
         raise CADFixtureValidationError(f"Fixture {version.id} is not indexed.")
@@ -239,7 +243,11 @@ def _verify_design_reviews(manifest: dict[str, object], *, verify_only: bool) ->
     return verified
 
 
-def seed_curated_cad_demo(*, verify_only: bool = False) -> CADSeedResult:
+def seed_curated_cad_demo(
+    *, verify_only: bool = False, force_reindex: bool = False
+) -> CADSeedResult:
+    if verify_only and force_reindex:
+        raise CADFixtureValidationError("--verify-only and forced reindex are mutually exclusive.")
     manifest, manifest_sha256 = load_cad_manifest()
     created = existing = reconciled = verified = error_verified = 0
     version_ids: list[str] = []
@@ -270,7 +278,9 @@ def seed_curated_cad_demo(*, verify_only: bool = False) -> CADSeedResult:
         if version.sha256 != fixture["sha256"]:
             raise CADFixtureValidationError(f"Stored checksum mismatch for {fixture['id']}.")
         _verify_geometry(version, fixture)
-        reconciled += int(_ensure_indexed(version, verify_only=verify_only))
+        reconciled += int(
+            _ensure_indexed(version, verify_only=verify_only, force_reindex=force_reindex)
+        )
         verified += 1
         version_ids.append(str(version.id))
 
@@ -337,9 +347,13 @@ def curated_cad_status() -> dict[str, object]:
         versions__source_system="curated-cad-generator",
     ).distinct()
     ready = artifacts.filter(versions__cad_model__geometry_status="succeeded").distinct().count()
-    indexed = artifacts.filter(
-        versions__cad_model__feature_sets__index_status=FeatureSet.IndexStatus.INDEXED
-    ).distinct().count()
+    indexed = (
+        artifacts.filter(
+            versions__cad_model__feature_sets__index_status=FeatureSet.IndexStatus.INDEXED
+        )
+        .distinct()
+        .count()
+    )
     return {
         "dataset_id": CURATED_CAD_DATASET,
         "dataset_version": manifest["dataset_version"],

@@ -1,0 +1,11 @@
+name: mold-ai-platform-restore-drill
+
+services:
+  api:
+    ports: !reset []
+
+  mcp-gateway:
+    ports: !reset []
+
+  web:
+    ports: !reset []

@@ -133,9 +133,7 @@ PUBLIC_WEB_BASE_URL = os.getenv("PUBLIC_WEB_BASE_URL", "http://localhost:5173")
 PUBLIC_MCP_BASE_URL = os.getenv("PUBLIC_MCP_BASE_URL", "")
 SECURE_MCP_TUNNEL_ID = os.getenv("SECURE_MCP_TUNNEL_ID", "")
 QUICK_TUNNEL_MODE = os.getenv("QUICK_TUNNEL_MODE", "false").lower() == "true"
-LLM_PROVIDER = os.getenv(
-    "LLM_PROVIDER", os.getenv("ASSISTANT_LLM_PROVIDER", "deterministic-demo")
-)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", os.getenv("ASSISTANT_LLM_PROVIDER", "deterministic-demo"))
 # Compatibility alias for Stage 6 deployments. New deployments use LLM_PROVIDER.
 ASSISTANT_LLM_PROVIDER = LLM_PROVIDER
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

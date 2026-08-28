@@ -47,3 +47,8 @@ versioned 16-model synthetic CAD corpus, two isolated error controls, reproducib
 idempotent reconciliation, Golden Similarity/Design Review scenarios, smoke dataset isolation and
 an explicit curated-query Web flow. See
 [`docs/development/stage-15-curated-cad-corpus.md`](docs/development/stage-15-curated-cad-corpus.md).
+
+Stage 16 Phase A adds unified Demo operations, secret-free status/evidence, checksummed database and
+artifact backup, an isolated restore drill, Qdrant recovery and a backup-first operations reset.
+See
+[`docs/development/stage-16-operations-uat-phase-a.md`](docs/development/stage-16-operations-uat-phase-a.md).

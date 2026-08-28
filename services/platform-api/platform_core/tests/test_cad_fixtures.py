@@ -58,11 +58,13 @@ class CuratedCADSeedTests(TestCase):
 
         verified = seed_curated_cad_demo(verify_only=True)
         self.assertEqual(verified.reconciled, 0)
+        reindexed = seed_curated_cad_demo(force_reindex=True)
+        self.assertEqual(reindexed.reconciled, 16)
         status = curated_cad_status()
         self.assertTrue(status["reconciled"])
         self.assertEqual(status["ready"], 16)
         self.assertEqual(status["indexed"], 16)
-        self.assertGreaterEqual(upsert.call_count, 17)
+        self.assertGreaterEqual(upsert.call_count, 33)
 
     @patch("platform_core.similarity.upsert_feature")
     def test_management_command_supports_seed_and_read_only_verification(self, upsert) -> None:

@@ -12,10 +12,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Check the existing corpus without creating or repairing records.",
         )
+        parser.add_argument(
+            "--reindex",
+            action="store_true",
+            help="Rebuild every curated CAD Qdrant entry from canonical FeatureSets.",
+        )
 
     def handle(self, *args, **options) -> None:
         try:
-            result = seed_curated_cad_demo(verify_only=options["verify_only"])
+            result = seed_curated_cad_demo(
+                verify_only=options["verify_only"], force_reindex=options["reindex"]
+            )
         except CADFixtureValidationError as exc:
             raise CommandError(str(exc)) from exc
         mode = "verified" if options["verify_only"] else "ready"

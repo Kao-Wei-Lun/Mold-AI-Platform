@@ -69,6 +69,19 @@ try {
     docker compose -f compose.yaml -f compose.sites-demo.yaml `
         --env-file .env.sites-demo.example config --quiet
     Assert-LastExitCode "Sites Demo Docker Compose validation"
+    docker compose -f compose.yaml -f compose.restore-drill.yaml config --quiet
+    Assert-LastExitCode "Restore drill Docker Compose validation"
+
+    $parser = [System.Management.Automation.Language.Parser]
+    $opsScripts = Get-ChildItem -LiteralPath (Join-Path $repoRoot "scripts") -Filter "demo-*.ps1"
+    foreach ($opsScript in $opsScripts) {
+        $tokens = $null
+        $errors = $null
+        $null = $parser::ParseFile($opsScript.FullName, [ref]$tokens, [ref]$errors)
+        if ($errors.Count -gt 0) {
+            throw "PowerShell syntax validation failed: $($opsScript.Name): $($errors[0].Message)"
+        }
+    }
 }
 finally {
     Pop-Location

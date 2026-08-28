@@ -1,6 +1,6 @@
 # Stage 16 — Demo Operations, Security, UAT and v1.0 Release
 
-- 狀態：Planned
+- 狀態：Phase A implemented（local operations/backup/restore/reset/evidence）；external release gates pending
 - 優先級：P0
 - 前置：Stage 13–15 完成
 - 出口：可在全新 Windows host 重建、操作、重置、驗收並交付 Demo v1.0
@@ -319,3 +319,36 @@ test(uat): automate demo v1 acceptance checks
 docs(ops): add release, restore, and incident runbooks
 chore(release): prepare Mold AI Platform 1.0.0-demo
 ```
+
+## 12. Phase A implementation evidence（2026-08-28）
+
+本階段先完成不依賴外部帳號的 local/prod-like operations 基礎，版本為 `0.13.0-demo`：
+
+- 統一 `demo-start.ps1`、`demo-status.ps1`、`demo-stop.ps1` 操作入口。
+- `demo-status.ps1 -Json` 回傳 services、dependencies、dataset reconciliation、Assistant、MCP、
+  Git 與明確 next actions；輸出不含 token、URL、tunnel ID。
+- `demo-backup.ps1` 建立 PostgreSQL custom dump、artifact files/checksums、canonical release
+  snapshot、image inventory 與 restore instruction；排除所有 env/key/token。
+- `demo-restore.ps1` 只允許名稱結尾為 `-restore-drill` 的隔離 Compose project，驗證所有
+  checksum，還原 DB/artifacts，重建 Knowledge/CAD Qdrant index，再執行 strict snapshot。
+- `demo-reset.ps1` Phase A 只支援 `operations` mode；預設 dry-run，正式執行前預設建立
+  backup，且要求精確字串 `RESET OPERATIONS`。既有 audit events 保留並新增 reset event。
+- `demo-acceptance.ps1` 建立 ignored、sanitized evidence bundle 與各檔 SHA-256；local mode
+  不會把尚未做的 external/OpenAI UAT 宣稱為通過。
+- `seed_cad_demo --reindex` 可從 canonical FeatureSet 強制重建 Qdrant，供 restore/recovery。
+
+實際 restore/reset drill 使用獨立 project 完成：還原 PostgreSQL 與 178 個 artifact files；
+reset 移除 143 個 operations artifacts、44 個 Qdrant points 與 143 個 storage files，保留
+curated fixtures、canonical Process/CAE、rule profiles 與既有 113 個 Audit Events；重新 seed
+後 curated CAD 仍為 16/16。
+
+尚未完成並保留為後續 Phase B：
+
+- `datasets` 與 `full-demo-volume` reset modes。
+- worker stale-job recovery policy 與 fault-injection automation。
+- performance p50/p95/resource baseline。
+- owner-only Sites 的不同網路 UAT、ChatGPT account/workspace MCP UAT。
+- opt-in paid OpenAI live UAT、正式 sanitized evidence review 與 `1.0.0-demo` tag。
+
+操作細節見
+[Stage 16 Phase A operations](../../development/stage-16-operations-uat-phase-a.md)。

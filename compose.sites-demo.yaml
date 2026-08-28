@@ -32,7 +32,7 @@ services:
       retries: 12
     environment:
       APP_ENV: external-demo
-      APP_VERSION: ${APP_VERSION:-0.12.0-demo}
+      APP_VERSION: ${APP_VERSION:-0.13.0-demo}
       DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY}
       DJANGO_ALLOWED_HOSTS: .trycloudflare.com,api,localhost,127.0.0.1

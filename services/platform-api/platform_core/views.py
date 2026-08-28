@@ -371,15 +371,11 @@ class CADArtifactListCreateView(APIView):
             artifacts = artifacts.filter(dataset_id=dataset_id[:128])
         else:
             artifacts = artifacts.exclude(dataset_id=AUTOMATED_CAD_SMOKE_DATASET)
-        artifacts = (
-            artifacts
-            .prefetch_related(
-                "versions__input_jobs",
-                "versions__cad_model__preview_artifact_version",
-                "versions__cad_model__feature_sets",
-            )
-            .order_by("-created_at")[:25]
-        )
+        artifacts = artifacts.prefetch_related(
+            "versions__input_jobs",
+            "versions__cad_model__preview_artifact_version",
+            "versions__cad_model__feature_sets",
+        ).order_by("-created_at")[:25]
         return Response(
             {"schema_version": "1.0", "items": [artifact_payload(a) for a in artifacts]}
         )

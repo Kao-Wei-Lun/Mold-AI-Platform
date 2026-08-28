@@ -113,6 +113,17 @@ def query_similar_points(
     ]
 
 
+def delete_feature_points(feature_set_ids: list[str]) -> None:
+    if not feature_set_ids:
+        return
+    collection = quote(settings.QDRANT_CAD_COLLECTION, safe="")
+    _request(
+        "POST",
+        f"/collections/{collection}/points/delete?wait=true",
+        {"points": feature_set_ids},
+    )
+
+
 def upsert_named_vector(
     *,
     collection_name: str,
