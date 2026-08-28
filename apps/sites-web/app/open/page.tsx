@@ -8,7 +8,6 @@ import {
   buildWorkspaceUrl,
   normalizeTunnelUrl,
   PENDING_DEEP_LINK_KEY,
-  TOKEN_KEY,
   TUNNEL_KEY,
   verifyWorkspaceConnection,
   type ConnectionStatus,
@@ -32,9 +31,6 @@ export default function OpenDeepLink() {
   const [tunnelInput, setTunnelInput] = useState(() =>
     typeof window === 'undefined' ? '' : (window.sessionStorage.getItem(TUNNEL_KEY) ?? ''),
   );
-  const [token, setToken] = useState(() =>
-    typeof window === 'undefined' ? '' : (window.sessionStorage.getItem(TOKEN_KEY) ?? ''),
-  );
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [message, setMessage] = useState('先驗證目前的 Windows Demo 連線，再開啟指定內容。');
   const normalizedUrl = useMemo(() => normalizeTunnelUrl(tunnelInput), [tunnelInput]);
@@ -45,29 +41,28 @@ export default function OpenDeepLink() {
 
   async function verifyConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!normalizedUrl || !token.trim()) {
+    if (!normalizedUrl) {
       setStatus('error');
-      setMessage('請輸入有效的 HTTPS Quick Tunnel URL 與 Demo token。');
+      setMessage('請輸入有效的 HTTPS Quick Tunnel URL。');
       return;
     }
     setStatus('checking');
     setMessage('正在確認 Mold AI Platform 身分與存取權…');
     try {
-      await verifyWorkspaceConnection(normalizedUrl, token);
+      await verifyWorkspaceConnection(normalizedUrl);
       window.sessionStorage.setItem(TUNNEL_KEY, normalizedUrl);
-      window.sessionStorage.setItem(TOKEN_KEY, token.trim());
       setStatus('ready');
       setMessage('連線身分已確認，可以安全開啟指定工程內容。');
     } catch {
       setStatus('error');
-      setMessage('連線驗證失敗。請重新執行 Demo 啟動腳本並確認 Tunnel URL 與 token。');
+      setMessage('連線驗證失敗。請確認 Demo 已啟用 local auth、已建立管理員並重新執行啟動腳本。');
     }
   }
 
   function openWorkspace() {
-    if (!context || !normalizedUrl || !token.trim() || status !== 'ready') return;
+    if (!context || !normalizedUrl || status !== 'ready') return;
     window.sessionStorage.removeItem(PENDING_DEEP_LINK_KEY);
-    window.location.assign(buildWorkspaceUrl(normalizedUrl, token, context));
+    window.location.assign(buildWorkspaceUrl(normalizedUrl, context));
   }
 
   if (linkError) {
@@ -101,7 +96,6 @@ export default function OpenDeepLink() {
       <form className="connect-card" onSubmit={verifyConnection}>
         <div className="section-heading"><div><p className="eyebrow">CONNECTION</p><h2>確認目前 Workspace</h2></div><span className={`status status-${status}`}>{status === 'ready' ? 'READY' : status.toUpperCase()}</span></div>
         <label><span>HTTPS Quick Tunnel URL</span><input type="url" value={tunnelInput} onChange={(event) => { setTunnelInput(event.target.value); setStatus('idle'); }} placeholder="https://example.trycloudflare.com" required /></label>
-        <label><span>Demo access token</span><input type="password" value={token} onChange={(event) => { setToken(event.target.value); setStatus('idle'); }} autoComplete="current-password" required /></label>
         <div className="button-row"><button className="primary" type="submit" disabled={status === 'checking'}>{status === 'checking' ? '驗證中…' : '驗證連線'}</button><button className="secondary" type="button" onClick={openWorkspace} disabled={status !== 'ready'}>開啟指定內容 →</button></div>
         <p className={`connection-message ${status === 'error' ? 'message-error' : ''}`} aria-live="polite"><span />{message}</p>
       </form>

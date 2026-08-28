@@ -296,3 +296,8 @@ Stage 18 Phase 1C adds the permission-gated Accounts & access workspace for gove
 creation and profile updates, scoped role assignment/revocation, lifecycle actions, session
 revocation, direct-route session restoration and self-lockout protection. See
 [`stage-18-phase-1c-identity-management-ui.md`](stage-18-phase-1c-identity-management-ui.md).
+
+Stage 18 Phases 1D–1E replace the shared Sites browser token with local-account sessions,
+isolate the MCP-to-Platform service identity, and add the ChatGPT Plugin UI external-open
+experience. See
+[`stage-18-external-identity-plugin-ui.md`](stage-18-external-identity-plugin-ui.md).

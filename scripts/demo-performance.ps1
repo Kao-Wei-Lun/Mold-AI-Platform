@@ -18,9 +18,12 @@ if (-not $LocalDevelopment) {
     $runtimeUrlPath = Join-Path $repoRoot ".runtime\sites-demo\tunnel-url.txt"
     if (-not (Test-Path -LiteralPath $runtimeUrlPath)) { throw "The current Web Quick Tunnel URL is unavailable." }
     $apiOrigin = (Get-Content -LiteralPath $runtimeUrlPath -Raw).Trim()
-    $token = Get-DemoEnvValue -Path $envPath -Name "DEMO_API_TOKEN"
-    if (-not $token) { throw "The private Demo token is not configured." }
-    $headers = @{ Authorization = "Bearer $token" }
+    $token = Get-DemoEnvValue -Path $envPath -Name "MCP_PLATFORM_SERVICE_TOKEN"
+    if (-not $token) { throw "The private MCP-to-Platform service credential is not configured." }
+    $headers = @{
+        Authorization = "Bearer $token"
+        "X-Mold-AI-Client" = "mcp-gateway"
+    }
 }
 
 function Get-Percentile([double[]]$Values, [double]$Percentile) {
@@ -65,6 +68,7 @@ if ($headers.Authorization) {
     $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new(
         "Bearer", $headers.Authorization.Substring("Bearer ".Length)
     )
+    $client.DefaultRequestHeaders.Add("X-Mold-AI-Client", "mcp-gateway")
 }
 $concurrentTimer = [Diagnostics.Stopwatch]::StartNew()
 try {

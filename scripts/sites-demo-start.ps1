@@ -1,7 +1,8 @@
 param(
     [string]$EnvFile = ".env.sites-demo",
     [switch]$NoBuild,
-    [switch]$RotateDemoToken
+    [switch]$RotateDemoToken,
+    [switch]$RotateServiceCredential
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,10 +51,21 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     $template = Get-Content -LiteralPath $examplePath -Raw
     $template = $template.Replace("POSTGRES_PASSWORD=GENERATED_AT_FIRST_START", "POSTGRES_PASSWORD=$(New-HexSecret 24)")
     $template = $template.Replace("DJANGO_SECRET_KEY=GENERATED_AT_FIRST_START", "DJANGO_SECRET_KEY=$(New-HexSecret 48)")
-    $template = $template.Replace("DEMO_API_TOKEN=GENERATED_AT_FIRST_START", "DEMO_API_TOKEN=$(New-HexSecret 32)")
+    $template = $template.Replace("MCP_PLATFORM_SERVICE_TOKEN=GENERATED_AT_FIRST_START", "MCP_PLATFORM_SERVICE_TOKEN=$(New-HexSecret 32)")
     [IO.File]::WriteAllText($envPath, $template, [Text.UTF8Encoding]::new($false))
     Write-Host "Created private runtime configuration: $envPath"
 }
+
+$runtimeConfig = Get-Content -LiteralPath $envPath -Raw
+if ($runtimeConfig -match "(?m)^DEMO_AUTH_MODE=") {
+    $runtimeConfig = [regex]::Replace($runtimeConfig, "(?m)^DEMO_AUTH_MODE=.*$", "DEMO_AUTH_MODE=local")
+} else {
+    $runtimeConfig += "`r`nDEMO_AUTH_MODE=local`r`n"
+}
+if ($runtimeConfig -notmatch "(?m)^MCP_PLATFORM_SERVICE_TOKEN=.+$") {
+    $runtimeConfig += "MCP_PLATFORM_SERVICE_TOKEN=$(New-HexSecret 32)`r`n"
+}
+[IO.File]::WriteAllText($envPath, $runtimeConfig, [Text.UTF8Encoding]::new($false))
 
 if ($RotateDemoToken) {
     $runtimeConfig = Get-Content -LiteralPath $envPath -Raw
@@ -64,6 +76,17 @@ if ($RotateDemoToken) {
     )
     [IO.File]::WriteAllText($envPath, $runtimeConfig, [Text.UTF8Encoding]::new($false))
     Write-Host "Rotated the private Demo access token."
+}
+
+if ($RotateServiceCredential) {
+    $runtimeConfig = Get-Content -LiteralPath $envPath -Raw
+    $runtimeConfig = [regex]::Replace(
+        $runtimeConfig,
+        "(?m)^MCP_PLATFORM_SERVICE_TOKEN=.*$",
+        "MCP_PLATFORM_SERVICE_TOKEN=$(New-HexSecret 32)"
+    )
+    [IO.File]::WriteAllText($envPath, $runtimeConfig, [Text.UTF8Encoding]::new($false))
+    Write-Host "Rotated the private MCP-to-Platform service credential."
 }
 
 $sitesEntryUrl = Read-EnvValue "PUBLIC_WEB_ENTRY_BASE_URL"
@@ -102,15 +125,17 @@ try {
     if (-not $tunnelUrl) { throw "Quick Tunnel did not publish a URL within two minutes. Check web-tunnel logs." }
     if ($tunnelUrl -eq $sitesEntryUrl) { throw "Sites entry and Workspace Quick Tunnel must be different URLs." }
 
-    $demoToken = Read-EnvValue "DEMO_API_TOKEN"
+    $serviceToken = Read-EnvValue "MCP_PLATFORM_SERVICE_TOKEN"
     $mcpHostPort = Read-EnvValue "MCP_HOST_PORT"
     if (-not $mcpHostPort) { $mcpHostPort = "8002" }
-    $headers = @{ Authorization = "Bearer $demoToken"; "X-Mold-AI-Client" = "sites-demo-preflight" }
+    $headers = @{ Authorization = "Bearer $serviceToken"; "X-Mold-AI-Client" = "mcp-gateway" }
     $systemInfo = $null
+    $securityPreflight = $null
     $externalDeadline = (Get-Date).AddMinutes(2)
     while ((Get-Date) -lt $externalDeadline -and -not $systemInfo) {
         try {
             $null = Invoke-WebRequest -UseBasicParsing -Uri "$tunnelUrl/" -TimeoutSec 15
+            $securityPreflight = Invoke-RestMethod -Uri "$tunnelUrl/api/v1/security/preflight" -TimeoutSec 15
             $systemInfo = Invoke-RestMethod -Uri "$tunnelUrl/api/v1/system/info" -Headers $headers -TimeoutSec 15
         } catch {
             Start-Sleep -Seconds 2
@@ -118,6 +143,7 @@ try {
     }
     if (-not $systemInfo) { throw "Quick Tunnel URL was published but did not become externally reachable." }
     if ($systemInfo.name -ne "Mold AI Platform") { throw "Unexpected system identity through Quick Tunnel." }
+    if ($securityPreflight.auth.mode -ne "local") { throw "Sites Demo must expose local-account authentication." }
 
     [IO.Directory]::CreateDirectory($runtimeDir) | Out-Null
     [IO.File]::WriteAllText((Join-Path $runtimeDir "tunnel-url.txt"), $tunnelUrl, [Text.UTF8Encoding]::new($false))
@@ -128,8 +154,13 @@ Write-Host ""
 Write-Host "Sites Demo is ready." -ForegroundColor Green
 Write-Host "Stable entry: $sitesEntryUrl"
 Write-Host "HTTPS Tunnel: $tunnelUrl"
-Write-Host "Demo token:    hidden (use sites-demo-status.ps1 -ShowToken only when needed)"
 Write-Host "MCP endpoint:  http://127.0.0.1:$mcpHostPort/mcp (loopback-only)"
-Write-Host "Paste the current HTTPS Tunnel and Demo token into the private Sites portal when prompted."
+if (-not $securityPreflight.auth.local_admin_configured) {
+    Write-Host "Local admin:   NOT CONFIGURED" -ForegroundColor Yellow
+    Write-Host "Create it once with: docker compose -f compose.yaml -f compose.sites-demo.yaml --env-file $EnvFile exec api python manage.py bootstrap_local_admin --username <your-name>"
+} else {
+    Write-Host "Local admin:   ready"
+}
+Write-Host "Paste only the current HTTPS Tunnel into the private Sites portal. Sign in with your Mold AI account in Engineering Web."
 Write-Host "Quick Tunnel changes do not require refreshing the ChatGPT MCP connection."
 Write-Host "Run scripts/mcp-secure-tunnel.ps1 in a second terminal for ChatGPT MCP."

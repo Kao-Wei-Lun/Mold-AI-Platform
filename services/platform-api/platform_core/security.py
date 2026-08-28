@@ -92,6 +92,11 @@ def _audit_denial(
 def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
     auth_mode = settings.DEMO_AUTH_MODE
     token_configured = _configured_secret(settings.DEMO_API_TOKEN)
+    service_token_configured = _configured_secret(settings.PLATFORM_SERVICE_TOKEN)
+    service_scopes_complete = {
+        "public-demo:read",
+        "public-demo:write",
+    } <= settings.PLATFORM_SERVICE_TOKEN_SCOPES
     local_admin_configured = False
     try:
         from .models import RoleAssignment
@@ -121,6 +126,8 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "auth_mode_valid": auth_mode in {"disabled", "required", "local"},
         "api_token_configured": auth_mode != "required" or token_configured,
         "local_admin_configured": auth_mode != "local" or local_admin_configured,
+        "service_token_configured": auth_mode != "local" or service_token_configured,
+        "service_scopes_complete": auth_mode != "local" or service_scopes_complete,
         "demo_scopes_complete": auth_mode != "required"
         or {"public-demo:read", "public-demo:write"} <= settings.DEMO_API_TOKEN_SCOPES,
         "debug_disabled": not settings.DEBUG,
@@ -144,6 +151,8 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "auth_mode_valid",
         "api_token_configured",
         "local_admin_configured",
+        "service_token_configured",
+        "service_scopes_complete",
         "demo_scopes_complete",
         "debug_disabled",
         "secret_key_hardened",
@@ -165,6 +174,8 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         "auth_required": auth_mode in {"required", "local"},
         "api_token_configured": checks["api_token_configured"],
         "local_admin_configured": checks["local_admin_configured"],
+        "service_token_configured": checks["service_token_configured"],
+        "service_scopes_complete": checks["service_scopes_complete"],
         "demo_scopes_complete": checks["demo_scopes_complete"],
         "debug_disabled": checks["debug_disabled"],
         "secret_key_hardened": checks["secret_key_hardened"],
@@ -188,6 +199,13 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
             "methods": ["session"] if auth_mode == "local" else ["bearer"],
             "scopes": sorted(settings.DEMO_API_TOKEN_SCOPES),
         },
+        "service_identity": {
+            "configured": service_token_configured,
+            "actor_id": settings.PLATFORM_SERVICE_ACTOR_ID,
+            "allowed_clients": sorted(settings.PLATFORM_SERVICE_CLIENTS),
+            "scopes": sorted(settings.PLATFORM_SERVICE_TOKEN_SCOPES),
+            "secret_exposed": False,
+        },
         "request_security": {
             "is_secure": request.is_secure(),
             "trusted_proxy_headers": settings.TRUST_PROXY_HEADERS,
@@ -208,8 +226,10 @@ def security_preflight_payload(request: HttpRequest) -> dict[str, object]:
         },
         "limitations": [
             "Local accounts are for the controlled Demo and do not replace enterprise SSO.",
-            "Static Demo bearer tokens remain a legacy controlled-Demo entry credential, "
-            "not a person.",
+            "Static Demo bearer tokens remain a legacy compatibility credential and are not "
+            "used by the local-account Sites experience.",
+            "The MCP service identity is limited to public synthetic Demo data and is not a "
+            "delegated user identity.",
             "Public ChatGPT MCP with user data requires OAuth 2.1; this stage does not fake it.",
             "Secure MCP Tunnel availability still depends on OpenAI account and workspace policy.",
         ],
@@ -296,6 +316,9 @@ class DemoAccessMiddleware:
             return self.get_response(request)
 
         if settings.DEMO_AUTH_MODE == "local":
+            client_type = request.headers.get("X-Mold-AI-Client", "")
+            if client_type in settings.PLATFORM_SERVICE_CLIENTS:
+                return self._authenticate_service(request, request_id, required_scope)
             _audit_denial(
                 request,
                 request_id=request_id,
@@ -367,6 +390,72 @@ class DemoAccessMiddleware:
         request.mold_ai_actor_id = settings.DEMO_API_ACTOR_ID
         request.mold_ai_scopes = set(settings.DEMO_API_TOKEN_SCOPES)
         request.mold_ai_permissions = set(settings.DEMO_API_TOKEN_SCOPES)
+        request.mold_ai_data_scopes = {"public-demo"}
+        return self.get_response(request)
+
+    def _authenticate_service(
+        self,
+        request: HttpRequest,
+        request_id: str,
+        required_scope: str,
+    ) -> HttpResponse:
+        configured_token = settings.PLATFORM_SERVICE_TOKEN
+        if not _configured_secret(configured_token):
+            return _error_response(
+                "SERVICE_AUTH_CONFIGURATION_ERROR",
+                "The platform service identity is not configured with a strong credential.",
+                503,
+                request_id,
+            )
+
+        authorization = request.headers.get("Authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if not separator or scheme.lower() != "bearer" or not token:
+            _audit_denial(
+                request,
+                request_id=request_id,
+                code="SERVICE_AUTH_TOKEN_REQUIRED",
+                required_scope=required_scope,
+            )
+            return _error_response(
+                "SERVICE_AUTH_TOKEN_REQUIRED",
+                "A platform service credential is required.",
+                401,
+                request_id,
+                required_scope=required_scope,
+            )
+        if not secrets.compare_digest(token, configured_token):
+            _audit_denial(
+                request,
+                request_id=request_id,
+                code="SERVICE_AUTH_TOKEN_INVALID",
+                required_scope=required_scope,
+            )
+            return _error_response(
+                "SERVICE_AUTH_TOKEN_INVALID",
+                "The platform service credential is invalid.",
+                401,
+                request_id,
+                required_scope=required_scope,
+            )
+        if required_scope not in settings.PLATFORM_SERVICE_TOKEN_SCOPES:
+            _audit_denial(
+                request,
+                request_id=request_id,
+                code="PERMISSION_SCOPE_REQUIRED",
+                required_scope=required_scope,
+            )
+            return _error_response(
+                "PERMISSION_SCOPE_REQUIRED",
+                "The platform service identity does not grant the required operation scope.",
+                403,
+                request_id,
+                required_scope=required_scope,
+            )
+
+        request.mold_ai_actor_id = settings.PLATFORM_SERVICE_ACTOR_ID
+        request.mold_ai_scopes = set(settings.PLATFORM_SERVICE_TOKEN_SCOPES)
+        request.mold_ai_permissions = set(settings.PLATFORM_SERVICE_TOKEN_SCOPES)
         request.mold_ai_data_scopes = {"public-demo"}
         return self.get_response(request)
 

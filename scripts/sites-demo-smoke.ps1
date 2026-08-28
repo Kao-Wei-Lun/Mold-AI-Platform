@@ -8,7 +8,7 @@ if (-not (Test-Path -LiteralPath $envPath) -or -not (Test-Path -LiteralPath $url
     throw "Sites Demo runtime state is missing. Run scripts/sites-demo-start.ps1 first."
 }
 $url = (Get-Content -LiteralPath $urlPath -Raw).Trim()
-$tokenLine = Get-Content -LiteralPath $envPath | Where-Object { $_ -match "^DEMO_API_TOKEN=" } | Select-Object -Last 1
+$tokenLine = Get-Content -LiteralPath $envPath | Where-Object { $_ -match "^MCP_PLATFORM_SERVICE_TOKEN=" } | Select-Object -Last 1
 $token = $tokenLine.Substring($tokenLine.IndexOf("=") + 1).Trim()
 
 $web = $null
@@ -31,11 +31,22 @@ try {
 } catch {
     if ([int]$_.Exception.Response.StatusCode -ne 401) { throw }
 }
-$secured = Invoke-RestMethod -Uri "$url/api/v1/system/info" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 30
+$security = Invoke-RestMethod -Uri "$url/api/v1/security/preflight" -TimeoutSec 30
+$secured = Invoke-RestMethod -Uri "$url/api/v1/system/info" -Headers @{
+    Authorization = "Bearer $token"
+    "X-Mold-AI-Client" = "mcp-gateway"
+} -TimeoutSec 30
 $mcp = Invoke-RestMethod -Uri "http://127.0.0.1:8002/preflight" -TimeoutSec 10
 
 if ($web.StatusCode -ne 200 -or $health.StatusCode -ne 200) { throw "Public Web or health check failed." }
 if ($secured.name -ne "Mold AI Platform") { throw "Authenticated API identity check failed." }
+if ($security.auth.mode -ne "local" -or -not $security.auth.local_accounts_enabled) {
+    throw "External Web is not using local-account authentication."
+}
+if (-not $security.auth.local_admin_configured) { throw "Create the first local Platform Admin before external smoke." }
+if (-not $security.service_identity.configured -or $security.service_identity.secret_exposed) {
+    throw "MCP service identity boundary is not ready."
+}
 if (-not $mcp.inspector_ready) { throw "Local MCP gateway preflight failed." }
 if (-not $mcp.deep_links.ready) { throw "Stable Sites deep-link entry is not ready." }
 if ($mcp.deep_links.entry_origin -match "\.invalid$" -or $mcp.deep_links.entry_origin -notmatch "^https://") {
@@ -44,4 +55,4 @@ if ($mcp.deep_links.entry_origin -match "\.invalid$" -or $mcp.deep_links.entry_o
 if (-not $web.Headers["Strict-Transport-Security"]) { throw "Web response is missing HSTS." }
 if (-not $web.Headers["Content-Security-Policy"]) { throw "Web response is missing CSP." }
 
-Write-Host "Sites Demo external smoke passed: Web/API identity, auth boundary, MCP, stable deep links, HSTS and CSP are ready."
+Write-Host "Sites Demo external smoke passed: Web/API identity, local accounts, isolated MCP service auth, stable deep links, HSTS and CSP are ready."

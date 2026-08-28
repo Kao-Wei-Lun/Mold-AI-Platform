@@ -524,7 +524,10 @@ def mcp_preflight_payload() -> dict[str, object]:
     auth_mode = os.getenv("MCP_AUTH_MODE", "none").lower()
     bearer_token = os.getenv("MCP_BEARER_TOKEN", "")
     bearer_configured = _configured_secret(bearer_token)
-    api_auth_required = os.getenv("DEMO_AUTH_MODE", "disabled").lower() == "required"
+    api_auth_required = os.getenv("DEMO_AUTH_MODE", "disabled").lower() in {
+        "required",
+        "local",
+    }
     platform_api_token_configured = _configured_secret(os.getenv("PLATFORM_API_TOKEN", ""))
     public_base_url = os.getenv("PUBLIC_MCP_BASE_URL", "")
     tunnel_id = os.getenv("SECURE_MCP_TUNNEL_ID", "")

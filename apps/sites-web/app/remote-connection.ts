@@ -3,7 +3,6 @@ import { serializeDeepLink, type DeepLinkContext } from './deep-link';
 export type ConnectionStatus = 'idle' | 'checking' | 'ready' | 'error';
 
 export const TUNNEL_KEY = 'mold-ai.sites.tunnel-url';
-export const TOKEN_KEY = 'mold-ai.sites.demo-token';
 export const PENDING_DEEP_LINK_KEY = 'mold-ai.sites.pending-deep-link';
 
 export function normalizeTunnelUrl(value: string): string | null {
@@ -16,27 +15,38 @@ export function normalizeTunnelUrl(value: string): string | null {
   } catch { return null; }
 }
 
-export async function verifyWorkspaceConnection(tunnelUrl: string, token: string): Promise<void> {
-  const response = await fetch(`${tunnelUrl}/api/v1/system/info`, {
+export async function verifyWorkspaceConnection(tunnelUrl: string): Promise<void> {
+  const response = await fetch(`${tunnelUrl}/api/v1/security/preflight`, {
     method: 'GET',
-    headers: { Accept: 'application/json', Authorization: `Bearer ${token.trim()}` },
+    headers: { Accept: 'application/json' },
     cache: 'no-store',
   });
-  if (!response.ok) throw new Error(`Workspace identity check returned HTTP ${response.status}.`);
-  const identity = (await response.json()) as { name?: string; api_version?: string };
-  if (identity.name !== 'Mold AI Platform' || identity.api_version !== 'v1') {
-    throw new Error('The HTTPS endpoint is not the expected Mold AI Platform API.');
+  if (!response.ok) throw new Error(`Workspace preflight returned HTTP ${response.status}.`);
+  const preflight = (await response.json()) as {
+    schema_version?: string;
+    environment?: string;
+    auth?: { mode?: string; local_accounts_enabled?: boolean; local_admin_configured?: boolean };
+    quick_tunnel?: { ready?: boolean };
+  };
+  if (
+    preflight.schema_version !== '1.0'
+    || preflight.environment !== 'external-demo'
+    || preflight.auth?.mode !== 'local'
+    || !preflight.auth.local_accounts_enabled
+  ) {
+    throw new Error('The endpoint is not an external Mold AI local-account workspace.');
+  }
+  if (!preflight.auth.local_admin_configured || !preflight.quick_tunnel?.ready) {
+    throw new Error('The workspace still requires local administrator bootstrap or security setup.');
   }
 }
 
 export function buildWorkspaceUrl(
   tunnelUrl: string,
-  token: string,
   deepLink?: DeepLinkContext,
 ): string {
   const url = new URL(tunnelUrl);
   url.search = deepLink ? `?${serializeDeepLink(deepLink)}` : '';
-  const params = new URLSearchParams({ token: token.trim() });
-  url.hash = `mold-ai-bootstrap=${params.toString()}`;
+  url.hash = '';
   return url.toString();
 }

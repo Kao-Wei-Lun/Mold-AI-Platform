@@ -3,6 +3,7 @@ from django.test import TestCase, override_settings
 from platform_core.models import AuditEvent
 
 STRONG_TOKEN = "stage10-demo-token-0123456789abcdef"
+SERVICE_TOKEN = "mcp-service-token-0123456789abcdef"
 
 
 @override_settings(
@@ -78,6 +79,80 @@ class DemoAccessMiddlewareTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["error"]["code"], "AUTH_CONFIGURATION_ERROR")
+
+
+@override_settings(
+    DEMO_AUTH_MODE="local",
+    PLATFORM_SERVICE_TOKEN=SERVICE_TOKEN,
+    PLATFORM_SERVICE_TOKEN_SCOPES={"public-demo:read", "public-demo:write"},
+    PLATFORM_SERVICE_ACTOR_ID="mcp-gateway-service-test",
+    PLATFORM_SERVICE_CLIENTS={"mcp-gateway"},
+)
+class PlatformServiceIdentityTests(TestCase):
+    def test_preflight_reports_service_readiness_without_exposing_the_secret(self) -> None:
+        payload = self.client.get("/api/v1/security/preflight").json()
+
+        self.assertTrue(payload["service_identity"]["configured"])
+        self.assertFalse(payload["service_identity"]["secret_exposed"])
+        self.assertEqual(payload["service_identity"]["allowed_clients"], ["mcp-gateway"])
+        self.assertNotIn(SERVICE_TOKEN, str(payload))
+
+    def test_mcp_service_identity_can_read_public_demo_without_a_user_session(self) -> None:
+        response = self.client.get(
+            "/api/v1/system/info",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+            HTTP_AUTHORIZATION=f"Bearer {SERVICE_TOKEN}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Mold AI Platform")
+
+    def test_service_token_requires_the_allowlisted_client_header(self) -> None:
+        response = self.client.get(
+            "/api/v1/system/info",
+            HTTP_AUTHORIZATION=f"Bearer {SERVICE_TOKEN}",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["code"], "AUTH_SESSION_REQUIRED")
+
+    def test_invalid_service_token_fails_closed_without_audit_secret_leak(self) -> None:
+        invalid_token = "wrong-mcp-service-token-0123456789abcdef"
+        response = self.client.get(
+            "/api/v1/system/info",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+            HTTP_AUTHORIZATION=f"Bearer {invalid_token}",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["code"], "SERVICE_AUTH_TOKEN_INVALID")
+        self.assertNotIn(invalid_token, str(list(AuditEvent.objects.values("detail"))))
+
+    @override_settings(PLATFORM_SERVICE_TOKEN_SCOPES={"public-demo:read"})
+    def test_service_identity_cannot_write_without_the_explicit_scope(self) -> None:
+        response = self.client.post(
+            "/api/v1/assistant/messages",
+            {"message": "hello", "context": {"context_version": "1.0"}},
+            content_type="application/json",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+            HTTP_AUTHORIZATION=f"Bearer {SERVICE_TOKEN}",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "PERMISSION_SCOPE_REQUIRED")
+
+    @override_settings(PLATFORM_SERVICE_TOKEN="short")
+    def test_weak_service_credential_returns_configuration_error(self) -> None:
+        response = self.client.get(
+            "/api/v1/system/info",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["error"]["code"],
+            "SERVICE_AUTH_CONFIGURATION_ERROR",
+        )
 
 
 class SecurityPreflightTests(TestCase):

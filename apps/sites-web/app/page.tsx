@@ -4,7 +4,6 @@ import { type FormEvent, useMemo, useState } from 'react';
 import {
   buildWorkspaceUrl,
   normalizeTunnelUrl,
-  TOKEN_KEY,
   TUNNEL_KEY,
   verifyWorkspaceConnection,
   type ConnectionStatus,
@@ -19,36 +18,32 @@ export default function Home() {
   const [tunnelInput, setTunnelInput] = useState(() =>
     typeof window === 'undefined' ? '' : (window.sessionStorage.getItem(TUNNEL_KEY) ?? ''),
   );
-  const [token, setToken] = useState(() =>
-    typeof window === 'undefined' ? '' : (window.sessionStorage.getItem(TOKEN_KEY) ?? ''),
-  );
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [message, setMessage] = useState('尚未檢查本機 Demo 連線');
   const normalizedUrl = useMemo(() => normalizeTunnelUrl(tunnelInput), [tunnelInput]);
-  const canOpen = Boolean(normalizedUrl && token.trim() && status === 'ready');
+  const canOpen = Boolean(normalizedUrl && status === 'ready');
 
   async function verifyConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!normalizedUrl || !token.trim()) {
-      setStatus('error'); setMessage('請輸入有效的 HTTPS Tunnel URL 與 Demo token。'); return;
+    if (!normalizedUrl) {
+      setStatus('error'); setMessage('請輸入有效的 HTTPS Quick Tunnel URL。'); return;
     }
     setStatus('checking'); setMessage('正在檢查 HTTPS Tunnel…');
     try {
-      await verifyWorkspaceConnection(normalizedUrl, token);
+      await verifyWorkspaceConnection(normalizedUrl);
       window.sessionStorage.setItem(TUNNEL_KEY, normalizedUrl);
-      window.sessionStorage.setItem(TOKEN_KEY, token.trim());
-      setStatus('ready'); setMessage('Tunnel 可連線；可開啟完整工程工作區。');
+      setStatus('ready'); setMessage('Tunnel 與個人帳號入口已就緒；可開啟完整工程工作區。');
     } catch {
       setStatus('error'); setMessage('無法連上 Tunnel。請確認 Windows 主機、Docker 與 tunnel 容器仍在執行。');
     }
   }
   function openWorkspace() {
-    if (!normalizedUrl || !token.trim()) return;
-    window.open(buildWorkspaceUrl(normalizedUrl, token), '_blank', 'noopener,noreferrer');
+    if (!normalizedUrl) return;
+    window.open(buildWorkspaceUrl(normalizedUrl), '_blank', 'noopener,noreferrer');
   }
   function clearSession() {
-    window.sessionStorage.removeItem(TUNNEL_KEY); window.sessionStorage.removeItem(TOKEN_KEY);
-    setTunnelInput(''); setToken(''); setStatus('idle'); setMessage('此瀏覽器工作階段的連線資料已清除。');
+    window.sessionStorage.removeItem(TUNNEL_KEY);
+    setTunnelInput(''); setStatus('idle'); setMessage('此瀏覽器工作階段的 Tunnel 網址已清除。');
   }
 
   return <main>
@@ -65,15 +60,14 @@ export default function Home() {
       </div>
       <aside className="boundary-card">
         <p className="eyebrow">SECURITY BOUNDARY</p><h2>兩層私人控制</h2>
-        <ol><li><b>Sites 帳號層</b><span>目前僅擁有者可開啟此入口。</span></li><li><b>Demo API 層</b><span>完整工作區仍需強式 Bearer token。</span></li></ol>
-        <p className="note">Tunnel URL 與 token 只保存在目前分頁的 sessionStorage。</p>
+        <ol><li><b>Sites 帳號層</b><span>目前僅擁有者可開啟此入口。</span></li><li><b>Mold AI 帳號層</b><span>完整工作區使用個人帳號、角色與資料範圍授權。</span></li></ol>
+        <p className="note">Sites 只保存目前分頁的 Tunnel URL；密碼與 API 憑證不會進入瀏覽器儲存空間。</p>
       </aside>
     </section>
     <section className="connection-grid" aria-labelledby="connect-title">
       <form className="connect-card" onSubmit={verifyConnection}>
         <div className="section-heading"><div><p className="eyebrow">STEP 01</p><h2 id="connect-title">連接本機 Demo</h2></div><span className={`status status-${status}`}>{status === 'ready' ? 'READY' : status.toUpperCase()}</span></div>
         <label><span>HTTPS Quick Tunnel URL</span><input type="url" inputMode="url" autoComplete="url" placeholder="https://example.trycloudflare.com" value={tunnelInput} onChange={(event) => { setTunnelInput(event.target.value); setStatus('idle'); }} required /></label>
-        <label><span>Demo access token</span><input type="password" autoComplete="current-password" placeholder="由 scripts/sites-demo-start.ps1 顯示" value={token} onChange={(event) => { setToken(event.target.value); setStatus('idle'); }} required /></label>
         <div className="button-row"><button className="primary" type="submit" disabled={status === 'checking'}>{status === 'checking' ? '檢查中…' : '檢查連線'}</button><button className="secondary" type="button" onClick={openWorkspace} disabled={!canOpen}>開啟完整工作區 ↗</button><button className="quiet" type="button" onClick={clearSession}>清除</button></div>
         <p className={`connection-message ${status === 'error' ? 'message-error' : ''}`} aria-live="polite"><span />{message}</p>
       </form>

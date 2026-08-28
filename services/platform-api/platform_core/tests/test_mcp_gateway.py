@@ -376,3 +376,32 @@ class MCPGatewayTests(SimpleTestCase):
         self.assertTrue(payload["deep_links"]["ready"])
         self.assertEqual(payload["openai_account_workspace_validation"], "pending_external_check")
         self.assertIn("depends on OpenAI", " ".join(payload["limitations"]))
+
+    def test_local_account_mode_requires_the_internal_platform_service_token(self) -> None:
+        async def exercise(token: str) -> dict:
+            with patch.dict(
+                os.environ,
+                {
+                    "DEMO_AUTH_MODE": "local",
+                    "PLATFORM_API_TOKEN": token,
+                    "MCP_AUTH_MODE": "none",
+                    "SECURE_MCP_TUNNEL_ID": "tunnel_example",
+                    "PUBLIC_WEB_ENTRY_BASE_URL": "https://mold-ai.example.test",
+                    "MCP_ALLOWED_HOSTS": "testserver:*",
+                },
+                clear=False,
+            ):
+                transport = httpx.ASGITransport(app=create_app())
+                async with httpx.AsyncClient(
+                    transport=transport,
+                    base_url="http://testserver",
+                ) as client:
+                    return (await client.get("/preflight")).json()
+
+        missing = asyncio.run(exercise(""))
+        configured = asyncio.run(exercise("mcp-service-token-0123456789abcdef"))
+
+        self.assertFalse(missing["server_side_chatgpt_preflight_ready"])
+        self.assertFalse(missing["authentication"]["platform_api_token_configured"])
+        self.assertTrue(configured["server_side_chatgpt_preflight_ready"])
+        self.assertTrue(configured["authentication"]["platform_api_token_configured"])

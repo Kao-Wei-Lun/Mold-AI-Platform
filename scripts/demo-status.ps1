@@ -65,8 +65,13 @@ if (-not $LocalDevelopment) {
     $mcpPort = Get-DemoEnvValue -Path $envPath -Name "MCP_HOST_PORT"
     if (-not $mcpPort) { $mcpPort = "8002" }
     $mcpOrigin = "http://127.0.0.1:$mcpPort"
-    $token = Get-DemoEnvValue -Path $envPath -Name "DEMO_API_TOKEN"
-    if ($token) { $headers = @{ Authorization = "Bearer $token" } }
+    $token = Get-DemoEnvValue -Path $envPath -Name "MCP_PLATFORM_SERVICE_TOKEN"
+    if ($token) {
+        $headers = @{
+            Authorization = "Bearer $token"
+            "X-Mold-AI-Client" = "mcp-gateway"
+        }
+    }
 }
 
 $readiness = $null

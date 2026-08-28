@@ -1,7 +1,4 @@
-param(
-    [string]$EnvFile = ".env.sites-demo",
-    [switch]$ShowToken
-)
+param([string]$EnvFile = ".env.sites-demo")
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -19,12 +16,14 @@ $entryLine = Get-Content -LiteralPath $envPath | Where-Object { $_ -match "^PUBL
 if ($entryLine) { Write-Host "Stable entry: $($entryLine.Substring($entryLine.IndexOf('=') + 1).Trim())" }
 
 if (Test-Path -LiteralPath $urlPath) { Write-Host "HTTPS Tunnel: $((Get-Content -LiteralPath $urlPath -Raw).Trim())" }
+$tunnelUrl = if (Test-Path -LiteralPath $urlPath) { (Get-Content -LiteralPath $urlPath -Raw).Trim() } else { "" }
+if ($tunnelUrl) {
+    $security = Invoke-RestMethod -Uri "$tunnelUrl/api/v1/security/preflight" -TimeoutSec 15
+    Write-Host "Web auth:      $($security.auth.mode)"
+    Write-Host "Local admin:   $(if ($security.auth.local_admin_configured) { 'ready' } else { 'bootstrap required' })"
+    Write-Host "MCP service:   $(if ($security.service_identity.configured) { 'configured' } else { 'not configured' })"
+}
 $mcpPreflight = Invoke-RestMethod -Uri "http://127.0.0.1:8002/preflight" -TimeoutSec 10
 Write-Host "MCP tools:     $($mcpPreflight.tool_count)"
 Write-Host "Deep links:    $(if ($mcpPreflight.deep_links.ready) { 'ready' } else { 'not ready' })"
-if ($ShowToken) {
-    $line = Get-Content -LiteralPath $envPath | Where-Object { $_ -match "^DEMO_API_TOKEN=" } | Select-Object -Last 1
-    Write-Host "Demo token:    $($line.Substring($line.IndexOf('=') + 1).Trim())"
-} else {
-    Write-Host "Token hidden. Add -ShowToken only when entering it into your private Sites portal."
-}
+Write-Host "Browser secret: none; Sites stores only the current Quick Tunnel origin."

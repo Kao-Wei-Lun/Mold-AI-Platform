@@ -14,36 +14,57 @@ describe('remote connection helpers', () => {
     expect(normalizeTunnelUrl('https://example.com')).toBeNull();
     expect(normalizeTunnelUrl('https://localhost')).toBeNull();
   });
-  it('passes the token in a URL fragment rather than a server request', () => {
-    const result = buildWorkspaceUrl('https://demo-name.trycloudflare.com', ' secret value ');
-    expect(result).toContain('#mold-ai-bootstrap=token=secret+value');
-    expect(result.split('#')[0]).not.toContain('secret');
+  it('builds a workspace URL without credentials or fragments', () => {
+    const result = buildWorkspaceUrl('https://demo-name.trycloudflare.com');
+    expect(result).toBe('https://demo-name.trycloudflare.com/');
+    expect(result).not.toContain('#');
   });
-  it('preserves safe context in the query while keeping the token in the fragment', () => {
-    const result = buildWorkspaceUrl('https://demo-name.trycloudflare.com', 'secret', {
+  it('preserves safe context in the query without carrying credentials', () => {
+    const result = buildWorkspaceUrl('https://demo-name.trycloudflare.com', {
       deep_link_version: '1.0',
       target: 'similarity',
       refs: { search_id: SEARCH_ID },
     });
     expect(result).toContain(`target=similarity&search_id=${SEARCH_ID}`);
-    expect(result).toContain('#mold-ai-bootstrap=token=secret');
-    expect(result.split('#')[0]).not.toContain('secret');
+    expect(result).not.toContain('#');
   });
-  it('verifies the authenticated Mold AI identity', async () => {
+  it('verifies the public local-account workspace preflight', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ name: 'Mold AI Platform', api_version: 'v1' }),
+      json: async () => ({
+        schema_version: '1.0',
+        environment: 'external-demo',
+        auth: { mode: 'local', local_accounts_enabled: true, local_admin_configured: true },
+        quick_tunnel: { ready: true },
+      }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await verifyWorkspaceConnection('https://demo-name.trycloudflare.com', 'private-token');
+    await verifyWorkspaceConnection('https://demo-name.trycloudflare.com');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://demo-name.trycloudflare.com/api/v1/system/info',
+      'https://demo-name.trycloudflare.com/api/v1/security/preflight',
       expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer private-token' }),
+        headers: { Accept: 'application/json' },
       }),
+    );
+    vi.unstubAllGlobals();
+  });
+  it('rejects a workspace before local administrator bootstrap', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        schema_version: '1.0',
+        environment: 'external-demo',
+        auth: { mode: 'local', local_accounts_enabled: true, local_admin_configured: false },
+        quick_tunnel: { ready: false },
+      }),
+    }));
+
+    await expect(verifyWorkspaceConnection('https://demo-name.trycloudflare.com')).rejects.toThrow(
+      'local administrator bootstrap',
     );
     vi.unstubAllGlobals();
   });

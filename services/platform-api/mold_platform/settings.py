@@ -106,6 +106,24 @@ DEMO_API_TOKEN_SCOPES = {
     if scope.strip()
 }
 DEMO_API_ACTOR_ID = os.getenv("DEMO_API_ACTOR_ID", "demo-access-key")
+PLATFORM_SERVICE_TOKEN = os.getenv("PLATFORM_SERVICE_TOKEN", "")
+PLATFORM_SERVICE_TOKEN_SCOPES = {
+    scope.strip()
+    for scope in os.getenv(
+        "PLATFORM_SERVICE_TOKEN_SCOPES",
+        "public-demo:read,public-demo:write",
+    ).split(",")
+    if scope.strip()
+}
+PLATFORM_SERVICE_ACTOR_ID = os.getenv(
+    "PLATFORM_SERVICE_ACTOR_ID",
+    "mcp-gateway-service",
+)
+PLATFORM_SERVICE_CLIENTS = {
+    client.strip()
+    for client in os.getenv("PLATFORM_SERVICE_CLIENTS", "mcp-gateway").split(",")
+    if client.strip()
+}
 LOCAL_AUTH_MAX_FAILURES = int(os.getenv("LOCAL_AUTH_MAX_FAILURES", "5"))
 LOCAL_AUTH_LOCK_SECONDS = int(os.getenv("LOCAL_AUTH_LOCK_SECONDS", "300"))
 SESSION_COOKIE_HTTPONLY = True
