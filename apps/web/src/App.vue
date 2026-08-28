@@ -268,12 +268,14 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :ui-action="pendingUIAction"
           :deep-link="activeDeepLink"
           @context-change="assistantContext = $event"
+          @navigate="navigate"
         />
         <DesignReviewWorkspace
           v-else-if="currentRoute.id === 'design_review' && accessReady"
           :query="activeCAD"
           :deep-link="activeDeepLink"
           @context-change="assistantContext = $event"
+          @navigate="navigate"
         />
         <KnowledgeWorkspace
           v-else-if="currentRoute.id === 'knowledge' && accessReady"

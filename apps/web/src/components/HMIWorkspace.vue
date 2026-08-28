@@ -12,6 +12,7 @@ import {
 } from "../api/hmi";
 import { downloadProtectedArtifact } from "../api/client";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { t } = useI18n();
 
@@ -140,10 +141,9 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="hmi-input-bar">
-      <label class="hmi-file-picker">
-        <span>{{ t("PNG or JPG · maximum 10 MB") }}</span>
-        <input type="file" accept="image/png,image/jpeg" @change="onFile" />
-      </label>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" class="hmi-file-picker" :label="t('HMI image')" required :helper="t('PNG or JPG · maximum 10 MB')">
+        <input :id="fieldId" type="file" accept="image/png,image/jpeg" :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
+      </FormField>
       <button type="button" class="secondary-button" :disabled="loadingDemo" @click="loadDemo">
         {{ loadingDemo ? t("Loading...") : t("Load low-confidence Demo screen") }}
       </button>

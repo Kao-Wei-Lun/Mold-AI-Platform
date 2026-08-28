@@ -102,6 +102,9 @@ The detailed implementation backlog is maintained in the
 - Stage 17 Phase B: application-wide English/Traditional Chinese switching, browser preference,
   accessibility language metadata and Assistant locale propagation are implemented. Governed source
   records remain in their authored language.
+- Stage 17 Phase C: controlled engineering inputs, the shared accessible FormField contract,
+  required/range guidance and actionable workspace empty states are implemented. Toasts, progress
+  polish and table readability remain Phase 3 follow-up work.
 
 Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
 so visual and interaction changes do not obscure backend, data, security, or release regressions.

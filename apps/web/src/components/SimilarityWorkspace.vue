@@ -12,6 +12,8 @@ import {
 } from "../api/similarity";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
+import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
 const { locale, t } = useI18n();
 
@@ -20,7 +22,10 @@ const props = defineProps<{
   uiAction?: UIAction | null;
   deepLink?: DeepLinkContext | null;
 }>();
-const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
+const emit = defineEmits<{
+  contextChange: [context: AssistantContext];
+  navigate: [route: "cad"];
+}>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const datasetId = ref("");
@@ -183,9 +188,14 @@ onBeforeUnmount(() => {
       <span class="demo-label">{{ t("Deterministic Demo Profile") }}</span>
     </div>
 
-    <p v-if="!query" class="muted similarity-intro">
-      {{ t("Process a CAD artifact above to use it as the similarity query.") }}
-    </p>
+    <WorkspaceEmptyState
+      v-if="!query"
+      :eyebrow="t('CAD required')"
+      :title="t('Prepare a CAD query first')"
+      :message="t('Open CAD & artifacts, process or select a model, then return here to search comparable molds.')"
+      :action-label="t('Open CAD & artifacts')"
+      @action="emit('navigate', 'cad')"
+    />
     <template v-else>
       <div class="query-summary">
         <div>
@@ -198,39 +208,35 @@ onBeforeUnmount(() => {
       </div>
 
       <form class="similarity-form" @submit.prevent="submit">
-        <label>
-          <span>{{ t("Dataset filter") }}</span>
-          <select v-model="datasetId">
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset filter')">
+          <select :id="fieldId" v-model="datasetId" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
             <option value="public-demo-v1">public-demo-v1</option>
             <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
             <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
           </select>
-        </label>
-        <label>
-          <span>{{ t("Product type") }}</span>
-          <select v-model="productType">
+        </FormField>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
+          <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
             <option value="housing">{{ t("Housing") }}</option>
             <option value="connector_housing">{{ t("Connector housing") }}</option>
             <option value="electronics_cover">{{ t("Electronics cover") }}</option>
             <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
           </select>
-        </label>
-        <label>
-          <span>{{ t("Material") }}</span>
-          <select v-model="materialCode">
+        </FormField>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
+          <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
             <option value="PA6-GF30">PA6-GF30</option>
             <option value="ABS-GENERAL">ABS-GENERAL</option>
             <option value="PP-HOMO">PP-HOMO</option>
             <option value="PC_ABS">PC_ABS</option>
           </select>
-        </label>
-        <label>
-          <span>{{ t("Top K") }}</span>
-          <input v-model.number="topK" type="number" min="1" max="20" />
-        </label>
+        </FormField>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 20 ranked candidates.')">
+          <input :id="fieldId" v-model.number="topK" type="number" min="1" max="20" required :aria-describedby="describedBy" :aria-invalid="invalid" />
+        </FormField>
         <button type="submit" :disabled="submitting || !indexed">
           {{ submitting ? t("Starting...") : t("Search similar CAD") }}
         </button>

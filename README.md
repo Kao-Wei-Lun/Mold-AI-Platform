@@ -69,3 +69,7 @@ See [`docs/development/stage-17-ui-phase-a.md`](docs/development/stage-17-ui-pha
 Stage 17 Phase B adds application-wide English/Traditional Chinese switching with a persisted
 browser preference and explicit governed-source translation boundary. See
 [`docs/development/stage-17-ui-phase-b-i18n.md`](docs/development/stage-17-ui-phase-b-i18n.md).
+
+Stage 17 Phase C constrains engineering inputs and adds a shared accessible field contract,
+required/range guidance and actionable empty states. See
+[`docs/development/stage-17-ui-phase-c-form-guidance.md`](docs/development/stage-17-ui-phase-c-form-guidance.md).

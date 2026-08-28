@@ -232,6 +232,15 @@
 
 ---
 
+## Implementation status (2026-08-28)
+
+- Phase 1 is complete and independently verified in Git commit `4a6838b`.
+- Phase 2 is complete in Stage 17 Phase C: shared accessible fields, required/range guidance,
+  validation summaries and actionable empty states.
+- Phase 3 remains planned and is intentionally excluded from the Phase 2 commit.
+- Detailed implementation and verification boundaries are recorded in
+  [`development/stage-17-ui-phase-c-form-guidance.md`](development/stage-17-ui-phase-c-form-guidance.md).
+
 ## Verification Plan
 
 ### Automated Tests

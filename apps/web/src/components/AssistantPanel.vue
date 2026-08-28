@@ -11,6 +11,7 @@ import {
 } from "../api/assistant";
 import { validateUIAction } from "../uiActions";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
 
@@ -194,14 +195,18 @@ onMounted(loadCapabilities);
     </p>
 
     <form class="assistant-form" :aria-busy="submitting" @submit.prevent="submit">
-      <label for="assistant-message">{{ t("Ask about the selected engineering result") }}</label>
-      <textarea
-        id="assistant-message"
-        v-model="message"
-        maxlength="2000"
-        rows="4"
-        :placeholder="t('Why is this ranked first?')"
-      ></textarea>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Ask about the selected engineering result')" required :helper="t('The current page context is included automatically.')">
+        <textarea
+          :id="fieldId"
+          v-model="message"
+          maxlength="2000"
+          rows="4"
+          required
+          :aria-describedby="describedBy"
+          :aria-invalid="invalid"
+          :placeholder="t('Why is this ranked first?')"
+        ></textarea>
+      </FormField>
       <button type="submit" :disabled="submitting || !message.trim()">
         {{ submitting ? t("Analyzing...") : t("Ask Assistant") }}
       </button>

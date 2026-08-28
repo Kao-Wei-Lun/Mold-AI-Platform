@@ -9,6 +9,7 @@ import {
   type SecurityPreflight,
 } from "../api/security";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { t } = useI18n();
 
@@ -110,10 +111,9 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
     </div>
 
     <form v-if="preflight?.auth.required && !connected" class="access-form" @submit.prevent="connect">
-      <label>
-        <span>{{ t("Demo access token") }}</span>
-        <input v-model="token" type="password" autocomplete="current-password" required />
-      </label>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Demo access token')" required :helper="t('The token is kept only for this Demo session.')">
+        <input :id="fieldId" v-model="token" type="password" autocomplete="current-password" required :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
       <button type="submit" :disabled="connecting || !token.trim()">
         {{ connecting ? t("Verifying...") : t("Unlock workspace") }}
       </button>

@@ -177,7 +177,8 @@ describe("ProcessTrialWorkspace", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("0 canonical trial cases");
-    await wrapper.get(".process-source-bar button").trigger("click");
+    expect(wrapper.text()).toContain("Load the governed trial catalog first");
+    await wrapper.get(".workspace-empty-state button").trigger("click");
     await flushPromises();
 
     expect(wrapper.text()).toContain("6 canonical trial cases");

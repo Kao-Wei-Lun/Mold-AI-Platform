@@ -112,4 +112,22 @@ describe("KnowledgeWorkspace", () => {
     expect(wrapper.text()).toContain("0 indexed");
     expect(wrapper.get(".knowledge-search-form button").attributes("disabled")).toBeDefined();
   });
+
+  it("shows field guidance and does not upload an incomplete document", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ schema_version: "1.0", items: [indexedDocument] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(KnowledgeWorkspace);
+    await flushPromises();
+    await wrapper.get('.knowledge-upload-form input[type="text"]').setValue("x");
+    await wrapper.get(".knowledge-upload-form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Choose a UTF-8 TXT or Markdown file");
+    expect(wrapper.text()).toContain("Enter a title with at least 3 characters");
+    expect(wrapper.text()).toContain("Required fields remaining: 2");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -12,6 +12,7 @@ import {
   type CAEStudy,
 } from "../api/cae";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
 
@@ -37,6 +38,9 @@ const runOptions = computed(() =>
       label: `${study.study_code} / ${run.run_code}`,
     })),
   ),
+);
+const missingComparisonFields = computed(
+  () => Number(!baselineRunId.value) + Number(!candidateRunId.value),
 );
 
 function findRun(studyCode: string): CAERun | undefined {
@@ -154,23 +158,24 @@ watch(
     </div>
 
     <form class="cae-compare-form" @submit.prevent="submitComparison">
-      <label>
-        <span>{{ t("Baseline study / run") }}</span>
-        <select v-model="baselineRunId" required>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Baseline study / run')" required :helper="t('Select the reference run for all metric deltas.')">
+        <select :id="fieldId" v-model="baselineRunId" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option v-for="option in runOptions" :key="option.run.run_id" :value="option.run.run_id">
             {{ option.label }} · {{ option.run.solver.version }} · {{ option.run.material_model_code }}
           </option>
         </select>
-      </label>
+      </FormField>
       <span class="comparison-arrow" aria-hidden="true">→</span>
-      <label>
-        <span>{{ t("Candidate study / run") }}</span>
-        <select v-model="candidateRunId" required>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Candidate study / run')" required :helper="t('Select the run to compare against the baseline.')">
+        <select :id="fieldId" v-model="candidateRunId" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option v-for="option in runOptions" :key="option.run.run_id" :value="option.run.run_id">
             {{ option.label }} · {{ option.run.solver.version }} · {{ option.run.material_model_code }}
           </option>
         </select>
-      </label>
+      </FormField>
+      <p v-if="missingComparisonFields" class="form-validation-summary" aria-live="polite">
+        {{ t("Required fields remaining: {count}", { count: missingComparisonFields }) }}
+      </p>
       <button
         type="submit"
         :disabled="comparing || !baselineRunId || !candidateRunId || loadedStudyCount === 0"

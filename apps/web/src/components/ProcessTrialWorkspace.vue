@@ -16,6 +16,8 @@ import {
 } from "../api/processTrial";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
+import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
 const { locale, t } = useI18n();
 
@@ -31,6 +33,7 @@ const searching = ref(false);
 const error = ref<string | null>(null);
 const result = ref<ProcessSearchResult | null>(null);
 const selected = ref<ProcessMatch | null>(null);
+const submitAttempted = ref(false);
 
 const defectCode = ref("");
 const materialCode = ref("");
@@ -43,6 +46,15 @@ const meltTemperature = ref<number | null>(null);
 const topK = ref(5);
 
 const recommendation = computed(() => result.value?.recommendation || null);
+const missingQueryFields = computed(
+  () => Number(!defectCode.value) + Number(!materialCode.value),
+);
+const defectError = computed(() =>
+  submitAttempted.value && !defectCode.value ? t("Select a defect.") : "",
+);
+const materialError = computed(() =>
+  submitAttempted.value && !materialCode.value ? t("Select a material.") : "",
+);
 
 function useExplicitDemoInputs(): void {
   defectCode.value = "short_shot";
@@ -87,6 +99,8 @@ async function seedFixtures(): Promise<void> {
 }
 
 async function submitSearch(): Promise<void> {
+  submitAttempted.value = true;
+  if (missingQueryFields.value) return;
   searching.value = true;
   error.value = null;
   result.value = null;
@@ -104,6 +118,7 @@ async function submitSearch(): Promise<void> {
       topK: topK.value,
     });
     selected.value = result.value.results[0] || null;
+    submitAttempted.value = false;
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Process case search failed.");
   } finally {
@@ -191,6 +206,15 @@ watch(
       </button>
     </div>
 
+    <WorkspaceEmptyState
+      v-if="!loading && loadedCaseCount === 0"
+      :eyebrow="t('Demo data required')"
+      :title="t('Load the governed trial catalog first')"
+      :message="t('Synthetic fixtures provide the bounded cases, provenance and scoring evidence required for this Demo search.')"
+      :action-label="t('Load trial fixtures')"
+      @action="seedFixtures"
+    />
+
     <form class="process-query-form" @submit.prevent="submitSearch">
       <div class="form-wide demo-input-notice">
         <p>{{ t("Inputs are empty by default so the platform never presents Demo values as user context.") }}</p>
@@ -198,46 +222,41 @@ watch(
           {{ t("Use explicit Demo inputs") }}
         </button>
       </div>
-      <label>
-        <span>{{ t("Defect") }}</span>
-        <select v-model="defectCode">
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Defect')" required :error="defectError">
+        <select :id="fieldId" v-model="defectCode" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Select a defect") }}</option>
           <option value="short_shot">{{ t("Short shot") }}</option>
           <option value="sink_mark">{{ t("Sink mark") }}</option>
           <option value="warpage">{{ t("Warpage") }}</option>
           <option value="flash">{{ t("Flash") }}</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Material") }}</span>
-        <select v-model="materialCode">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')" required :error="materialError">
+        <select :id="fieldId" v-model="materialCode" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not provided — abstain") }}</option>
           <option value="PA6-GF30">PA6-GF30</option>
           <option value="ABS-GENERAL">ABS-GENERAL</option>
           <option value="PP-HOMO">PP-HOMO</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Machine") }}</span>
-        <select v-model="machineCode">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Machine')">
+        <select :id="fieldId" v-model="machineCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not provided — no ranges") }}</option>
           <option value="IM-120T">IM-120T</option>
           <option value="IM-180T">IM-180T</option>
           <option value="IM-220T">IM-220T</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Product type") }}</span>
-        <select v-model="productType">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
+        <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Any") }}</option>
           <option value="connector_housing">{{ t("Connector housing") }}</option>
           <option value="electronics_cover">{{ t("Electronics cover") }}</option>
           <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Location") }}</span>
-        <select v-model="location">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Location')">
+        <select :id="fieldId" v-model="location" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Any location") }}</option>
           <option value="far_flow_end">{{ t("Far flow end") }}</option>
           <option value="gate_area">{{ t("Gate area") }}</option>
@@ -245,23 +264,22 @@ watch(
           <option value="cavity_side">{{ t("Cavity side") }}</option>
           <option value="parting_line">{{ t("Parting line") }}</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Injection pressure (MPa)") }}</span>
-        <input v-model.number="injectionPressure" type="number" min="0" max="500" step="0.1" />
-      </label>
-      <label>
-        <span>{{ t("Injection speed (mm/s)") }}</span>
-        <input v-model.number="injectionSpeed" type="number" min="0" max="600" step="0.1" />
-      </label>
-      <label>
-        <span>{{ t("Melt temperature (°C)") }}</span>
-        <input v-model.number="meltTemperature" type="number" min="0" max="500" step="0.1" />
-      </label>
-      <label>
-        <span>{{ t("Top K") }}</span>
-        <input v-model.number="topK" type="number" min="1" max="10" />
-      </label>
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Injection pressure (MPa)')" :helper="t('Allowed range: 0–500 MPa.')">
+        <input :id="fieldId" v-model.number="injectionPressure" type="number" min="0" max="500" step="0.1" :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Injection speed (mm/s)')" :helper="t('Allowed range: 0–600 mm/s.')">
+        <input :id="fieldId" v-model.number="injectionSpeed" type="number" min="0" max="600" step="0.1" :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Melt temperature (°C)')" :helper="t('Allowed range: 0–500 °C.')">
+        <input :id="fieldId" v-model.number="meltTemperature" type="number" min="0" max="500" step="0.1" :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 10 governed cases.')">
+        <input :id="fieldId" v-model.number="topK" type="number" min="1" max="10" required :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
+      <p v-if="missingQueryFields" class="form-validation-summary" aria-live="polite">
+        {{ t("Required fields remaining: {count}", { count: missingQueryFields }) }}
+      </p>
       <button
         type="submit"
         :disabled="searching || loadedCaseCount === 0 || !defectCode || !materialCode"

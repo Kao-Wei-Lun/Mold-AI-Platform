@@ -165,4 +165,13 @@ describe("SimilarityWorkspace", () => {
     expect(wrapper.get('button[type="submit"]').attributes("disabled")).toBeDefined();
     expect(wrapper.text()).toContain("not indexed");
   });
+
+  it("guides the user to prepare CAD when no query is selected", async () => {
+    const wrapper = mount(SimilarityWorkspace, { props: { query: null } });
+
+    expect(wrapper.text()).toContain("Prepare a CAD query first");
+    expect(wrapper.find("form").exists()).toBe(false);
+    await wrapper.get(".workspace-empty-state button").trigger("click");
+    expect(wrapper.emitted("navigate")?.[0]).toEqual(["cad"]);
+  });
 });

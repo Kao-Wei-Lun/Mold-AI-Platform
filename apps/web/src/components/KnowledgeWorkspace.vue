@@ -16,6 +16,7 @@ import { downloadProtectedArtifact } from "../api/client";
 import type { AssistantContext } from "../api/assistant";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
 
@@ -39,6 +40,8 @@ const searching = ref(false);
 const searchResult = ref<KnowledgeSearchResult | null>(null);
 const selectedResult = ref<KnowledgeResultItem | null>(null);
 const error = ref<string | null>(null);
+const uploadAttempted = ref(false);
+const searchAttempted = ref(false);
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
@@ -46,6 +49,21 @@ const terminal = computed(() =>
 );
 const indexedCount = computed(
   () => documents.value.filter((document) => document.ingestion_status === "indexed").length,
+);
+const missingUploadFields = computed(
+  () => Number(!file.value) + Number(title.value.trim().length < 3),
+);
+const missingSearchFields = computed(() => Number(!query.value.trim()));
+const fileError = computed(() =>
+  uploadAttempted.value && !file.value ? t("Choose a UTF-8 TXT or Markdown file.") : "",
+);
+const titleError = computed(() =>
+  uploadAttempted.value && title.value.trim().length < 3
+    ? t("Enter a title with at least 3 characters.")
+    : "",
+);
+const queryError = computed(() =>
+  searchAttempted.value && !query.value.trim() ? t("Enter an engineering question or terms.") : "",
 );
 
 function onFile(event: Event): void {
@@ -80,10 +98,8 @@ async function refreshJob(): Promise<void> {
 }
 
 async function submitUpload(): Promise<void> {
-  if (!file.value) {
-    error.value = t("Choose a UTF-8 TXT or Markdown file first.");
-    return;
-  }
+  uploadAttempted.value = true;
+  if (missingUploadFields.value || !file.value) return;
   uploading.value = true;
   error.value = null;
   job.value = null;
@@ -96,6 +112,7 @@ async function submitUpload(): Promise<void> {
       language: language.value,
     });
     job.value = await fetchKnowledgeJob(accepted.job_id);
+    uploadAttempted.value = false;
     schedulePoll();
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Knowledge upload failed.");
@@ -105,6 +122,8 @@ async function submitUpload(): Promise<void> {
 }
 
 async function submitSearch(): Promise<void> {
+  searchAttempted.value = true;
+  if (missingSearchFields.value) return;
   searching.value = true;
   error.value = null;
   searchResult.value = null;
@@ -116,6 +135,7 @@ async function submitSearch(): Promise<void> {
       topK: topK.value,
     });
     selectedResult.value = searchResult.value.results[0] || null;
+    searchAttempted.value = false;
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Knowledge search failed.");
   } finally {
@@ -206,37 +226,35 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <form class="knowledge-upload-form" @submit.prevent="submitUpload">
-          <label class="file-field">
-            <span>{{ t("UTF-8 TXT or Markdown") }}</span>
-            <input type="file" accept=".txt,.md,text/plain,text/markdown" @change="onFile" />
-          </label>
-          <label>
-            <span>{{ t("Title") }}</span>
-            <input v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" />
-          </label>
-          <label>
-            <span>{{ t("Document type") }}</span>
-            <select v-model="documentType">
+          <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('UTF-8 TXT or Markdown')" required :helper="t('Accepted formats: UTF-8 TXT or Markdown.')" :error="fileError">
+            <input :id="fieldId" type="file" accept=".txt,.md,text/plain,text/markdown" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Title')" required :helper="t('Use at least 3 characters so the source is recognizable.')" :error="titleError">
+            <input :id="fieldId" v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" :aria-describedby="describedBy" :aria-invalid="invalid" />
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Document type')" required>
+            <select :id="fieldId" v-model="documentType" required :aria-describedby="describedBy" :aria-invalid="invalid">
               <option value="demo_sop">{{ t("Demo SOP") }}</option>
               <option value="design_guideline">{{ t("Design guideline") }}</option>
               <option value="trial_report">{{ t("Trial report") }}</option>
               <option value="case_note">{{ t("Case note") }}</option>
             </select>
-          </label>
-          <label>
-            <span>{{ t("Authority") }}</span>
-            <select v-model="authorityLevel">
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Authority')" required>
+            <select :id="fieldId" v-model="authorityLevel" required :aria-describedby="describedBy" :aria-invalid="invalid">
               <option value="demo">Demo</option>
               <option value="reviewed_demo">{{ t("Reviewed Demo") }}</option>
             </select>
-          </label>
-          <label>
-            <span>{{ t("Language") }}</span>
-            <select v-model="language">
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Language')" required>
+            <select :id="fieldId" v-model="language" required :aria-describedby="describedBy" :aria-invalid="invalid">
               <option value="en">{{ t("English") }}</option>
               <option value="zh-Hant">{{ t("Traditional Chinese") }}</option>
             </select>
-          </label>
+          </FormField>
+          <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
+            {{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}
+          </p>
           <button type="submit" :disabled="uploading">
             {{ uploading ? t("Uploading...") : t("Ingest document") }}
           </button>
@@ -271,38 +289,40 @@ onBeforeUnmount(() => {
       <article class="knowledge-search">
         <h3>{{ t("Evidence search") }}</h3>
         <form class="knowledge-search-form" @submit.prevent="submitSearch">
-          <label class="query-field">
-            <span>{{ t("Engineering question or terms") }}</span>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" class="query-field" :label="t('Engineering question or terms')" required :error="queryError">
             <textarea
+              :id="fieldId"
               v-model="query"
               rows="3"
               maxlength="500"
               :placeholder="t('What does the source say about rib thickness?')"
               required
+              :aria-describedby="describedBy"
+              :aria-invalid="invalid"
             ></textarea>
-          </label>
-          <label>
-            <span>{{ t("Document type") }}</span>
-            <select v-model="searchType">
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Document type')">
+            <select :id="fieldId" v-model="searchType" :aria-describedby="describedBy" :aria-invalid="invalid">
               <option value="">{{ t("Any") }}</option>
               <option value="demo_sop">{{ t("Demo SOP") }}</option>
               <option value="design_guideline">{{ t("Design guideline") }}</option>
               <option value="trial_report">{{ t("Trial report") }}</option>
               <option value="case_note">{{ t("Case note") }}</option>
             </select>
-          </label>
-          <label>
-            <span>{{ t("Authority") }}</span>
-            <select v-model="searchAuthority">
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Authority')">
+            <select :id="fieldId" v-model="searchAuthority" :aria-describedby="describedBy" :aria-invalid="invalid">
               <option value="">{{ t("Any") }}</option>
               <option value="demo">Demo</option>
               <option value="reviewed_demo">{{ t("Reviewed Demo") }}</option>
             </select>
-          </label>
-          <label>
-            <span>{{ t("Top K") }}</span>
-            <input v-model.number="topK" type="number" min="1" max="10" />
-          </label>
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 10 evidence results.')">
+            <input :id="fieldId" v-model.number="topK" type="number" min="1" max="10" required :aria-describedby="describedBy" :aria-invalid="invalid" />
+          </FormField>
+          <p v-if="missingSearchFields" class="form-validation-summary" aria-live="polite">
+            {{ t("Required fields remaining: {count}", { count: missingSearchFields }) }}
+          </p>
           <button type="submit" :disabled="searching || indexedCount === 0">
             {{ searching ? t("Retrieving...") : t("Search authorized evidence") }}
           </button>

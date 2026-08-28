@@ -184,10 +184,12 @@ describe("DesignReviewWorkspace", () => {
     });
   });
 
-  it("requires processed CAD before review", () => {
+  it("guides the user to prepare CAD before review", async () => {
     const wrapper = mount(DesignReviewWorkspace, { props: { query: null } });
 
-    expect(wrapper.text()).toContain("Process a CAD artifact");
+    expect(wrapper.text()).toContain("Prepare geometry before design review");
     expect(wrapper.find(".review-form").exists()).toBe(false);
+    await wrapper.get(".workspace-empty-state button").trigger("click");
+    expect(wrapper.emitted("navigate")?.[0]).toEqual(["cad"]);
   });
 });

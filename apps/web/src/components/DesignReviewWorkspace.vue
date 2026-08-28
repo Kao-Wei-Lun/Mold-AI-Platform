@@ -13,11 +13,16 @@ import {
 } from "../api/designReview";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
+import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
 const { locale, t } = useI18n();
 
 const props = defineProps<{ query: CADModelResult | null; deepLink?: DeepLinkContext | null }>();
-const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
+const emit = defineEmits<{
+  contextChange: [context: AssistantContext];
+  navigate: [route: "cad"];
+}>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const nominalWall = ref("");
@@ -31,12 +36,21 @@ const decisionChoice = ref<"accepted" | "rejected" | "waived">("accepted");
 const decisionReason = ref("");
 const decisionApprover = ref("");
 const savingDecision = ref(false);
+const decisionSubmitted = ref(false);
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
   ["succeeded", "failed", "cancelled", "expired"].includes(job.value?.state || ""),
 );
 const result = computed(() => job.value?.result || null);
+const decisionMissingFields = computed(() =>
+  Number(decisionChoice.value === "waived" && !decisionApprover.value),
+);
+const approverError = computed(() =>
+  decisionSubmitted.value && decisionMissingFields.value
+    ? t("Select an approver before recording a waiver.")
+    : "",
+);
 
 function numericContext(): Record<string, number> {
   const values: Record<string, number> = {};
@@ -118,6 +132,8 @@ async function loadDeepLink(): Promise<void> {
 
 async function saveDecision(): Promise<void> {
   if (!result.value || !selectedFinding.value) return;
+  decisionSubmitted.value = true;
+  if (decisionMissingFields.value) return;
   savingDecision.value = true;
   error.value = null;
   try {
@@ -133,6 +149,7 @@ async function saveDecision(): Promise<void> {
     selectedFinding.value.decisions.push(record);
     decisionReason.value = "";
     decisionApprover.value = "";
+    decisionSubmitted.value = false;
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to save review decision.");
   } finally {
@@ -191,9 +208,14 @@ onBeforeUnmount(() => {
       <span class="demo-label">{{ t("13 Synthetic Demo Rules") }}</span>
     </div>
 
-    <p v-if="!query" class="muted review-intro">
-      {{ t("Process a CAD artifact above before starting a design review.") }}
-    </p>
+    <WorkspaceEmptyState
+      v-if="!query"
+      :eyebrow="t('CAD required')"
+      :title="t('Prepare geometry before design review')"
+      :message="t('Open CAD & artifacts, process or select a model, then return here to evaluate the approved mold rules.')"
+      :action-label="t('Open CAD & artifacts')"
+      @action="emit('navigate', 'cad')"
+    />
     <template v-else>
       <div class="query-summary">
         <div>
@@ -204,21 +226,15 @@ onBeforeUnmount(() => {
       </div>
 
       <form class="review-form" @submit.prevent="submit">
-        <label>
-          <span>{{ t("Nominal wall (mm)") }}</span>
-          <input v-model="nominalWall" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 1.5 – 5.0')" />
-          <small class="field-hint">{{ t("Typical range: 1.0 – 5.0 mm") }}</small>
-        </label>
-        <label>
-          <span>{{ t("Max rib (mm)") }}</span>
-          <input v-model="maximumRib" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 0.5 – 4.0')" />
-          <small class="field-hint">{{ t("Typical range: 0.5 – 4.0 mm") }}</small>
-        </label>
-        <label>
-          <span>{{ t("Min draft (deg)") }}</span>
-          <input v-model="minimumDraft" type="number" min="0" max="30" step="0.01" :placeholder="t('e.g. 0.5 – 5.0')" />
-          <small class="field-hint">{{ t("Typical range: 0.5 – 5.0°") }}</small>
-        </label>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Nominal wall (mm)')" :helper="t('Typical range: 1.0 – 5.0 mm')">
+          <input :id="fieldId" v-model="nominalWall" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 1.5 – 5.0')" :aria-describedby="describedBy" :aria-invalid="invalid" />
+        </FormField>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Max rib (mm)')" :helper="t('Typical range: 0.5 – 4.0 mm')">
+          <input :id="fieldId" v-model="maximumRib" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 0.5 – 4.0')" :aria-describedby="describedBy" :aria-invalid="invalid" />
+        </FormField>
+        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Min draft (deg)')" :helper="t('Typical range: 0.5 – 5.0°')">
+          <input :id="fieldId" v-model="minimumDraft" type="number" min="0" max="30" step="0.01" :placeholder="t('e.g. 0.5 – 5.0')" :aria-describedby="describedBy" :aria-invalid="invalid" />
+        </FormField>
         <button type="submit" :disabled="submitting">
           {{ submitting ? t("Starting...") : t("Run design review") }}
         </button>
@@ -331,27 +347,27 @@ onBeforeUnmount(() => {
             @submit.prevent="saveDecision"
           >
             <h3>{{ t("Record reviewer decision") }}</h3>
-            <label>
-              <span>{{ t("Decision") }}</span>
-              <select v-model="decisionChoice">
+            <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Decision')" required>
+              <select :id="fieldId" v-model="decisionChoice" required :aria-describedby="describedBy" :aria-invalid="invalid">
                 <option value="accepted">{{ t("Accept finding") }}</option>
                 <option value="rejected">{{ t("Reject finding") }}</option>
                 <option value="waived">{{ t("Waive finding") }}</option>
               </select>
-            </label>
-            <label>
-              <span>{{ t("Reason") }}</span>
-              <textarea v-model="decisionReason" rows="2" maxlength="2000"></textarea>
-            </label>
-            <label>
-              <span>{{ t("Approver (required for waiver)") }}</span>
-              <select v-model="decisionApprover">
+            </FormField>
+            <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Reason')" :helper="t('Explain the engineering basis for this decision.')">
+              <textarea :id="fieldId" v-model="decisionReason" rows="2" maxlength="2000" :aria-describedby="describedBy" :aria-invalid="invalid"></textarea>
+            </FormField>
+            <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Approver')" :required="decisionChoice === 'waived'" :helper="t('An approver is required only when waiving a finding.')" :error="approverError">
+              <select :id="fieldId" v-model="decisionApprover" :required="decisionChoice === 'waived'" :aria-describedby="describedBy" :aria-invalid="invalid">
                 <option value="">{{ t("Select approver") }}</option>
                 <option value="demo-lead-engineer">{{ t("Lead Engineer") }}</option>
                 <option value="demo-quality-manager">{{ t("Quality Manager") }}</option>
                 <option value="demo-tooling-supervisor">{{ t("Tooling Supervisor") }}</option>
               </select>
-            </label>
+            </FormField>
+            <p v-if="decisionMissingFields" class="form-validation-summary" aria-live="polite">
+              {{ t("Required fields remaining: {count}", { count: decisionMissingFields }) }}
+            </p>
             <button type="submit" :disabled="savingDecision">
               {{ savingDecision ? t("Saving...") : t("Record decision") }}
             </button>

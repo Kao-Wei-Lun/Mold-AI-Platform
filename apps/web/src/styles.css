@@ -2881,3 +2881,85 @@ button:disabled {
   font-weight: 400;
   line-height: 1.3;
 }
+
+.form-field {
+  min-width: 0;
+}
+
+.form-field-label {
+  display: block;
+}
+
+.form-field-invalid input,
+.form-field-invalid select,
+.form-field-invalid textarea {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 2px rgb(186 48 51 / 10%);
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--color-danger);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.form-validation-summary {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-left: 3px solid #c28b16;
+  padding: 0.45rem 0.65rem;
+  color: #765500;
+  background: #fff8e6;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.workspace-empty-state {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1rem 0;
+  border: 1px dashed #b8c5d8;
+  border-radius: 14px;
+  padding: 1.15rem 1.25rem;
+  background: linear-gradient(135deg, #f8faff, #f2f6fc);
+}
+
+.workspace-empty-state h3,
+.workspace-empty-state p {
+  margin: 0;
+}
+
+.workspace-empty-state h3 {
+  margin-bottom: 0.35rem;
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.workspace-empty-state > div > p:last-child {
+  max-width: 720px;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .workspace-empty-state {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

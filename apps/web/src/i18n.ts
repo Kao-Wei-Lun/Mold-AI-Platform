@@ -554,7 +554,48 @@ const zhTW: Record<string, string> = {
   "Lead Engineer": "主任工程師",
   "Quality Manager": "品質經理",
   "Tooling Supervisor": "模具主管",
-  "Reload fixtures": "重新載入測試資料"
+  "Reload fixtures": "重新載入測試資料",
+
+  "Accepted formats: STEP, STP or STL.": "接受 STEP、STP 或 STL 格式。",
+  "Use a recognizable engineering revision name.": "請使用容易辨識的工程版本名稱。",
+  "Select where this CAD record belongs.": "選擇此 CAD 紀錄所屬的資料集。",
+  "Required fields remaining: {count}": "尚有 {count} 個必填欄位未完成",
+  "CAD required": "需要 CAD",
+  "Prepare a CAD query first": "請先準備 CAD 查詢模型",
+  "Open CAD & artifacts, process or select a model, then return here to search comparable molds.":
+    "請前往「CAD 與工件」處理或選取模型，再回到此頁搜尋相似模具。",
+  "Open CAD & artifacts": "開啟 CAD 與工件",
+  "Maximum results": "最多顯示結果",
+  "Choose between 1 and 20 ranked candidates.": "請選擇 1 至 20 個排序候選項目。",
+  "Prepare geometry before design review": "設計審查前先準備幾何資料",
+  "Open CAD & artifacts, process or select a model, then return here to evaluate the approved mold rules.":
+    "請前往「CAD 與工件」處理或選取模型，再回到此頁執行已核准的模具規則。",
+  "Explain the engineering basis for this decision.": "說明此決策的工程依據。",
+  "Approver": "核准者",
+  "An approver is required only when waiving a finding.": "只有豁免判定時需要指定核准者。",
+  "Select an approver before recording a waiver.": "記錄豁免前請先選擇核准者。",
+  "Accepted formats: UTF-8 TXT or Markdown.": "接受 UTF-8 TXT 或 Markdown 格式。",
+  "Use at least 3 characters so the source is recognizable.": "請至少輸入 3 個字元，讓來源容易辨識。",
+  "Choose a UTF-8 TXT or Markdown file.": "請選擇 UTF-8 TXT 或 Markdown 檔案。",
+  "Enter a title with at least 3 characters.": "請輸入至少 3 個字元的標題。",
+  "Enter an engineering question or terms.": "請輸入工程問題或關鍵字。",
+  "Choose between 1 and 10 evidence results.": "請選擇 1 至 10 筆證據結果。",
+  "Demo data required": "需要 Demo 資料",
+  "Load the governed trial catalog first": "請先載入受治理的試模目錄",
+  "Synthetic fixtures provide the bounded cases, provenance and scoring evidence required for this Demo search.":
+    "合成測試資料提供此次 Demo 搜尋所需的限定案例、來源與評分證據。",
+  "Load trial fixtures": "載入試模測試資料",
+  "Select a defect.": "請選擇缺陷。",
+  "Select a material.": "請選擇材料。",
+  "Allowed range: 0–500 MPa.": "允許範圍：0–500 MPa。",
+  "Allowed range: 0–600 mm/s.": "允許範圍：0–600 mm/s。",
+  "Allowed range: 0–500 °C.": "允許範圍：0–500 °C。",
+  "Choose between 1 and 10 governed cases.": "請選擇 1 至 10 筆受治理案例。",
+  "Select the reference run for all metric deltas.": "選擇所有指標差異的基準 Run。",
+  "Select the run to compare against the baseline.": "選擇要與基準比較的 Run。",
+  "The token is kept only for this Demo session.": "Token 只會保留於此次 Demo 工作階段。",
+  "The current page context is included automatically.": "系統會自動附上目前頁面的情境。",
+  "HMI image": "HMI 圖片"
 };
 
 function initialLocale(): Locale {

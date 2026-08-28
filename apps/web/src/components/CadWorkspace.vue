@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 
 import { fetchCADJob, fetchRecentCAD, type CADJob, uploadCAD } from "../api/cad";
 import { useI18n } from "../i18n";
+import FormField from "./FormField.vue";
 
 const { t } = useI18n();
 
@@ -34,6 +35,9 @@ const dimensions = computed(() => {
   const size = result.value.bounding_box.size;
   return `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
 });
+const missingUploadFields = computed(
+  () => Number(!selectedFile.value) + Number(!datasetId.value),
+);
 
 function chooseFile(event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -162,42 +166,40 @@ onBeforeUnmount(() => {
     </div>
 
     <form class="upload-form" @submit.prevent="submit">
-      <label>
-        <span>{{ t("STEP or STL file") }}</span>
-        <input type="file" accept=".step,.stp,.stl" required @change="chooseFile" />
-      </label>
-      <label>
-        <span>{{ t("Artifact name") }}</span>
-        <input v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" />
-      </label>
-      <label>
-        <span>{{ t("Dataset") }} <abbr class="required-mark" :title="t('Required')">*</abbr></span>
-        <select v-model="datasetId" required>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
+        <input :id="fieldId" type="file" accept=".step,.stp,.stl" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="chooseFile" />
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Artifact name')" :helper="t('Use a recognizable engineering revision name.')">
+        <input :id="fieldId" v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" :aria-describedby="describedBy" :aria-invalid="invalid" />
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset')" required :helper="t('Select where this CAD record belongs.')">
+        <select :id="fieldId" v-model="datasetId" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
           <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
           <option value="public-demo-v1">public-demo-v1</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Product type") }}</span>
-        <select v-model="productType">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
+        <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
           <option value="housing">{{ t("Housing") }}</option>
           <option value="connector_housing">{{ t("Connector housing") }}</option>
           <option value="electronics_cover">{{ t("Electronics cover") }}</option>
           <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
         </select>
-      </label>
-      <label>
-        <span>{{ t("Material") }}</span>
-        <select v-model="materialCode">
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
+        <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
           <option value="PA6-GF30">PA6-GF30</option>
           <option value="ABS-GENERAL">ABS-GENERAL</option>
           <option value="PP-HOMO">PP-HOMO</option>
           <option value="PC_ABS">PC_ABS</option>
         </select>
-      </label>
+      </FormField>
+      <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
+        {{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}
+      </p>
       <button type="submit" :disabled="uploading">
         {{ uploading ? t("Submitting...") : t("Upload and process") }}
       </button>
