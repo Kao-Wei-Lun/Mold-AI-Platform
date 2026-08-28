@@ -36,7 +36,7 @@ Stage 16不增加新的工程演算法，而是把已完成能力組合成可重
 6. 執行migration與`seed_demo_data`，包含Stage 15 CAD reconciliation。
 7. 啟動／確認Web Quick Tunnel並驗證system identity。
 8. 驗證Stage 13 Sites entry與dynamic Workspace connection。
-9. 檢查MCP preflight tool_count=9。
+9. 檢查 MCP preflight `tool_count=10` 且 Plugin UI resource ready。
 10. 輸出下一步啟動Secure MCP Tunnel的明確指令。
 
 Start不得自動讀取或顯示`CONTROL_PLANE_API_KEY`，也不得在沒有使用者啟動terminal時偷偷建立長期
@@ -220,7 +220,7 @@ Screenshot若包含個人email、token、tunnel ID、private URL或browser資料
 ### UAT-07 — ChatGPT MCP and deep links
 
 1. 新對話明確選取Mold AI Platform。
-2. 能力/狀態回報8 capabilities/9 tools及正確counts。
+2. 能力/狀態回報 8 capabilities/10 tools 及正確 counts。
 3. Knowledge與Process tools取得grounded result。
 4. Similarity/Review create-job後以`get_job_status`poll完成。
 5. 點deep link抵達相同persisted Web result。

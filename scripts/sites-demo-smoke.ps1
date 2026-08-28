@@ -49,6 +49,9 @@ if (-not $security.service_identity.configured -or $security.service_identity.se
 }
 if (-not $mcp.inspector_ready) { throw "Local MCP gateway preflight failed." }
 if (-not $mcp.deep_links.ready) { throw "Stable Sites deep-link entry is not ready." }
+if (-not $mcp.plugin_ui.ready -or $mcp.plugin_ui.resource_uri -ne "ui://mold-ai/open-web-v1.html") {
+    throw "ChatGPT Plugin UI launcher is not ready."
+}
 if ($mcp.deep_links.entry_origin -match "\.invalid$" -or $mcp.deep_links.entry_origin -notmatch "^https://") {
     throw "MCP deep-link entry is not a deployable HTTPS origin."
 }

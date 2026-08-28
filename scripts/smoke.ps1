@@ -702,7 +702,7 @@ if ($mcpPreflight.authentication.oauth_implemented -or `
     throw "MCP preflight overstated OAuth or external ChatGPT readiness."
 }
 $mcpResult = docker compose exec -T api python scripts/mcp_smoke.py
-if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "9 tools discovered") {
+if ($LASTEXITCODE -ne 0 -or ($mcpResult -join "`n") -notmatch "10 tools discovered") {
     throw "MCP protocol discovery/call smoke check failed."
 }
 

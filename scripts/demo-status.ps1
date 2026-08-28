@@ -99,9 +99,9 @@ $coreReady = $containersReady `
     -and $curated `
     -and $curated.reconciled `
     -and $mcp `
-    -and $mcp.tool_count -eq 9
+    -and $mcp.tool_count -eq 10
 $externalReady = $LocalDevelopment -or (
-    $entryConfigured -and $tunnelKnown -and $mcp.deep_links.ready `
+    $entryConfigured -and $tunnelKnown -and $mcp.deep_links.ready -and $mcp.plugin_ui.ready `
         -and $mcp.connection.secure_tunnel_configured `
         -and $null -ne (Get-Process -Name "tunnel-client" -ErrorAction SilentlyContinue)
 )
@@ -116,7 +116,7 @@ $nextActions = @()
 if (-not $containersReady) { $nextActions += "Run scripts/demo-start.ps1 and inspect missing services." }
 if (-not $workersReady) { $nextActions += "Restore both Celery workers before creating asynchronous jobs." }
 if (-not $curated -or -not $curated.reconciled) { $nextActions += "Run seed_cad_demo and repair Qdrant before UAT." }
-if (-not $mcp -or $mcp.tool_count -ne 9) { $nextActions += "Restore the local MCP gateway and verify its preflight." }
+if (-not $mcp -or $mcp.tool_count -ne 10) { $nextActions += "Restore the local MCP gateway and verify its preflight." }
 if (-not $LocalDevelopment -and -not $entryConfigured) { $nextActions += "Configure a stable private Sites HTTPS entry." }
 if (-not $LocalDevelopment -and -not $tunnelKnown) { $nextActions += "Start the Web Quick Tunnel." }
 if (-not $LocalDevelopment -and $mcp -and -not $mcp.connection.secure_tunnel_configured) {
@@ -165,6 +165,7 @@ $payload = [ordered]@{
         reachable = $null -ne $mcp
         tool_count = if ($mcp) { $mcp.tool_count } else { 0 }
         deep_links_ready = if ($mcp) { $mcp.deep_links.ready } else { $false }
+        plugin_ui_ready = if ($mcp) { $mcp.plugin_ui.ready } else { $false }
         secure_tunnel_configured = if ($mcp) { $mcp.connection.secure_tunnel_configured } else { $false }
         tunnel_client_running = $null -ne (Get-Process -Name "tunnel-client" -ErrorAction SilentlyContinue)
         error = $mcpError
@@ -206,7 +207,7 @@ if (-not $LocalDevelopment) {
     Write-Host "Web tunnel:  $(if ($payload.web.quick_tunnel_known -and $payload.security.quick_tunnel_ready) { 'ready' } else { 'not ready' })"
     Write-Host "Security:    $($payload.readiness_summary.security_profile)"
 }
-Write-Host "MCP:         tools=$($payload.mcp.tool_count), deep-links=$(if ($payload.mcp.deep_links_ready) { 'ready' } else { 'not ready' })"
+Write-Host "MCP:         tools=$($payload.mcp.tool_count), deep-links=$(if ($payload.mcp.deep_links_ready) { 'ready' } else { 'not ready' }), plugin-ui=$(if ($payload.mcp.plugin_ui_ready) { 'ready' } else { 'not ready' })"
 if (-not $LocalDevelopment) {
     Write-Host "MCP tunnel:  configured=$($payload.mcp.secure_tunnel_configured), client-running=$($payload.mcp.tunnel_client_running)"
 }

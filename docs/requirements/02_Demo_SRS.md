@@ -97,7 +97,7 @@ Demo 用於證明平台骨架與跨入口流程可行，不用公開資料宣稱
 
 ### 4.10 MCP / ChatGPT demo
 
-- **D-MCP-001**：應提供 `list_engineering_capabilities`、`get_platform_status`、`search_similar_molds`、`get_similarity_explanation`、`run_design_review`、`get_job_status`、`list_knowledge_documents`、`search_knowledge`、`search_process_trial_cases` 九個 MCP tools。
+- **D-MCP-001**：應提供 `list_engineering_capabilities`、`get_platform_status`、`search_similar_molds`、`get_similarity_explanation`、`run_design_review`、`get_job_status`、`list_knowledge_documents`、`search_knowledge`、`search_process_trial_cases` 九個 domain tools，以及 decoupled `open_mold_ai_web` Plugin UI launcher，共十個 MCP tools。
 - **D-MCP-002**：MCP 結果應使用與 REST API 相同的 domain schema，另加精簡 model-readable text 與 Engineering UI deep link。
 - **D-MCP-003**：Create-job tools 必須回傳 job_id，不應讓 MCP request 等待重型工作完成。
 - **D-MCP-004**：Demo 前應完成 Developer Mode／Plugin 可用性、Workspace Policy、endpoint、auth 與 tool discovery 預檢。

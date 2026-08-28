@@ -7,14 +7,20 @@ import httpx
 from django.test import SimpleTestCase
 
 from platform_core.mcp_gateway import (
+    PLUGIN_UI_MIME_TYPE,
+    PLUGIN_UI_RESOURCE_URI,
     MCPAccessMiddleware,
     PlatformAPIClient,
     create_app,
     get_job_status,
     get_platform_status,
     get_similarity_explanation,
+    get_web_launcher_ui,
     list_engineering_capabilities,
     list_knowledge_documents,
+    mcp,
+    open_mold_ai_web,
+    plugin_ui_resource_meta,
     run_design_review,
     search_process_trial_cases,
     search_similar_molds,
@@ -29,6 +35,57 @@ PROCESS_SEARCH_ID = "66666666-6666-4666-8666-666666666666"
 
 
 class MCPGatewayTests(SimpleTestCase):
+    def test_web_launcher_is_a_decoupled_tenth_tool_with_versioned_ui_metadata(self) -> None:
+        tools = mcp._tool_manager.list_tools()
+        launcher = next(tool for tool in tools if tool.name == "open_mold_ai_web")
+        resources = mcp._resource_manager.list_resources()
+        resource = next(item for item in resources if str(item.uri) == PLUGIN_UI_RESOURCE_URI)
+
+        self.assertEqual(len(tools), 10)
+        self.assertEqual(launcher.meta["ui"]["resourceUri"], PLUGIN_UI_RESOURCE_URI)
+        self.assertEqual(launcher.meta["openai/outputTemplate"], PLUGIN_UI_RESOURCE_URI)
+        self.assertEqual(resource.mime_type, PLUGIN_UI_MIME_TYPE)
+
+    def test_web_launcher_builds_only_server_validated_deep_links(self) -> None:
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://mold-ai.example.test",
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            home = asyncio.run(open_mold_ai_web())
+            similarity = asyncio.run(open_mold_ai_web(target="similarity", search_id=SEARCH_ID))
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                asyncio.run(open_mold_ai_web(target="home", job_id=JOB_ID))
+
+        self.assertEqual(
+            home.links["ui"],
+            "https://mold-ai.example.test/open?deep_link_version=1.0&target=home",
+        )
+        self.assertIn(f"search_id={SEARCH_ID}", similarity.links["ui"])
+        self.assertEqual(similarity.domain_result["authentication"], "personal_mold_ai_session")
+
+    def test_plugin_ui_restricts_external_open_to_the_configured_sites_origin(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"PUBLIC_WEB_ENTRY_BASE_URL": "https://mold-ai.example.test"},
+            clear=False,
+        ):
+            html = get_web_launcher_ui()
+            meta = plugin_ui_resource_meta()
+
+        self.assertIn('const allowedOrigin = "https://mold-ai.example.test"', html)
+        self.assertIn("openai?.openExternal", html)
+        self.assertIn("redirectUrl: false", html)
+        self.assertIn('url.pathname !== "/open"', html)
+        self.assertIn("ui/notifications/tool-result", html)
+        self.assertIn("window.openai?.toolOutput", html)
+        self.assertIn("textContent", html)
+        self.assertNotIn("innerHTML", html)
+        self.assertEqual(
+            meta["openai/widgetCSP"]["redirect_domains"],
+            ["https://mold-ai.example.test"],
+        )
+
     def test_capability_and_status_tools_return_canonical_rest_results(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             if request.url.path.endswith("/engineering-capabilities"):
@@ -372,8 +429,11 @@ class MCPGatewayTests(SimpleTestCase):
 
         payload = asyncio.run(exercise())
         self.assertEqual(payload["connection"]["path"], "secure_mcp_tunnel")
+        self.assertEqual(payload["tool_count"], 10)
         self.assertTrue(payload["server_side_chatgpt_preflight_ready"])
         self.assertTrue(payload["deep_links"]["ready"])
+        self.assertTrue(payload["plugin_ui"]["ready"])
+        self.assertEqual(payload["plugin_ui"]["resource_uri"], PLUGIN_UI_RESOURCE_URI)
         self.assertEqual(payload["openai_account_workspace_validation"], "pending_external_check")
         self.assertIn("depends on OpenAI", " ".join(payload["limitations"]))
 

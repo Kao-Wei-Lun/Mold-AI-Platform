@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import uuid
@@ -16,7 +17,24 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from .deep_links import DeepLinkBuilder, deep_link_readiness
+from .deep_links import (
+    DeepLinkBuilder,
+    DeepLinkValidationError,
+    deep_link_readiness,
+)
+
+PLUGIN_UI_RESOURCE_URI = "ui://mold-ai/open-web-v1.html"
+PLUGIN_UI_MIME_TYPE = "text/html;profile=mcp-app"
+WEB_TARGET_TITLES = {
+    "home": "Mold AI engineering workspace",
+    "job": "Engineering job status",
+    "similarity": "Similarity search result",
+    "design_review": "Design review result",
+    "knowledge": "Knowledge evidence",
+    "process_trial": "Process and trial evidence",
+    "cae": "CAE comparison",
+    "hmi": "HMI extraction",
+}
 
 
 def _is_placeholder(value: str) -> bool:
@@ -126,16 +144,247 @@ mcp = MCPServer(
     name="mold-ai-platform",
     title="Mold AI Platform",
     description="Governed public-demo mold engineering capabilities.",
-    version="0.2.0",
+    version="0.3.0",
     instructions=(
         "When the user asks to use Mold AI Platform, prefer these MCP tools over Browser or Web UI "
         "automation. Use focused read tools for evidence and status. Never invent required "
         "engineering inputs, silently substitute UI defaults, or switch from Knowledge retrieval "
         "to Process/Trial evidence without telling the user. Search and review tools may persist "
         "analysis records; call get_job_status before claiming asynchronous work is complete. "
-        "All exposed data is public synthetic Demo data."
+        "When the user asks to open the full visual workspace, call open_mold_ai_web with only "
+        "identifiers returned by these tools. All exposed data is public synthetic Demo data."
     ),
 )
+
+
+def plugin_ui_redirect_domains() -> list[str]:
+    readiness = deep_link_readiness(os.getenv("PUBLIC_WEB_ENTRY_BASE_URL", ""))
+    origin = readiness.get("entry_origin")
+    return [str(origin)] if readiness.get("ready") and origin else []
+
+
+def plugin_ui_resource_meta() -> dict[str, Any]:
+    redirect_domains = plugin_ui_redirect_domains()
+    return {
+        "ui": {
+            "prefersBorder": True,
+            "csp": {
+                "connectDomains": [],
+                "resourceDomains": [],
+            },
+        },
+        "openai/widgetDescription": (
+            "A controlled Mold AI button that opens the selected engineering context in Web."
+        ),
+        "openai/widgetPrefersBorder": True,
+        "openai/widgetCSP": {
+            "connect_domains": [],
+            "resource_domains": [],
+            "redirect_domains": redirect_domains,
+        },
+    }
+
+
+def _launcher_ui_html() -> str:
+    allowed_origin = plugin_ui_redirect_domains()
+    origin_literal = allowed_origin[0] if allowed_origin else ""
+    template = r"""
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 12px; background: transparent; }
+    .card { border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+      border-radius: 16px;
+      padding: 16px; background: color-mix(in srgb, Canvas 95%, #2563eb 5%); }
+    .eyebrow { margin: 0 0 8px; color: #2563eb; font-size: 11px; font-weight: 800;
+      letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 18px; line-height: 1.3; }
+    p { margin: 8px 0 14px; color: color-mix(in srgb, currentColor 72%, transparent);
+      font-size: 13px; line-height: 1.55; }
+    button, a { align-items: center; border: 0; border-radius: 10px; background: #2563eb;
+      color: white; cursor: pointer; display: inline-flex; font: inherit; font-weight: 750;
+      justify-content: center; min-height: 42px; padding: 10px 15px; text-decoration: none; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .error { color: #b42318; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <section class="card" aria-labelledby="title">
+    <div class="eyebrow">Mold AI Platform</div>
+    <h1 id="title">準備開啟工程工作區</h1>
+    <p id="summary">正在讀取受治理的 Web deep link…</p>
+    <button id="open" type="button" disabled>在 Web 開啟 ↗</button>
+    <a id="fallback" target="_blank" rel="noopener noreferrer" hidden>在瀏覽器開啟 ↗</a>
+  </section>
+  <script>
+    (() => {
+      "use strict";
+      const allowedOrigin = __ALLOWED_ORIGIN__;
+      const title = document.getElementById("title");
+      const summary = document.getElementById("summary");
+      const openButton = document.getElementById("open");
+      const fallback = document.getElementById("fallback");
+      let currentHref = "";
+
+      function safeHref(value) {
+        try {
+          const url = new URL(String(value || ""));
+          const forbidden = [
+            "token", "api_key", "tunnel_id", "workspace_url", "return_url", "permission"
+          ];
+          if (
+            !allowedOrigin || url.origin !== allowedOrigin ||
+            url.protocol !== "https:" || url.pathname !== "/open"
+          ) return "";
+          if (
+            url.username || url.password || url.hash ||
+            forbidden.some((key) => url.searchParams.has(key))
+          ) return "";
+          return url.toString();
+        } catch (_) { return ""; }
+      }
+
+      function render(output) {
+        const href = safeHref(output?.links?.ui);
+        currentHref = href;
+        title.textContent = String(output?.domain_result?.title || "Mold AI 工程工作區");
+        summary.textContent = href
+          ? String(output?.summary || "以個人帳號開啟完整工程內容。")
+          : "無法驗證 Web deep link；請檢查 Sites origin 與 MCP 設定。";
+        summary.classList.toggle("error", !href);
+        openButton.disabled = !href;
+        fallback.href = href || "about:blank";
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+        if (message.method === "ui/notifications/tool-result") {
+          render(message.params?.structuredContent);
+        }
+      }, { passive: true });
+
+      openButton.addEventListener("click", async () => {
+        if (!currentHref) return;
+        const openai = typeof window !== "undefined" ? window.openai : undefined;
+        if (openai?.openExternal) {
+          await openai.openExternal({ href: currentHref, redirectUrl: false });
+          return;
+        }
+        fallback.hidden = false;
+        fallback.focus();
+      });
+
+      const compatibilityOutput = typeof window !== "undefined"
+        ? window.openai?.toolOutput
+        : undefined;
+      if (compatibilityOutput) render(compatibilityOutput);
+    })();
+  </script>
+</body>
+</html>
+""".strip()
+    return template.replace("__ALLOWED_ORIGIN__", json.dumps(origin_literal))
+
+
+@mcp.resource(
+    PLUGIN_UI_RESOURCE_URI,
+    name="mold-ai-web-launcher",
+    title="Open Mold AI in Web",
+    description="Controlled launcher for a validated Mold AI Engineering Web deep link.",
+    mime_type=PLUGIN_UI_MIME_TYPE,
+    meta=plugin_ui_resource_meta(),
+)
+def get_web_launcher_ui() -> str:
+    return _launcher_ui_html()
+
+
+@mcp.tool(
+    name="open_mold_ai_web",
+    title="Open a Mold AI result in Engineering Web",
+    description=(
+        "Render one controlled button for opening the full Mold AI Engineering Web. Use this "
+        "after a data tool when the user wants the visual workspace. Pass only the target and "
+        "identifiers returned by Mold AI tools; never invent identifiers. This tool does not "
+        "read or modify engineering data."
+    ),
+    annotations=READ_ONLY,
+    meta={
+        "ui": {"resourceUri": PLUGIN_UI_RESOURCE_URI},
+        "openai/outputTemplate": PLUGIN_UI_RESOURCE_URI,
+        "openai/toolInvocation/invoking": "Preparing the Mold AI Web link…",
+        "openai/toolInvocation/invoked": "Mold AI Web link is ready.",
+    },
+    structured_output=True,
+)
+async def open_mold_ai_web(
+    target: Literal[
+        "home",
+        "job",
+        "similarity",
+        "design_review",
+        "knowledge",
+        "process_trial",
+        "cae",
+        "hmi",
+    ] = "home",
+    job_id: str | None = None,
+    search_id: str | None = None,
+    candidate_id: str | None = None,
+    review_id: str | None = None,
+    finding_id: str | None = None,
+    knowledge_search_id: str | None = None,
+    citation_id: str | None = None,
+    process_search_id: str | None = None,
+    case_id: str | None = None,
+    cae_comparison_id: str | None = None,
+    metric_code: str | None = None,
+    hmi_extraction_id: str | None = None,
+) -> ToolResponse:
+    client = _client()
+    refs = {
+        key: value
+        for key, value in {
+            "job_id": job_id,
+            "search_id": search_id,
+            "candidate_id": candidate_id,
+            "review_id": review_id,
+            "finding_id": finding_id,
+            "knowledge_search_id": knowledge_search_id,
+            "citation_id": citation_id,
+            "process_search_id": process_search_id,
+            "case_id": case_id,
+            "cae_comparison_id": cae_comparison_id,
+            "metric_code": metric_code,
+            "hmi_extraction_id": hmi_extraction_id,
+        }.items()
+        if value is not None
+    }
+    try:
+        href = client.deep_link(target, **refs)
+    except DeepLinkValidationError as exc:
+        raise ValueError(
+            "The supplied identifiers do not match the selected Mold AI Web target."
+        ) from exc
+
+    title = WEB_TARGET_TITLES[target]
+    return ToolResponse(
+        summary=f"The controlled link for {title} is ready. Open it to continue in Web.",
+        domain_result={
+            "target": target,
+            "title": title,
+            "deep_link_version": "1.0",
+            "authentication": "personal_mold_ai_session",
+        },
+        links={"ui": href},
+    )
 
 
 @mcp.tool(
@@ -533,6 +782,8 @@ def mcp_preflight_payload() -> dict[str, object]:
     tunnel_id = os.getenv("SECURE_MCP_TUNNEL_ID", "")
     entry_base_url = os.getenv("PUBLIC_WEB_ENTRY_BASE_URL", "")
     deep_links = deep_link_readiness(entry_base_url)
+    plugin_redirect_domains = plugin_ui_redirect_domains()
+    plugin_ui_ready = bool(deep_links["ready"]) and bool(plugin_redirect_domains)
     public_https = public_base_url.startswith("https://")
     tunnel_configured = bool(tunnel_id) and not _is_placeholder(tunnel_id)
     mode_valid = auth_mode in {"none", "bearer", "oauth"}
@@ -553,7 +804,7 @@ def mcp_preflight_payload() -> dict[str, object]:
         "service": "mcp-gateway",
         "transport": "streamable-http",
         "endpoint": "/mcp",
-        "tool_count": 9,
+        "tool_count": 10,
         "data_scope": "public-demo",
         "authentication": {
             "mode": auth_mode,
@@ -568,6 +819,14 @@ def mcp_preflight_payload() -> dict[str, object]:
             "secure_tunnel_configured": tunnel_configured,
         },
         "deep_links": deep_links,
+        "plugin_ui": {
+            "ready": plugin_ui_ready,
+            "resource_uri": PLUGIN_UI_RESOURCE_URI,
+            "mime_type": PLUGIN_UI_MIME_TYPE,
+            "open_external": True,
+            "redirect_domains": plugin_redirect_domains,
+            "account_workspace_validation": "pending_external_check",
+        },
         "server_side_chatgpt_preflight_ready": chatgpt_ready,
         "openai_account_workspace_validation": "pending_external_check",
         "inspector_ready": auth_mode == "none" or (auth_mode == "bearer" and bearer_configured),
@@ -575,6 +834,8 @@ def mcp_preflight_payload() -> dict[str, object]:
             "Bearer mode is for controlled MCP Inspector or custom-client testing only.",
             "Public ChatGPT user authentication requires OAuth 2.1 and is not implemented.",
             "Tunnel readiness still depends on OpenAI organization and workspace association.",
+            "Plugin UI rendering and openExternal require a compatible ChatGPT account and "
+            "workspace policy and must be confirmed by external UAT.",
         ],
     }
 

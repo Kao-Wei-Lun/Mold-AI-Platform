@@ -75,7 +75,7 @@ export default function Home() {
         <p className="eyebrow">STEP 02 · CHATGPT APP</p><h2>同時測試 MCP</h2>
         <p>ChatGPT 不共用 Web Tunnel；它透過 OpenAI Secure MCP Tunnel 連至本機 <code>127.0.0.1:8002</code>。</p>
         <div className="mcp-route"><span>ChatGPT</span><b>⇄</b><span>Secure MCP</span><b>⇄</b><span>MCP Gateway</span></div>
-        <ul><li>Windows 上的 MCP gateway 保持 loopback-only</li><li>不需要固定 IP，也不開放路由器連入埠</li><li>完成 Tunnel 建立後，在 ChatGPT 設定選擇該 Tunnel</li></ul>
+        <ul><li>Windows 上的 MCP gateway 保持 loopback-only</li><li>不需要固定 IP，也不開放路由器連入埠</li><li>完成 Tunnel 建立後，在 ChatGPT 設定選擇該 Tunnel</li><li>對話需要完整視覺內容時，可按 Plugin UI 按鈕經此 Sites 入口開啟指定頁面</li></ul>
       </aside>
     </section>
     <section className="capability-section" aria-labelledby="capability-title">

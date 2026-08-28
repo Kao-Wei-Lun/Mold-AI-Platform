@@ -130,7 +130,7 @@ serialized domain result
 - 將 `PUBLIC_WEB_BASE_URL` 拆分為明確的 `PUBLIC_WEB_ENTRY_BASE_URL`。
 - 建立單一 `DeepLinkBuilder`，禁止各 tool 自行拼接 URL。
 - Builder 驗證 target/ref schema、HTTPS origin 與禁止資訊。
-- 更新 9 tools 的 link contract tests。
+- 更新 9 個 domain tools 與 1 個 Web launcher 的 link contract tests。
 - Preflight 報告 entry URL readiness，不報動態 Workspace URL。
 
 ### 5.2 Sites

@@ -31,7 +31,7 @@ Stage 1–12 已提供：
 - Synthetic Process/Trial 與 CAE connectors、canonical records、比較與 guardrails。
 - 固定 synthetic HMI profile、人工確認、versioned XLSX export。
 - Deterministic Embedded Assistant fallback、UI Action allowlist。
-- 9 個 MCP tools、ChatGPT Developer Mode 與 Secure MCP Tunnel 實測成功。
+- 10 個 MCP tools（9 個 domain tools + 1 個 Web launcher）、ChatGPT Developer Mode 與 Secure MCP Tunnel 實測成功。
 - 私人 Sites portal、HTTPS Quick Tunnel、Demo bearer access。
 - Backend、Web、Sites 與 running-container smoke tests。
 
@@ -125,7 +125,7 @@ Stage 17 不得在 Stage 13–16 尚未通過時大幅重寫功能流程，避�
 1. Stage 13–16 的 MUST requirements 全數 Pass；沒有未核准的 Waiver。
 2. `scripts/test.ps1`、release preflight 與 running-container smoke 全數成功。
 3. 從不同網路完成私人 Sites Web 與 ChatGPT Secure MCP Tunnel UAT。
-4. ChatGPT 能發現 9 個 tools，並能從 MCP 結果開啟正確 Web context。
+4. ChatGPT 能發現 10 個 tools，並能從 MCP 結果的 Plugin UI 開啟正確 Web context。
 5. OpenAI Provider 正常與故障兩種 UAT 均通過；故障時無 fabricated success。
 6. 全新資料 volume 可 seed curated corpus；連續執行兩次結果 idempotent。
 7. Reset 後資料筆數、dataset scope、Qdrant index 與檔案 manifest 一致。

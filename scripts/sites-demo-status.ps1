@@ -26,4 +26,5 @@ if ($tunnelUrl) {
 $mcpPreflight = Invoke-RestMethod -Uri "http://127.0.0.1:8002/preflight" -TimeoutSec 10
 Write-Host "MCP tools:     $($mcpPreflight.tool_count)"
 Write-Host "Deep links:    $(if ($mcpPreflight.deep_links.ready) { 'ready' } else { 'not ready' })"
+Write-Host "Plugin UI:     $(if ($mcpPreflight.plugin_ui.ready) { 'ready' } else { 'not ready' })"
 Write-Host "Browser secret: none; Sites stores only the current Quick Tunnel origin."
