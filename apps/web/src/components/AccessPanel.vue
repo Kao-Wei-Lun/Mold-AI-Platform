@@ -9,6 +9,7 @@ import {
   type SecurityPreflight,
 } from "../api/security";
 
+withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
 const emit = defineEmits<{ ready: [ready: boolean] }>();
 const preflight = ref<SecurityPreflight | null>(null);
 const token = ref("");
@@ -91,10 +92,10 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
 </script>
 
 <template>
-  <section class="access-panel" aria-labelledby="access-title">
+  <section class="access-panel" :class="{ 'access-panel-compact': compact && connected }" aria-labelledby="access-title">
     <div>
-      <p class="eyebrow">Release security</p>
-      <h2 id="access-title">Demo access boundary</h2>
+      <p v-if="!compact || !connected" class="eyebrow">Release security</p>
+      <h2 id="access-title">{{ compact && connected ? "Private Demo connected" : "Demo access boundary" }}</h2>
       <p v-if="preflight">
         <span class="access-state" :class="connected ? 'connected' : 'locked'">
           {{ connected ? "Access ready" : "Access locked" }}
@@ -123,7 +124,7 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
       Clear Demo session
     </button>
 
-    <details v-if="preflight" class="release-preflight">
+    <details v-if="preflight && (!compact || !connected)" class="release-preflight">
       <summary>
         External release preflight:
         {{ preflight.production_ready ? "ready" : `${failedChecks.length} checks pending` }}

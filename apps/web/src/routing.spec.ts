@@ -1,0 +1,21 @@
+import { resolveWorkspaceRoute, routeForDeepLink } from "./routing";
+
+describe("Engineering Workspace routes", () => {
+  it("resolves canonical paths and trailing slashes", () => {
+    expect(resolveWorkspaceRoute("/engineering/cad").id).toBe("cad");
+    expect(resolveWorkspaceRoute("/governance/rules/").id).toBe("rules");
+    expect(resolveWorkspaceRoute("/missing").id).toBe("not_found");
+  });
+
+  it.each([
+    ["similarity", "/engineering/similarity"],
+    ["design_review", "/engineering/design-review"],
+    ["knowledge", "/knowledge"],
+    ["process_trial", "/engineering/process-trial"],
+    ["cae", "/engineering/cae"],
+    ["hmi", "/engineering/hmi"],
+    ["job", "/status"],
+  ] as const)("maps %s deep links to %s", (target, path) => {
+    expect(routeForDeepLink(target).path).toBe(path);
+  });
+});

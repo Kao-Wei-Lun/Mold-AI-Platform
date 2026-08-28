@@ -61,3 +61,7 @@ included in acceptance evidence. See
 Stage 16 Phase C adds the backup-first canonical dataset reset, a double-confirmed clean-room
 full-volume rebuild, and automated isolated Qdrant/CAD-worker fault-recovery evidence. See
 [`docs/development/stage-16-operations-uat-phase-c.md`](docs/development/stage-16-operations-uat-phase-c.md).
+
+Stage 17 Phase A replaces the single scrolling page with a route-based Engineering Workspace,
+Guided Demo home, persistent CAD context, responsive navigation and a governed Mold Rule catalog.
+See [`docs/development/stage-17-ui-phase-a.md`](docs/development/stage-17-ui-phase-a.md).

@@ -1,6 +1,6 @@
 # Stage 17 — Engineering Web UI/UX Improvement Plan
 
-- 狀態：Planned after Demo v1.0
+- 狀態：Phase A implemented; workflow refinement in progress
 - 優先級：P1
 - 前置：Stage 13–16 contracts與UAT穩定
 - 出口：一致、清楚、可擴充的Engineering Workspace，不改變domain evidence與安全邊界
@@ -121,6 +121,17 @@ Theme至少支援light/dark一致性；若Demo只先交付一種theme，另一�
 - **UIX-005**：Global Job Center列出queued/running/failed/recent succeeded，點擊回到正確context。
 - **UIX-006**：Connection status區分Web API、Queue/Qdrant、LLM Provider、MCP，不用單一綠點掩蓋降級。
 - **UIX-007**：URL保存非敏感read context，支援refresh/back/forward；write form state不放URL。
+
+### Phase A implementation（2026-08-28）
+
+- `/` 改為 Guided Demo Home，不再同時 mount 所有能力。
+- CAD、Similarity、Design Review、Process/Trial、CAE、HMI、Knowledge、Mold Rules 與 Status
+  各自具有 canonical route，支援 browser back/forward 與 Nginx SPA fallback。
+- ChatGPT deep link 會從 legacy root query 自動定位到對應 route，並保留原本 contract 與安全驗證。
+- App Shell 顯示 breadcrumb、Demo scope、目前 CAD context、Assistant toggle 與 responsive navigation。
+- 新增 `/governance/rules`，從 API 顯示已核准 profile、owner、approver、version、checksum、13 條
+  RuleVersion、condition、severity、risk 與 reference；因尚無 draft/approval workflow，維持 read-only。
+- UI 新增集中 design tokens 與 keyboard focus ring；既有 domain component 計算與 API contract 不變。
 
 ## 6. Home and Guided Demo
 

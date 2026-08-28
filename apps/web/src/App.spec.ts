@@ -2,28 +2,62 @@ import { flushPromises, mount } from "@vue/test-utils";
 
 import App from "./App.vue";
 
+const readiness = {
+  status: "ok",
+  services: [
+    { name: "database", status: "ok", detail: null },
+    { name: "redis", status: "ok", detail: null },
+    { name: "qdrant", status: "ok", detail: null },
+  ],
+};
+const preflight = {
+  schema_version: "1.0",
+  environment: "development",
+  production_ready: true,
+  checks: {},
+  auth: { required: false },
+  mcp: { secure_tunnel_configured: true, oauth_implemented: false },
+};
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => payload } as Response;
+}
+
+function installApiMock(healthPayload: unknown = readiness): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("security/preflight")) return Promise.resolve(jsonResponse(preflight));
+    if (url.includes("health/ready")) return Promise.resolve(jsonResponse(healthPayload));
+    if (url.includes("rule-profiles")) {
+      return Promise.resolve(jsonResponse({ schema_version: "1.0", items: [] }));
+    }
+    return Promise.resolve(jsonResponse({}));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("App", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+    vi.stubGlobal("scrollTo", vi.fn());
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("renders a focused guided home instead of every engineering workspace", async () => {
+    installApiMock();
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Complete the seven-step guided Demo");
+    expect(wrapper.text()).toContain("Core services");
+    expect(wrapper.find(".cad-workspace").exists()).toBe(false);
+    expect(wrapper.find(".similarity-workspace").exists()).toBe(false);
   });
 
-  it("shows dependency status returned by the backend", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          status: "ok",
-          services: [
-            { name: "database", status: "ok", detail: null },
-            { name: "redis", status: "ok", detail: null },
-            { name: "qdrant", status: "ok", detail: null },
-          ],
-        }),
-      }),
-    );
-
+  it("shows dependency status on the dedicated status route", async () => {
+    window.history.replaceState(null, "", "/status");
+    installApiMock();
     const wrapper = mount(App);
     await flushPromises();
 
@@ -32,12 +66,32 @@ describe("App", () => {
     expect(wrapper.findAll(".status-pill")).toHaveLength(3);
   });
 
-  it("shows an actionable error when the API cannot be reached", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
-
+  it("navigates to a dedicated governance route without a full reload", async () => {
+    installApiMock();
     const wrapper = mount(App);
     await flushPromises();
 
+    await wrapper.get('a[href="/governance/rules"]').trigger("click");
+    await flushPromises();
+
+    expect(window.location.pathname).toBe("/governance/rules");
+    expect(wrapper.text()).toContain("Understand the rules that govern design review");
+    expect(wrapper.find(".cad-workspace").exists()).toBe(false);
+  });
+
+  it("shows an actionable error when the health API cannot be reached", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) =>
+        String(input).includes("security/preflight")
+          ? Promise.resolve(jsonResponse(preflight))
+          : Promise.reject(new Error("network unavailable")),
+      ),
+    );
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.get('a[href="/status"]').trigger("click");
     expect(wrapper.get('[role="alert"]').text()).toContain("network unavailable");
   });
 });

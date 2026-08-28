@@ -97,7 +97,8 @@ The detailed implementation backlog is maintained in the
 - Stage 16 Phase C: canonical dataset reset, isolated full-volume clean-room rebuild, and automated
   Qdrant/CAD-worker recovery drills are implemented with explicit scope and confirmation gates.
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
-- Stage 17: post-v1.0 Engineering Web design system and workflow-focused UI/UX improvement.
+- Stage 17 Phase A: route-based Engineering Web App Shell, Guided Demo and governed read-only Mold
+  Rule catalog are implemented. Workflow-level refinement and rule authoring remain later phases.
 
 Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
 so visual and interaction changes do not obscure backend, data, security, or release regressions.
