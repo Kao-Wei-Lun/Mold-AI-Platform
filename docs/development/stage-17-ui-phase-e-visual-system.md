@@ -18,6 +18,8 @@ feel like a focused engineering console rather than a collection of raw forms.
 - Navigation initials are replaced by consistent line icons and a stronger active-route state.
 - The page header, Assistant, forms, empty states, status bars and workflow containers share one
   surface and border system.
+- Two-column engineering forms align fields from the top so labels remain level when only one
+  field has helper or validation text.
 - Guided Demo cards and result selectors expose clearer hover, selected and focus states.
 - Rule, CAE and HMI tables use sticky headers, zebra rows and row highlighting.
 - HMI coordinates are collapsed behind friendly `Region A/B/...` labels; exact source coordinates
