@@ -1950,6 +1950,7 @@ button[aria-busy="true"]::before {
 .local-account-form {
   display: grid;
   grid-template-columns: minmax(150px, 0.75fr) minmax(220px, 1fr) auto;
+  align-items: start;
   width: min(760px, 100%);
 }
 
@@ -1962,7 +1963,9 @@ button[aria-busy="true"]::before {
 }
 
 .local-account-form button {
+  align-self: start;
   min-width: 96px;
+  margin-top: 1.45rem;
 }
 
 .release-preflight {
@@ -2242,6 +2245,10 @@ button[aria-busy="true"]::before {
 
   .local-account-form {
     grid-template-columns: 1fr;
+  }
+
+  .local-account-form button {
+    margin-top: 0;
   }
 
   .hmi-preview-card img {
