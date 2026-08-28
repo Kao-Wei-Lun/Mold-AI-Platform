@@ -577,6 +577,7 @@ const zhTW: Record<string, string> = {
   "Field review saved.": "欄位審查已儲存。",
   "Workbook generated.": "Excel 活頁簿已產生。",
   "Workbook download started.": "Excel 活頁簿下載已開始。",
+  "Region {label}": "區域 {label}",
   "Reload Demo data": "重新載入 Demo 資料",
   "Compare CAE runs": "比較 CAE Run",
   "CAD required": "需要 CAD",

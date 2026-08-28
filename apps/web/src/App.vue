@@ -12,6 +12,7 @@ import DeepLinkStatus from "./components/DeepLinkStatus.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
+import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import RuleManagementWorkspace from "./components/RuleManagementWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
@@ -164,7 +165,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
             :aria-current="currentRoute.id === route.id ? 'page' : undefined"
             @click.prevent="navigate(route.id)"
           >
-            <span class="navigation-marker">{{ t(route.label).slice(0, 2).toUpperCase() }}</span>
+            <span class="navigation-marker"><NavigationIcon :name="route.id" /></span>
             <span>{{ t(route.label) }}</span>
           </a>
         </div>

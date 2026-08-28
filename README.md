@@ -77,3 +77,7 @@ required/range guidance and actionable empty states. See
 Stage 17 Phase D adds bounded accessible action notifications, consistent busy indicators and
 plain-language operation labels. See
 [`docs/development/stage-17-ui-phase-d-feedback.md`](docs/development/stage-17-ui-phase-d-feedback.md).
+
+Stage 17 Phase E applies the precision-manufacturing visual system, route icons, layered working
+surfaces and clearer engineering tables. See
+[`docs/development/stage-17-ui-phase-e-visual-system.md`](docs/development/stage-17-ui-phase-e-visual-system.md).

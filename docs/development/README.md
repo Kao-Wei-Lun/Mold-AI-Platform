@@ -107,6 +107,8 @@ The detailed implementation backlog is maintained in the
   polish and table readability remain Phase 3 follow-up work.
 - Stage 17 Phase D: bounded accessible notifications, consistent busy actions and plain-language
   operation labels are implemented. The visual-system and data-readability pass follows in Phase E.
+- Stage 17 Phase E: the precision-manufacturing visual system, route icons, layered workspace
+  surfaces, responsive polish and more readable governed data tables are implemented.
 
 Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
 so visual and interaction changes do not obscure backend, data, security, or release regressions.

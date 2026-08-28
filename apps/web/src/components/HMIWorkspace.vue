@@ -198,7 +198,7 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="field in extraction.fields" :key="field.field_id">
+            <tr v-for="(field, fieldIndex) in extraction.fields" :key="field.field_id">
               <td><strong>{{ t(field.display_label) }}</strong><code>{{ field.parameter_code }}</code></td>
               <td>{{ field.raw_text || t("unreadable") }}</td>
               <td>{{ field.effective_value }} {{ field.effective_unit }}</td>
@@ -208,10 +208,13 @@ onBeforeUnmount(() => {
                 </span>
               </td>
               <td>
-                <code>
-                  x {{ field.source_region.x }} · y {{ field.source_region.y }} ·
-                  {{ field.source_region.w }}×{{ field.source_region.h }}
-                </code>
+                <details class="hmi-source-region">
+                  <summary>{{ t("Region {label}", { label: String.fromCharCode(65 + fieldIndex) }) }}</summary>
+                  <code>
+                    x {{ field.source_region.x }} · y {{ field.source_region.y }} ·
+                    {{ field.source_region.w }}×{{ field.source_region.h }}
+                  </code>
+                </details>
               </td>
               <td>
                 <div v-if="field.review_status === 'needs_review'" class="hmi-review-controls">

@@ -132,6 +132,9 @@ describe("HMIWorkspace", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("1 field requires review");
     expect(wrapper.text()).toContain("76.4%");
+    expect(wrapper.text()).toContain("Region A");
+    expect(wrapper.text()).toContain("Region B");
+    expect(wrapper.findAll(".hmi-source-region")).toHaveLength(2);
     expect(button(wrapper, "Generate XLSX").attributes("disabled")).toBeDefined();
 
     await button(wrapper, "Confirm OCR").trigger("click");
