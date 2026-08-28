@@ -16,6 +16,7 @@ import { downloadProtectedArtifact } from "../api/client";
 import type { AssistantContext } from "../api/assistant";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
@@ -114,8 +115,10 @@ async function submitUpload(): Promise<void> {
     job.value = await fetchKnowledgeJob(accepted.job_id);
     uploadAttempted.value = false;
     schedulePoll();
+    pushToast(t("Document ingestion started."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Knowledge upload failed.");
+    pushToast(error.value, "error");
   } finally {
     uploading.value = false;
   }
@@ -136,8 +139,10 @@ async function submitSearch(): Promise<void> {
     });
     selectedResult.value = searchResult.value.results[0] || null;
     searchAttempted.value = false;
+    pushToast(t("Evidence search completed."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Knowledge search failed.");
+    pushToast(error.value, "error");
   } finally {
     searching.value = false;
   }
@@ -255,7 +260,7 @@ onBeforeUnmount(() => {
           <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
             {{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}
           </p>
-          <button type="submit" :disabled="uploading">
+          <button type="submit" :disabled="uploading" :aria-busy="uploading">
             {{ uploading ? t("Uploading...") : t("Ingest document") }}
           </button>
         </form>
@@ -323,7 +328,7 @@ onBeforeUnmount(() => {
           <p v-if="missingSearchFields" class="form-validation-summary" aria-live="polite">
             {{ t("Required fields remaining: {count}", { count: missingSearchFields }) }}
           </p>
-          <button type="submit" :disabled="searching || indexedCount === 0">
+          <button type="submit" :disabled="searching || indexedCount === 0" :aria-busy="searching">
             {{ searching ? t("Retrieving...") : t("Search authorized evidence") }}
           </button>
         </form>

@@ -114,7 +114,7 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Demo access token')" required :helper="t('The token is kept only for this Demo session.')">
         <input :id="fieldId" v-model="token" type="password" autocomplete="current-password" required :aria-describedby="describedBy" :aria-invalid="invalid" />
       </FormField>
-      <button type="submit" :disabled="connecting || !token.trim()">
+      <button type="submit" :disabled="connecting || !token.trim()" :aria-busy="connecting">
         {{ connecting ? t("Verifying...") : t("Unlock workspace") }}
       </button>
     </form>

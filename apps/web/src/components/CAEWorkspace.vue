@@ -12,6 +12,7 @@ import {
   type CAEStudy,
 } from "../api/cae";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
@@ -83,8 +84,10 @@ async function seedFixtures(): Promise<void> {
   try {
     await seedCAEFixtures();
     await loadWorkspace();
+    pushToast(t("CAE data loaded."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load CAE fixtures.");
+    pushToast(error.value, "error");
   } finally {
     seeding.value = false;
   }
@@ -97,8 +100,10 @@ async function submitComparison(): Promise<void> {
   comparison.value = null;
   try {
     comparison.value = await compareCAERuns(baselineRunId.value, candidateRunId.value);
+    pushToast(t("CAE comparison completed."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("CAE comparison failed.");
+    pushToast(error.value, "error");
   } finally {
     comparing.value = false;
   }
@@ -151,9 +156,10 @@ watch(
         type="button"
         class="secondary-button"
         :disabled="seeding || loading"
+        :aria-busy="seeding"
         @click="seedFixtures"
       >
-        {{ seeding ? t("Loading...") : loadedStudyCount ? t("Reload idempotently") : t("Load fixtures") }}
+        {{ seeding ? t("Loading...") : loadedStudyCount ? t("Reload Demo data") : t("Load fixtures") }}
       </button>
     </div>
 
@@ -179,8 +185,9 @@ watch(
       <button
         type="submit"
         :disabled="comparing || !baselineRunId || !candidateRunId || loadedStudyCount === 0"
+        :aria-busy="comparing"
       >
-        {{ comparing ? t("Checking...") : t("Check compatibility and compare") }}
+        {{ comparing ? t("Checking...") : t("Compare CAE runs") }}
       </button>
     </form>
 

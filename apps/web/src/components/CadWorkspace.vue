@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 
 import { fetchCADJob, fetchRecentCAD, type CADJob, uploadCAD } from "../api/cad";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { t } = useI18n();
@@ -85,8 +86,10 @@ async function submit(): Promise<void> {
     job.value = await fetchCADJob(accepted.job_id);
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
+    pushToast(t("CAD processing started."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("CAD upload failed.");
+    pushToast(error.value, "error");
   } finally {
     uploading.value = false;
   }
@@ -200,7 +203,7 @@ onBeforeUnmount(() => {
       <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
         {{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}
       </p>
-      <button type="submit" :disabled="uploading">
+      <button type="submit" :disabled="uploading" :aria-busy="uploading">
         {{ uploading ? t("Submitting...") : t("Upload and process") }}
       </button>
     </form>

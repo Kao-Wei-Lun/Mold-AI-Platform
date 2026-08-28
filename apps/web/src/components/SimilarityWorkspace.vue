@@ -12,6 +12,7 @@ import {
 } from "../api/similarity";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
@@ -91,8 +92,10 @@ async function submit(): Promise<void> {
     );
     acceptJob(await fetchSimilarityJob(accepted.job_id));
     schedulePoll();
+    pushToast(t("Similarity search started."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Similarity search failed.");
+    pushToast(error.value, "error");
   } finally {
     submitting.value = false;
   }
@@ -237,7 +240,7 @@ onBeforeUnmount(() => {
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 20 ranked candidates.')">
           <input :id="fieldId" v-model.number="topK" type="number" min="1" max="20" required :aria-describedby="describedBy" :aria-invalid="invalid" />
         </FormField>
-        <button type="submit" :disabled="submitting || !indexed">
+        <button type="submit" :disabled="submitting || !indexed" :aria-busy="submitting">
           {{ submitting ? t("Starting...") : t("Search similar CAD") }}
         </button>
       </form>

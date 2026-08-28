@@ -207,7 +207,7 @@ onMounted(loadCapabilities);
           :placeholder="t('Why is this ranked first?')"
         ></textarea>
       </FormField>
-      <button type="submit" :disabled="submitting || !message.trim()">
+      <button type="submit" :disabled="submitting || !message.trim()" :aria-busy="submitting">
         {{ submitting ? t("Analyzing...") : t("Ask Assistant") }}
       </button>
       <button v-if="submitting" type="button" class="context-clear assistant-stop" @click="stopWaiting">

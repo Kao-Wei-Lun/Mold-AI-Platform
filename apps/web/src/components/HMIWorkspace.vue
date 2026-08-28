@@ -12,6 +12,7 @@ import {
 } from "../api/hmi";
 import { downloadProtectedArtifact } from "../api/client";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { t } = useI18n();
@@ -50,8 +51,10 @@ async function loadDemo(): Promise<void> {
   error.value = null;
   try {
     setFile(await fetchDemoHMI());
+    pushToast(t("Demo HMI image loaded."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load the Demo HMI image.");
+    pushToast(error.value, "error");
   } finally {
     loadingDemo.value = false;
   }
@@ -69,8 +72,10 @@ async function extract(): Promise<void> {
     edits.value = Object.fromEntries(
       extraction.value.fields.map((field) => [field.field_id, String(field.effective_value ?? "")]),
     );
+    pushToast(t("HMI extraction completed."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("HMI extraction failed.");
+    pushToast(error.value, "error");
   } finally {
     extracting.value = false;
   }
@@ -91,8 +96,10 @@ async function decide(field: HMIField, action: "confirm" | "correct" | "reject")
           }
         : { field_id: field.field_id, action };
     extraction.value = await reviewHMI(extraction.value.extraction_id, [decision]);
+    pushToast(t("Field review saved."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Field review failed.");
+    pushToast(error.value, "error");
   } finally {
     reviewingField.value = "";
   }
@@ -104,8 +111,10 @@ async function createExport(): Promise<void> {
   error.value = null;
   try {
     exported.value = await exportHMI(extraction.value.extraction_id);
+    pushToast(t("Workbook generated."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Workbook export failed.");
+    pushToast(error.value, "error");
   } finally {
     exporting.value = false;
   }
@@ -116,8 +125,10 @@ async function downloadExport(): Promise<void> {
   error.value = null;
   try {
     await downloadProtectedArtifact(exported.value.download_url, "reviewed-hmi-parameters.xlsx");
+    pushToast(t("Workbook download started."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Workbook download failed.");
+    pushToast(error.value, "error");
   }
 }
 
@@ -144,10 +155,10 @@ onBeforeUnmount(() => {
       <FormField v-slot="{ fieldId, describedBy, invalid }" class="hmi-file-picker" :label="t('HMI image')" required :helper="t('PNG or JPG · maximum 10 MB')">
         <input :id="fieldId" type="file" accept="image/png,image/jpeg" :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
       </FormField>
-      <button type="button" class="secondary-button" :disabled="loadingDemo" @click="loadDemo">
+      <button type="button" class="secondary-button" :disabled="loadingDemo" :aria-busy="loadingDemo" @click="loadDemo">
         {{ loadingDemo ? t("Loading...") : t("Load low-confidence Demo screen") }}
       </button>
-      <button type="button" :disabled="extracting || !selectedFile" @click="extract">
+      <button type="button" :disabled="extracting || !selectedFile" :aria-busy="extracting" @click="extract">
         {{ extracting ? t("Extracting...") : t("Extract four parameters") }}
       </button>
     </div>
@@ -244,6 +255,7 @@ onBeforeUnmount(() => {
         <button
           type="button"
           :disabled="exporting || extraction.review_status !== 'ready_for_export'"
+          :aria-busy="exporting"
           @click="createExport"
         >
           {{ exporting ? t("Generating...") : t("Generate XLSX") }}

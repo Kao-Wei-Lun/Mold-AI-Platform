@@ -16,6 +16,7 @@ import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import RuleManagementWorkspace from "./components/RuleManagementWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
+import ToastRegion from "./components/ToastRegion.vue";
 import { parseDeepLink } from "./deepLinks";
 import { useI18n } from "./i18n";
 import {
@@ -145,6 +146,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
 
 <template>
   <div class="app-shell" :class="{ 'assistant-collapsed': !assistantOpen }">
+    <ToastRegion />
     <aside class="sidebar" :class="{ 'navigation-open': navigationOpen }">
       <div class="sidebar-brand">
         <span class="brand-mark">MA</span>
@@ -232,7 +234,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
               <strong v-else-if="readiness" :class="readiness.status">{{ t(readiness.status) }}</strong>
               <strong v-else class="error">{{ t("Unavailable") }}</strong>
               <small>{{ t("Database · Redis · Qdrant") }}</small>
-              <button type="button" class="text-button" :disabled="loading" @click="refreshHealth">{{ t("Refresh status") }}</button>
+              <button type="button" class="text-button" :disabled="loading" :aria-busy="loading" @click="refreshHealth">{{ t("Refresh status") }}</button>
             </div>
           </section>
           <section class="guided-grid" :aria-label="t('Guided Demo steps')">
@@ -252,7 +254,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <section v-else-if="currentRoute.id === 'status'" class="status-card" aria-labelledby="platform-status-title">
           <div class="card-heading">
             <div><p class="eyebrow">{{ t("Environment status") }}</p><h2 id="platform-status-title">{{ t("Platform services") }}</h2></div>
-            <button type="button" :disabled="loading" @click="refreshHealth">{{ loading ? t("Checking…") : t("Check again") }}</button>
+            <button type="button" :disabled="loading" :aria-busy="loading" @click="refreshHealth">{{ loading ? t("Checking…") : t("Check again") }}</button>
           </div>
           <p v-if="error" class="error-message" role="alert">{{ error }}</p>
           <p v-else-if="loading" class="muted">{{ t("Connecting to the platform API…") }}</p>

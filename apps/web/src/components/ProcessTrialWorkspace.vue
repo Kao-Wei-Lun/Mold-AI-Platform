@@ -16,6 +16,7 @@ import {
 } from "../api/processTrial";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
@@ -91,8 +92,10 @@ async function seedFixtures(): Promise<void> {
   try {
     await seedProcessFixtures();
     await loadWorkspace();
+    pushToast(t("Trial data loaded."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load synthetic fixtures.");
+    pushToast(error.value, "error");
   } finally {
     seeding.value = false;
   }
@@ -119,8 +122,10 @@ async function submitSearch(): Promise<void> {
     });
     selected.value = result.value.results[0] || null;
     submitAttempted.value = false;
+    pushToast(t("Trial comparison completed."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Process case search failed.");
+    pushToast(error.value, "error");
   } finally {
     searching.value = false;
   }
@@ -200,9 +205,10 @@ watch(
         type="button"
         class="secondary-button"
         :disabled="seeding || loading"
+        :aria-busy="seeding"
         @click="seedFixtures"
       >
-        {{ seeding ? t("Loading...") : loadedCaseCount ? t("Reload idempotently") : t("Load fixtures") }}
+        {{ seeding ? t("Loading...") : loadedCaseCount ? t("Reload Demo data") : t("Load fixtures") }}
       </button>
     </div>
 
@@ -283,6 +289,7 @@ watch(
       <button
         type="submit"
         :disabled="searching || loadedCaseCount === 0 || !defectCode || !materialCode"
+        :aria-busy="searching"
       >
         {{ searching ? t("Comparing...") : t("Find governed cases") }}
       </button>

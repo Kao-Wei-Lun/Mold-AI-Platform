@@ -13,6 +13,7 @@ import {
 } from "../api/designReview";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
@@ -102,8 +103,10 @@ async function submit(): Promise<void> {
     const accepted = await createDesignReview(props.query, numericContext());
     acceptJob(await fetchDesignReviewJob(accepted.job_id));
     schedulePoll();
+    pushToast(t("Design review started."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Design review failed.");
+    pushToast(error.value, "error");
   } finally {
     submitting.value = false;
   }
@@ -150,8 +153,10 @@ async function saveDecision(): Promise<void> {
     decisionReason.value = "";
     decisionApprover.value = "";
     decisionSubmitted.value = false;
+    pushToast(t("Reviewer decision recorded."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to save review decision.");
+    pushToast(error.value, "error");
   } finally {
     savingDecision.value = false;
   }
@@ -235,7 +240,7 @@ onBeforeUnmount(() => {
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Min draft (deg)')" :helper="t('Typical range: 0.5 – 5.0°')">
           <input :id="fieldId" v-model="minimumDraft" type="number" min="0" max="30" step="0.01" :placeholder="t('e.g. 0.5 – 5.0')" :aria-describedby="describedBy" :aria-invalid="invalid" />
         </FormField>
-        <button type="submit" :disabled="submitting">
+        <button type="submit" :disabled="submitting" :aria-busy="submitting">
           {{ submitting ? t("Starting...") : t("Run design review") }}
         </button>
       </form>
@@ -368,7 +373,7 @@ onBeforeUnmount(() => {
             <p v-if="decisionMissingFields" class="form-validation-summary" aria-live="polite">
               {{ t("Required fields remaining: {count}", { count: decisionMissingFields }) }}
             </p>
-            <button type="submit" :disabled="savingDecision">
+            <button type="submit" :disabled="savingDecision" :aria-busy="savingDecision">
               {{ savingDecision ? t("Saving...") : t("Record decision") }}
             </button>
           </form>

@@ -73,3 +73,7 @@ browser preference and explicit governed-source translation boundary. See
 Stage 17 Phase C constrains engineering inputs and adds a shared accessible field contract,
 required/range guidance and actionable empty states. See
 [`docs/development/stage-17-ui-phase-c-form-guidance.md`](docs/development/stage-17-ui-phase-c-form-guidance.md).
+
+Stage 17 Phase D adds bounded accessible action notifications, consistent busy indicators and
+plain-language operation labels. See
+[`docs/development/stage-17-ui-phase-d-feedback.md`](docs/development/stage-17-ui-phase-d-feedback.md).

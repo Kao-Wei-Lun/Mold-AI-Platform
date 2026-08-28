@@ -105,6 +105,8 @@ The detailed implementation backlog is maintained in the
 - Stage 17 Phase C: controlled engineering inputs, the shared accessible FormField contract,
   required/range guidance and actionable workspace empty states are implemented. Toasts, progress
   polish and table readability remain Phase 3 follow-up work.
+- Stage 17 Phase D: bounded accessible notifications, consistent busy actions and plain-language
+  operation labels are implemented. The visual-system and data-readability pass follows in Phase E.
 
 Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
 so visual and interaction changes do not obscure backend, data, security, or release regressions.
