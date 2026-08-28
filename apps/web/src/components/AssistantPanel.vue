@@ -10,6 +10,9 @@ import {
   type UIAction,
 } from "../api/assistant";
 import { validateUIAction } from "../uiActions";
+import { useI18n } from "../i18n";
+
+const { locale, t } = useI18n();
 
 const props = defineProps<{ context: AssistantContext }>();
 const emit = defineEmits<{ executeAction: [action: UIAction] }>();
@@ -26,17 +29,17 @@ let requestController: AbortController | null = null;
 
 const effectiveContext = computed<AssistantContext>(() =>
   contextCleared.value
-    ? { context_version: "1.0", page: "engineering_workspace", ui_locale: "zh-TW" }
-    : props.context,
+    ? { context_version: "1.0", page: "engineering_workspace", ui_locale: locale.value }
+    : { ...props.context, ui_locale: locale.value },
 );
 const contextReferences = computed(() =>
   Object.entries(effectiveContext.value).filter(([key]) => key.endsWith("_id")),
 );
 const providerLabel = computed(() => {
   if (provider.value?.mode === "openai" && provider.value.llm_available) {
-    return response.value ? "OpenAI generated" : "OpenAI ready";
+    return response.value ? t("OpenAI generated") : t("OpenAI ready");
   }
-  return "safe fallback";
+  return t("safe fallback");
 });
 const providerNote = computed(() => {
   if (!provider.value || provider.value.llm_available) return null;
@@ -50,7 +53,7 @@ const providerNote = computed(() => {
     OPENAI_SERVER_ERROR: "OpenAI was temporarily unavailable.",
     PROVIDER_INTERNAL_ERROR: "The generation adapter failed safely.",
   };
-  return messages[provider.value.reason || ""] || "A deterministic engineering answer was used.";
+  return t(messages[provider.value.reason || ""] || "A deterministic engineering answer was used.");
 });
 
 async function loadCapabilities(): Promise<void> {
@@ -87,7 +90,7 @@ async function submit(): Promise<void> {
     message.value = "";
   } catch (caught) {
     if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-      error.value = caught instanceof Error ? caught.message : "Assistant request failed.";
+      error.value = caught instanceof Error ? caught.message : t("Assistant request failed.");
     }
   } finally {
     if (requestController === controller) {
@@ -131,7 +134,7 @@ onMounted(loadCapabilities);
   <aside class="assistant-panel" aria-labelledby="assistant-title">
     <div class="assistant-heading">
       <div>
-        <p class="eyebrow">Context-aware</p>
+        <p class="eyebrow">{{ t("Context-aware") }}</p>
         <h2 id="assistant-title">Mold AI Assistant</h2>
       </div>
       <span class="assistant-provider" :class="provider?.status || 'unavailable'">
@@ -140,37 +143,37 @@ onMounted(loadCapabilities);
     </div>
 
     <p v-if="providerNote" class="provider-note">
-      {{ providerNote }} Deterministic engineering explanations remain available.
+      {{ providerNote }} {{ t("Deterministic engineering explanations remain available.") }}
     </p>
 
     <details class="assistant-context" open>
-      <summary>Current context</summary>
+      <summary>{{ t("Current context") }}</summary>
       <div class="context-summary">
-        <span>{{ effectiveContext.page.replaceAll("_", " ") }}</span>
+        <span>{{ t(effectiveContext.page.replaceAll("_", " ")) }}</span>
         <code v-for="[key, value] in contextReferences" :key="key">{{ key }}: {{ value }}</code>
-        <small v-if="contextReferences.length === 0">No selected engineering object.</small>
+        <small v-if="contextReferences.length === 0">{{ t("No selected engineering object.") }}</small>
       </div>
-      <button class="context-clear" type="button" @click="clearContext">Clear context</button>
+      <button class="context-clear" type="button" @click="clearContext">{{ t("Clear context") }}</button>
     </details>
 
     <div v-if="response" class="assistant-answer" aria-live="polite">
       <p>{{ response.answer.summary }}</p>
       <details v-if="response.answer.facts.length">
-        <summary>Facts and computed evidence</summary>
+        <summary>{{ t("Facts and computed evidence") }}</summary>
         <ul><li v-for="fact in response.answer.facts" :key="fact">{{ fact }}</li></ul>
       </details>
       <details v-if="response.answer.interpretation.length">
-        <summary>Interpretation</summary>
+        <summary>{{ t("Interpretation") }}</summary>
         <ul><li v-for="item in response.answer.interpretation" :key="item">{{ item }}</li></ul>
       </details>
       <details v-if="response.answer.recommendations.length">
-        <summary>Recommendations</summary>
+        <summary>{{ t("Recommendations") }}</summary>
         <ul>
           <li v-for="item in response.answer.recommendations" :key="item">{{ item }}</li>
         </ul>
       </details>
       <details v-if="response.answer.uncertainties.length">
-        <summary>Uncertainty and limitations</summary>
+        <summary>{{ t("Uncertainty and limitations") }}</summary>
         <ul><li v-for="item in response.answer.uncertainties" :key="item">{{ item }}</li></ul>
       </details>
       <button
@@ -180,31 +183,30 @@ onMounted(loadCapabilities);
         class="assistant-action"
         @click="execute(action)"
       >
-        Show evidence in workspace
+        {{ t("Show evidence in workspace") }}
       </button>
     </div>
 
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <p v-if="actionError" class="error-message" role="alert">{{ actionError }}</p>
     <p v-if="waitStopped" class="provider-note" role="status">
-      You stopped waiting. This does not prove the server-side provider request was cancelled and
-      may not prevent API usage.
+      {{ t("You stopped waiting. This does not prove the server-side provider request was cancelled and may not prevent API usage.") }}
     </p>
 
     <form class="assistant-form" :aria-busy="submitting" @submit.prevent="submit">
-      <label for="assistant-message">Ask about the selected engineering result</label>
+      <label for="assistant-message">{{ t("Ask about the selected engineering result") }}</label>
       <textarea
         id="assistant-message"
         v-model="message"
         maxlength="2000"
         rows="4"
-        placeholder="為什麼這個排第一？"
+        :placeholder="t('Why is this ranked first?')"
       ></textarea>
       <button type="submit" :disabled="submitting || !message.trim()">
-        {{ submitting ? "Analyzing..." : "Ask Assistant" }}
+        {{ submitting ? t("Analyzing...") : t("Ask Assistant") }}
       </button>
       <button v-if="submitting" type="button" class="context-clear assistant-stop" @click="stopWaiting">
-        Stop waiting
+        {{ t("Stop waiting") }}
       </button>
     </form>
   </aside>

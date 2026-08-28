@@ -2,6 +2,9 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 
 import { fetchCADJob, fetchRecentCAD, type CADJob, uploadCAD } from "../api/cad";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 const emit = defineEmits<{ ready: [result: NonNullable<CADJob["result"]>] }>();
 
@@ -51,13 +54,13 @@ async function refreshJob(): Promise<void> {
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to refresh the CAD job.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to refresh the CAD job.");
   }
 }
 
 async function submit(): Promise<void> {
   if (!selectedFile.value) {
-    error.value = "Choose a STEP or STL file first.";
+    error.value = t("Choose a STEP or STL file first.");
     return;
   }
 
@@ -79,7 +82,7 @@ async function submit(): Promise<void> {
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "CAD upload failed.";
+    error.value = caught instanceof Error ? caught.message : t("CAD upload failed.");
   } finally {
     uploading.value = false;
   }
@@ -107,7 +110,7 @@ async function browseRecent(curated = false): Promise<void> {
     );
     selectedRecentJobId.value = "";
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load recent CAD artifacts.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load recent CAD artifacts.");
   } finally {
     loadingRecent.value = false;
   }
@@ -130,57 +133,57 @@ onBeforeUnmount(() => {
   <section class="cad-workspace" aria-labelledby="cad-workspace-title">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">CAD ingestion</p>
-        <h2 id="cad-workspace-title">Upload and process engineering geometry</h2>
+        <p class="eyebrow">{{ t("CAD ingestion") }}</p>
+        <h2 id="cad-workspace-title">{{ t("Upload and process engineering geometry") }}</h2>
       </div>
-      <span class="demo-label">Public / Synthetic Demo Data</span>
+      <span class="demo-label">{{ t("Public / Synthetic Demo Data") }}</span>
     </div>
 
     <div class="recent-cad-loader">
       <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent(false)">
-        {{ loadingRecent ? "Loading..." : "Browse recent processed CAD" }}
+        {{ loadingRecent ? t("Loading...") : t("Browse recent processed CAD") }}
       </button>
       <button type="button" class="secondary-button" :disabled="loadingRecent" @click="browseRecent(true)">
-        Load curated Demo queries
+        {{ t("Load curated Demo queries") }}
       </button>
       <template v-if="recentJobs.length">
         <label>
-          <span>Select {{ catalogLabel }}</span>
+          <span>{{ t("Select {catalog}", { catalog: t(catalogLabel) }) }}</span>
           <select v-model="selectedRecentJobId">
-            <option value="" disabled>Choose a CAD query</option>
+            <option value="" disabled>{{ t("Choose a CAD query") }}</option>
             <option v-for="candidate in recentJobs" :key="candidate.job.job_id" :value="candidate.job.job_id">
               {{ candidate.label }}
             </option>
           </select>
         </label>
-        <button type="button" :disabled="!selectedRecentJobId" @click="activateRecent">Use as query</button>
+        <button type="button" :disabled="!selectedRecentJobId" @click="activateRecent">{{ t("Use as query") }}</button>
       </template>
-      <span v-else-if="!loadingRecent" class="muted">Or upload a new STEP/STL below.</span>
+      <span v-else-if="!loadingRecent" class="muted">{{ t("Or upload a new STEP/STL below.") }}</span>
     </div>
 
     <form class="upload-form" @submit.prevent="submit">
       <label>
-        <span>STEP or STL file</span>
+        <span>{{ t("STEP or STL file") }}</span>
         <input type="file" accept=".step,.stp,.stl" required @change="chooseFile" />
       </label>
       <label>
-        <span>Artifact name</span>
-        <input v-model="artifactName" type="text" maxlength="255" placeholder="Housing revision A" />
+        <span>{{ t("Artifact name") }}</span>
+        <input v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" />
       </label>
       <label>
-        <span>Dataset</span>
+        <span>{{ t("Dataset") }}</span>
         <input v-model="datasetId" type="text" maxlength="128" required />
       </label>
       <label>
-        <span>Product type</span>
+        <span>{{ t("Product type") }}</span>
         <input v-model="productType" type="text" maxlength="128" placeholder="housing" />
       </label>
       <label>
-        <span>Material</span>
+        <span>{{ t("Material") }}</span>
         <input v-model="materialCode" type="text" maxlength="128" placeholder="PC_ABS" />
       </label>
       <button type="submit" :disabled="uploading">
-        {{ uploading ? "Submitting..." : "Upload and process" }}
+        {{ uploading ? t("Submitting...") : t("Upload and process") }}
       </button>
     </form>
 
@@ -190,12 +193,12 @@ onBeforeUnmount(() => {
     <div v-if="job" class="job-panel">
       <div class="job-heading">
         <div>
-          <span class="job-state" :class="job.state">{{ job.state }}</span>
-          <strong>{{ job.stage.replaceAll("_", " ") }}</strong>
+          <span class="job-state" :class="job.state">{{ t(job.state) }}</span>
+          <strong>{{ t(job.stage.replaceAll("_", " ")) }}</strong>
         </div>
         <span>{{ job.progress }}%</span>
       </div>
-      <div class="progress-track" aria-label="CAD processing progress">
+      <div class="progress-track" :aria-label="t('CAD processing progress')">
         <span :style="{ width: `${job.progress}%` }"></span>
       </div>
       <code>{{ job.job_id }}</code>
@@ -207,12 +210,12 @@ onBeforeUnmount(() => {
     <div v-if="result" class="cad-result">
       <CadPreview :source="result.preview.download_url" />
       <div class="geometry-summary">
-        <div><span>Dimensions</span><strong>{{ dimensions }} {{ result.unit_system }}</strong></div>
-        <div><span>Volume</span><strong>{{ result.volume?.toFixed(3) ?? "Not available" }}</strong></div>
-        <div><span>Surface area</span><strong>{{ result.surface_area.toFixed(3) }}</strong></div>
-        <div><span>Faces / Edges</span><strong>{{ result.face_count }} / {{ result.edge_count }}</strong></div>
-        <div><span>Parser</span><strong>{{ result.parser.name }} {{ result.parser.version }}</strong></div>
-        <div><span>Quality</span><strong>{{ result.quality_flags.join(", ") || "No flags" }}</strong></div>
+        <div><span>{{ t("Dimensions") }}</span><strong>{{ dimensions }} {{ result.unit_system }}</strong></div>
+        <div><span>{{ t("Volume") }}</span><strong>{{ result.volume?.toFixed(3) ?? t("Not available") }}</strong></div>
+        <div><span>{{ t("Surface area") }}</span><strong>{{ result.surface_area.toFixed(3) }}</strong></div>
+        <div><span>{{ t("Faces / Edges") }}</span><strong>{{ result.face_count }} / {{ result.edge_count }}</strong></div>
+        <div><span>{{ t("Parser") }}</span><strong>{{ result.parser.name }} {{ result.parser.version }}</strong></div>
+        <div><span>{{ t("Quality") }}</span><strong>{{ result.quality_flags.join(", ") || t("No flags") }}</strong></div>
       </div>
     </div>
   </section>

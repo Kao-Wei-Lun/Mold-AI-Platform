@@ -15,6 +15,9 @@ import {
   type TrialCase,
 } from "../api/processTrial";
 import type { DeepLinkContext } from "../deepLinks";
+import { useI18n } from "../i18n";
+
+const { locale, t } = useI18n();
 
 const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
@@ -64,7 +67,7 @@ async function loadWorkspace(): Promise<void> {
     sourceVersion.value = status.connector.source_version;
     cases.value = trialCases;
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load Process/Trial data.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load Process/Trial data.");
   } finally {
     loading.value = false;
   }
@@ -77,7 +80,7 @@ async function seedFixtures(): Promise<void> {
     await seedProcessFixtures();
     await loadWorkspace();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load synthetic fixtures.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load synthetic fixtures.");
   } finally {
     seeding.value = false;
   }
@@ -102,7 +105,7 @@ async function submitSearch(): Promise<void> {
     });
     selected.value = result.value.results[0] || null;
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Process case search failed.";
+    error.value = caught instanceof Error ? caught.message : t("Process case search failed.");
   } finally {
     searching.value = false;
   }
@@ -118,10 +121,10 @@ async function loadDeepLink(): Promise<void> {
       ? result.value.results.find((item) => item.trial_case_id === caseId) || null
       : result.value.results[0] || null;
     if (caseId && !selected.value) {
-      error.value = "The linked case does not belong to this Process/Trial search.";
+      error.value = t("The linked case does not belong to this Process/Trial search.");
     }
   } catch {
-    error.value = "The linked Process/Trial result is unavailable or not authorized.";
+    error.value = t("The linked Process/Trial result is unavailable or not authorized.");
   }
 }
 
@@ -156,7 +159,7 @@ watch(
     emit("contextChange", {
       context_version: "1.0",
       page: "process_trial",
-      ui_locale: "zh-TW",
+      ui_locale: locale.value,
       ...(result.value?.search_id ? { process_search_id: result.value.search_id } : {}),
     });
   },
@@ -168,15 +171,15 @@ watch(
     <div class="section-heading">
       <div>
         <p class="eyebrow">Process / Trial</p>
-        <h2 id="process-trial-title">Compare trial evidence before changing a process</h2>
+        <h2 id="process-trial-title">{{ t("Compare trial evidence before changing a process") }}</h2>
       </div>
-      <span class="demo-label">Synthetic evidence · No machine write</span>
+      <span class="demo-label">{{ t("Synthetic evidence · No machine write") }}</span>
     </div>
 
     <div class="process-source-bar">
       <div>
-        <strong>{{ loadedCaseCount }} canonical trial cases</strong>
-        <span>Connector: synthetic-process-trial · {{ sourceVersion || "not loaded" }}</span>
+        <strong>{{ t("{count} canonical trial cases", { count: loadedCaseCount }) }}</strong>
+        <span>{{ t("Connector: synthetic-process-trial · {version}", { version: sourceVersion || t("not loaded") }) }}</span>
       </div>
       <button
         type="button"
@@ -184,99 +187,98 @@ watch(
         :disabled="seeding || loading"
         @click="seedFixtures"
       >
-        {{ seeding ? "Loading..." : loadedCaseCount ? "Reload idempotently" : "Load fixtures" }}
+        {{ seeding ? t("Loading...") : loadedCaseCount ? t("Reload idempotently") : t("Load fixtures") }}
       </button>
     </div>
 
     <form class="process-query-form" @submit.prevent="submitSearch">
       <div class="form-wide demo-input-notice">
-        <p>Inputs are empty by default so the platform never presents Demo values as user context.</p>
+        <p>{{ t("Inputs are empty by default so the platform never presents Demo values as user context.") }}</p>
         <button type="button" class="secondary-button" @click="useExplicitDemoInputs">
-          Use explicit Demo inputs
+          {{ t("Use explicit Demo inputs") }}
         </button>
       </div>
       <label>
-        <span>Defect</span>
+        <span>{{ t("Defect") }}</span>
         <select v-model="defectCode">
-          <option value="">Select a defect</option>
-          <option value="short_shot">Short shot</option>
-          <option value="sink_mark">Sink mark</option>
-          <option value="warpage">Warpage</option>
-          <option value="flash">Flash</option>
+          <option value="">{{ t("Select a defect") }}</option>
+          <option value="short_shot">{{ t("Short shot") }}</option>
+          <option value="sink_mark">{{ t("Sink mark") }}</option>
+          <option value="warpage">{{ t("Warpage") }}</option>
+          <option value="flash">{{ t("Flash") }}</option>
         </select>
       </label>
       <label>
-        <span>Material</span>
+        <span>{{ t("Material") }}</span>
         <select v-model="materialCode">
-          <option value="">Not provided — abstain</option>
+          <option value="">{{ t("Not provided — abstain") }}</option>
           <option value="PA6-GF30">PA6-GF30</option>
           <option value="ABS-GENERAL">ABS-GENERAL</option>
           <option value="PP-HOMO">PP-HOMO</option>
         </select>
       </label>
       <label>
-        <span>Machine</span>
+        <span>{{ t("Machine") }}</span>
         <select v-model="machineCode">
-          <option value="">Not provided — no ranges</option>
+          <option value="">{{ t("Not provided — no ranges") }}</option>
           <option value="IM-120T">IM-120T</option>
           <option value="IM-180T">IM-180T</option>
           <option value="IM-220T">IM-220T</option>
         </select>
       </label>
       <label>
-        <span>Product type</span>
+        <span>{{ t("Product type") }}</span>
         <select v-model="productType">
-          <option value="">Any</option>
-          <option value="connector_housing">Connector housing</option>
-          <option value="electronics_cover">Electronics cover</option>
-          <option value="thin_wall_tray">Thin-wall tray</option>
+          <option value="">{{ t("Any") }}</option>
+          <option value="connector_housing">{{ t("Connector housing") }}</option>
+          <option value="electronics_cover">{{ t("Electronics cover") }}</option>
+          <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
         </select>
       </label>
       <label>
-        <span>Location</span>
+        <span>{{ t("Location") }}</span>
         <input v-model="location" type="text" maxlength="128" />
       </label>
       <label>
-        <span>Injection pressure (MPa)</span>
+        <span>{{ t("Injection pressure (MPa)") }}</span>
         <input v-model.number="injectionPressure" type="number" min="0" max="500" step="0.1" />
       </label>
       <label>
-        <span>Injection speed (mm/s)</span>
+        <span>{{ t("Injection speed (mm/s)") }}</span>
         <input v-model.number="injectionSpeed" type="number" min="0" max="600" step="0.1" />
       </label>
       <label>
-        <span>Melt temperature (°C)</span>
+        <span>{{ t("Melt temperature (°C)") }}</span>
         <input v-model.number="meltTemperature" type="number" min="0" max="500" step="0.1" />
       </label>
       <label>
-        <span>Top K</span>
+        <span>{{ t("Top K") }}</span>
         <input v-model.number="topK" type="number" min="1" max="10" />
       </label>
       <button
         type="submit"
         :disabled="searching || loadedCaseCount === 0 || !defectCode || !materialCode"
       >
-        {{ searching ? "Comparing..." : "Find governed cases" }}
+        {{ searching ? t("Comparing...") : t("Find governed cases") }}
       </button>
     </form>
 
     <p v-if="cases.length" class="process-catalog-note">
-      Loaded cases cover {{ [...new Set(cases.map((item) => item.material_code))].join(", ") }}.
-      Source records remain clearly marked synthetic.
+      {{ t("Loaded cases cover {materials}. Source records remain clearly marked synthetic.", { materials: [...new Set(cases.map((item) => item.material_code))].join(", ") }) }}
     </p>
 
     <div v-if="result" class="process-results">
       <div class="process-result-summary">
         <div>
-          <span>Search</span>
+          <span>{{ t("Search") }}</span>
           <code>{{ result.search_id }}</code>
         </div>
         <div>
-          <span>Scoring profile</span>
+          <span>{{ t("Scoring profile") }}</span>
           <strong>{{ result.scoring_profile_version }}</strong>
         </div>
         <div>
-          <span>Matches</span>
+          <span>{{ t("Matches") }}</span>
           <strong>{{ result.result_count }}</strong>
         </div>
       </div>
@@ -302,7 +304,7 @@ watch(
         <article v-if="selected" class="process-match-detail">
           <div class="finding-heading">
             <div>
-              <p class="eyebrow">Selected evidence</p>
+              <p class="eyebrow">{{ t("Selected evidence") }}</p>
               <h3>{{ selected.case_code }}</h3>
             </div>
             <span>{{ scoreLabel(selected.score) }}</span>
@@ -315,7 +317,7 @@ watch(
           </div>
           <div class="process-evidence-columns">
             <div>
-              <h4>Similar factors</h4>
+              <h4>{{ t("Similar factors") }}</h4>
               <ul>
                 <li v-for="(item, index) in selected.similarities" :key="index">
                   {{ String(item.factor).replaceAll("_", " ") }}
@@ -323,7 +325,7 @@ watch(
               </ul>
             </div>
             <div>
-              <h4>Different factors</h4>
+              <h4>{{ t("Different factors") }}</h4>
               <ul>
                 <li v-for="(item, index) in selected.differences" :key="index">
                   {{ String(item.factor).replaceAll("_", " ") }}
@@ -332,13 +334,13 @@ watch(
             </div>
           </div>
           <div v-if="selected.corrective_action" class="historical-action">
-            <span>Historical action · {{ selected.outcome }}</span>
+            <span>{{ t("Historical action · {outcome}", { outcome: selected.outcome }) }}</span>
             <strong>{{ selected.corrective_action.description }}</strong>
             <p>
               {{ measurementText(selected.corrective_action.before_values) }} →
               {{ measurementText(selected.corrective_action.after_values) }}
             </p>
-            <small>Evidence: {{ selected.evidence_refs.join(" · ") }}</small>
+            <small>{{ t("Evidence: {refs}", { refs: selected.evidence_refs.join(" · ") }) }}</small>
           </div>
         </article>
       </div>
@@ -349,8 +351,8 @@ watch(
         :class="{ abstained: recommendation.abstained }"
       >
         <div>
-          <p class="eyebrow">Controlled recommendation</p>
-          <h3>{{ recommendation.abstained ? "Recommendation withheld" : "Engineer review required" }}</h3>
+          <p class="eyebrow">{{ t("Controlled recommendation") }}</p>
+          <h3>{{ recommendation.abstained ? t("Recommendation withheld") : t("Engineer review required") }}</h3>
           <p>{{ recommendation.message }}</p>
         </div>
         <article
@@ -358,12 +360,12 @@ watch(
           :key="step.source_case_code + step.action_code"
           class="trial-step"
         >
-          <span>Step {{ step.rank }} · {{ step.source_case_code }}</span>
+          <span>{{ t("Step {rank} · {code}", { rank: step.rank, code: step.source_case_code }) }}</span>
           <strong>{{ step.instruction }}</strong>
           <code>{{ stepRange(step) }}</code>
           <p>{{ step.expected_effect }}</p>
-          <small>Stop condition: {{ step.stop_condition }}</small>
-          <b>Approval required · Never auto-apply</b>
+          <small>{{ t("Stop condition: {condition}", { condition: step.stop_condition }) }}</small>
+          <b>{{ t("Approval required · Never auto-apply") }}</b>
         </article>
       </section>
 

@@ -16,6 +16,9 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 import { apiFetch } from "../api/client";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 const props = defineProps<{ source: string; accent?: "default" | "warning" | "pass" }>();
 
@@ -33,7 +36,7 @@ let mesh: Mesh | null = null;
 let modelCenter = new Vector3();
 let modelDistance = 10;
 
-const transparencyLabel = computed(() => (transparent.value ? "Solid" : "Transparent"));
+const transparencyLabel = computed(() => (transparent.value ? t("Solid") : t("Transparent")));
 
 function resize(): void {
   if (!canvas.value || !renderer || !camera) return;
@@ -98,7 +101,7 @@ async function loadModel(source: string): Promise<void> {
     applyView();
     loading.value = false;
   } catch {
-    error.value = "Preview geometry could not be loaded with the current Demo session.";
+    error.value = t("Preview geometry could not be loaded with the current Demo session.");
     loading.value = false;
   }
 }
@@ -152,15 +155,15 @@ onBeforeUnmount(() => {
 <template>
   <div class="cad-preview">
     <div class="viewer-toolbar">
-      <button type="button" class="secondary-button" @click="view = 'iso'">Iso</button>
-      <button type="button" class="secondary-button" @click="view = 'front'">Front</button>
-      <button type="button" class="secondary-button" @click="view = 'top'">Top</button>
+      <button type="button" class="secondary-button" @click="view = 'iso'">{{ t("Iso") }}</button>
+      <button type="button" class="secondary-button" @click="view = 'front'">{{ t("Front") }}</button>
+      <button type="button" class="secondary-button" @click="view = 'top'">{{ t("Top") }}</button>
       <button type="button" class="secondary-button" @click="toggleTransparency">
         {{ transparencyLabel }}
       </button>
     </div>
-    <canvas ref="canvas" aria-label="Interactive CAD preview"></canvas>
-    <p v-if="loading" class="viewer-message">Loading engineering preview...</p>
+    <canvas ref="canvas" :aria-label="t('Interactive CAD preview')"></canvas>
+    <p v-if="loading" class="viewer-message">{{ t("Loading engineering preview...") }}</p>
     <p v-if="error" class="viewer-message error-message" role="alert">{{ error }}</p>
   </div>
 </template>

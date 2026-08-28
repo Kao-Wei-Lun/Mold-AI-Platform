@@ -11,6 +11,9 @@ import {
   type CAERun,
   type CAEStudy,
 } from "../api/cae";
+import { useI18n } from "../i18n";
+
+const { locale, t } = useI18n();
 
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 
@@ -64,7 +67,7 @@ async function loadWorkspace(): Promise<void> {
     studies.value = availableStudies;
     setDefaultRuns();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load CAE studies.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load CAE studies.");
   } finally {
     loading.value = false;
   }
@@ -77,7 +80,7 @@ async function seedFixtures(): Promise<void> {
     await seedCAEFixtures();
     await loadWorkspace();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load CAE fixtures.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load CAE fixtures.");
   } finally {
     seeding.value = false;
   }
@@ -91,7 +94,7 @@ async function submitComparison(): Promise<void> {
   try {
     comparison.value = await compareCAERuns(baselineRunId.value, candidateRunId.value);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "CAE comparison failed.";
+    error.value = caught instanceof Error ? caught.message : t("CAE comparison failed.");
   } finally {
     comparing.value = false;
   }
@@ -116,7 +119,7 @@ watch(
     emit("contextChange", {
       context_version: "1.0",
       page: "cae",
-      ui_locale: "zh-TW",
+      ui_locale: locale.value,
       ...(comparison.value?.comparison_id
         ? { cae_comparison_id: comparison.value.comparison_id }
         : {}),
@@ -130,15 +133,15 @@ watch(
     <div class="section-heading">
       <div>
         <p class="eyebrow">CAE / Moldflow</p>
-        <h2 id="cae-title">Compare only compatible structured simulation facts</h2>
+        <h2 id="cae-title">{{ t("Compare only compatible structured simulation facts") }}</h2>
       </div>
-      <span class="demo-label">Synthetic export · No official solver API</span>
+      <span class="demo-label">{{ t("Synthetic export · No official solver API") }}</span>
     </div>
 
     <div class="cae-source-bar">
       <div>
-        <strong>{{ loadedStudyCount }} canonical CAE studies</strong>
-        <span>{{ integrationLevel || "not loaded" }} · source {{ sourceVersion || "n/a" }}</span>
+        <strong>{{ t("{count} canonical CAE studies", { count: loadedStudyCount }) }}</strong>
+        <span>{{ integrationLevel || t("not loaded") }} · {{ t("source {version}", { version: sourceVersion || "n/a" }) }}</span>
       </div>
       <button
         type="button"
@@ -146,13 +149,13 @@ watch(
         :disabled="seeding || loading"
         @click="seedFixtures"
       >
-        {{ seeding ? "Loading..." : loadedStudyCount ? "Reload idempotently" : "Load fixtures" }}
+        {{ seeding ? t("Loading...") : loadedStudyCount ? t("Reload idempotently") : t("Load fixtures") }}
       </button>
     </div>
 
     <form class="cae-compare-form" @submit.prevent="submitComparison">
       <label>
-        <span>Baseline study / run</span>
+        <span>{{ t("Baseline study / run") }}</span>
         <select v-model="baselineRunId" required>
           <option v-for="option in runOptions" :key="option.run.run_id" :value="option.run.run_id">
             {{ option.label }} · {{ option.run.solver.version }} · {{ option.run.material_model_code }}
@@ -161,7 +164,7 @@ watch(
       </label>
       <span class="comparison-arrow" aria-hidden="true">→</span>
       <label>
-        <span>Candidate study / run</span>
+        <span>{{ t("Candidate study / run") }}</span>
         <select v-model="candidateRunId" required>
           <option v-for="option in runOptions" :key="option.run.run_id" :value="option.run.run_id">
             {{ option.label }} · {{ option.run.solver.version }} · {{ option.run.material_model_code }}
@@ -172,22 +175,22 @@ watch(
         type="submit"
         :disabled="comparing || !baselineRunId || !candidateRunId || loadedStudyCount === 0"
       >
-        {{ comparing ? "Checking..." : "Check compatibility and compare" }}
+        {{ comparing ? t("Checking...") : t("Check compatibility and compare") }}
       </button>
     </form>
 
     <template v-if="comparison">
       <div class="cae-compatibility" :class="comparison.compatible ? 'compatible' : 'blocked'">
         <div>
-          <span>Compatibility gate</span>
-          <strong>{{ comparison.compatible ? "Compatible" : "Comparison blocked" }}</strong>
+          <span>{{ t("Compatibility gate") }}</span>
+          <strong>{{ comparison.compatible ? t("Compatible") : t("Comparison blocked") }}</strong>
         </div>
         <code>{{ comparison.compatibility_profile_version }}</code>
       </div>
 
       <section v-if="!comparison.compatible" class="cae-blocked-panel" role="status">
-        <h3>No metric delta was calculated</h3>
-        <p>Resolve every run-level incompatibility before comparing simulation results.</p>
+        <h3>{{ t("No metric delta was calculated") }}</h3>
+        <p>{{ t("Resolve every run-level incompatibility before comparing simulation results.") }}</p>
         <ul>
           <li v-for="item in comparison.incompatibilities" :key="item.code">
             <strong>{{ item.field.replaceAll("_", " ") }}</strong>
@@ -200,19 +203,19 @@ watch(
       <template v-else>
         <div class="cae-summary-grid">
           <div>
-            <span>Comparable metrics</span>
+            <span>{{ t("Comparable metrics") }}</span>
             <strong>{{ comparison.comparison_summary.comparable_metric_count }}</strong>
           </div>
           <div>
-            <span>Excluded metrics</span>
+            <span>{{ t("Excluded metrics") }}</span>
             <strong>{{ comparison.comparison_summary.excluded_metric_count }}</strong>
           </div>
           <div>
-            <span>Improved indicators</span>
+            <span>{{ t("Improved indicators") }}</span>
             <strong>{{ comparison.comparison_summary.finding_counts.improved }}</strong>
           </div>
           <div>
-            <span>Review required</span>
+            <span>{{ t("Review required") }}</span>
             <strong>{{ comparison.comparison_summary.finding_counts.changed_review_required }}</strong>
           </div>
         </div>
@@ -221,13 +224,13 @@ watch(
           <table class="cae-metric-table">
             <thead>
               <tr>
-                <th>Metric</th>
-                <th>Baseline</th>
-                <th>Candidate</th>
-                <th>Delta</th>
-                <th>Percent</th>
-                <th>Finding</th>
-                <th>Evidence</th>
+                <th>{{ t("Metric") }}</th>
+                <th>{{ t("Baseline") }}</th>
+                <th>{{ t("Candidate") }}</th>
+                <th>{{ t("Delta") }}</th>
+                <th>{{ t("Percent") }}</th>
+                <th>{{ t("Finding") }}</th>
+                <th>{{ t("Evidence") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -240,10 +243,10 @@ watch(
                 <td>{{ metric.candidate.value }} {{ metric.unit }}</td>
                 <td>{{ deltaText(metric.delta, metric.unit) }}</td>
                 <td>{{ percentText(metric.percent_delta) }}</td>
-                <td><span class="cae-finding" :class="metric.finding">{{ metric.finding }}</span></td>
+                <td><span class="cae-finding" :class="metric.finding">{{ t(metric.finding) }}</span></td>
                 <td>
                   <details>
-                    <summary>{{ metric.evidence_refs.length }} refs</summary>
+                    <summary>{{ t("{count} refs", { count: metric.evidence_refs.length }) }}</summary>
                     <code v-for="evidence in metric.evidence_refs" :key="evidence">{{ evidence }}</code>
                   </details>
                 </td>
@@ -255,17 +258,17 @@ watch(
 
       <div class="cae-lineage">
         <div>
-          <span>Baseline fact</span>
+          <span>{{ t("Baseline fact") }}</span>
           <strong>{{ comparison.parsed_facts.baseline.study_code }}</strong>
           <code>{{ comparison.parsed_facts.baseline.run_id }}</code>
         </div>
         <div>
-          <span>Candidate fact</span>
+          <span>{{ t("Candidate fact") }}</span>
           <strong>{{ comparison.parsed_facts.candidate.study_code }}</strong>
           <code>{{ comparison.parsed_facts.candidate.run_id }}</code>
         </div>
         <div>
-          <span>Comparison lineage</span>
+          <span>{{ t("Comparison lineage") }}</span>
           <strong>{{ comparison.comparison_id }}</strong>
           <code>{{ comparison.lineage.comparison_ref }}</code>
         </div>

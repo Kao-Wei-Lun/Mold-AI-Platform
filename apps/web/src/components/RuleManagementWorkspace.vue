@@ -2,6 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 
 import { fetchRuleProfiles, type RuleProfile } from "../api/rules";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 const profiles = ref<RuleProfile[]>([]);
 const loading = ref(true);
@@ -31,7 +34,7 @@ const filteredRules = computed(() => {
 function conditionLabel(rule: RuleProfile["rules"][number]): string {
   const operator = { lte: "≤", gte: "≥", eq: "=" }[rule.condition.operator];
   return rule.condition.limit === null
-    ? "Evidence dependent"
+    ? t("Evidence dependent")
     : `${operator} ${rule.condition.limit} ${rule.condition.unit}`;
 }
 
@@ -41,7 +44,7 @@ async function loadProfiles(): Promise<void> {
   try {
     profiles.value = await fetchRuleProfiles();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load mold rules.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load mold rules.");
   } finally {
     loading.value = false;
   }
@@ -52,67 +55,65 @@ onMounted(loadProfiles);
 
 <template>
   <section class="rule-management-workspace" aria-labelledby="rule-management-title">
-    <div v-if="loading" class="workspace-state" role="status">Loading approved rule profile…</div>
+    <div v-if="loading" class="workspace-state" role="status">{{ t("Loading approved rule profile…") }}</div>
     <div v-else-if="error" class="workspace-state error-state" role="alert">
-      <strong>Rule catalog unavailable</strong>
+      <strong>{{ t("Rule catalog unavailable") }}</strong>
       <span>{{ error }}</span>
-      <button type="button" @click="loadProfiles">Try again</button>
+      <button type="button" @click="loadProfiles">{{ t("Try again") }}</button>
     </div>
     <template v-else-if="profile">
       <div class="rule-profile-header">
         <div>
-          <p class="eyebrow">Approved rule profile</p>
+          <p class="eyebrow">{{ t("Approved rule profile") }}</p>
           <h2 id="rule-management-title">{{ profile.profile_key }} @ {{ profile.version }}</h2>
           <p>
-            {{ profile.rule_count }} enabled rules · owned by {{ profile.owner }} · approved by
-            {{ profile.approved_by }}
+            {{ t("{count} enabled rules · owned by {owner} · approved by {approver}", { count: profile.rule_count, owner: profile.owner, approver: profile.approved_by }) }}
           </p>
         </div>
-        <span class="governance-state">{{ profile.status.replaceAll("_", " ") }}</span>
+        <span class="governance-state">{{ t(profile.status.replaceAll("_", " ")) }}</span>
       </div>
 
-      <div class="governance-summary" aria-label="Rule governance summary">
-        <div><span>Profile version</span><strong>{{ profile.version }}</strong></div>
-        <div><span>Enabled rules</span><strong>{{ profile.rule_count }}</strong></div>
-        <div><span>Ruleset checksum</span><code>{{ profile.ruleset_checksum.slice(0, 12) }}…</code></div>
-        <div><span>Change policy</span><strong>Versioned approval</strong></div>
+      <div class="governance-summary" :aria-label="t('Rule governance summary')">
+        <div><span>{{ t("Profile version") }}</span><strong>{{ profile.version }}</strong></div>
+        <div><span>{{ t("Enabled rules") }}</span><strong>{{ profile.rule_count }}</strong></div>
+        <div><span>{{ t("Ruleset checksum") }}</span><code>{{ profile.ruleset_checksum.slice(0, 12) }}…</code></div>
+        <div><span>{{ t("Change policy") }}</span><strong>{{ t("Versioned approval") }}</strong></div>
       </div>
 
       <aside class="governance-boundary">
         <div>
-          <strong>Approved rules are immutable in this Demo</strong>
+          <strong>{{ t("Approved rules are immutable in this Demo") }}</strong>
           <p>
-            The catalog is managed here for discovery and audit. Safe editing requires a separate
-            draft, validation, approval and activation workflow—never an in-place threshold change.
+            {{ t("The catalog is managed here for discovery and audit. Safe editing requires a separate draft, validation, approval and activation workflow—never an in-place threshold change.") }}
           </p>
         </div>
-        <span>Read-only governance</span>
+        <span>{{ t("Read-only governance") }}</span>
       </aside>
 
       <div class="rule-filter-bar">
         <label>
-          <span>Search rules</span>
-          <input v-model="query" type="search" placeholder="Rule ID, risk, title or reference" />
+          <span>{{ t("Search rules") }}</span>
+          <input v-model="query" type="search" :placeholder="t('Rule ID, risk, title or reference')" />
         </label>
         <label>
-          <span>Severity</span>
+          <span>{{ t("Severity") }}</span>
           <select v-model="severity">
             <option v-for="item in severities" :key="item" :value="item">
-              {{ item === "all" ? "All severities" : item }}
+              {{ item === "all" ? t("All severities") : t(item) }}
             </option>
           </select>
         </label>
-        <span class="result-count">{{ filteredRules.length }} shown</span>
+        <span class="result-count">{{ t("{count} shown", { count: filteredRules.length }) }}</span>
       </div>
 
       <div class="rule-table-wrap">
         <table class="rule-table">
           <thead>
             <tr>
-              <th>Rule</th>
-              <th>Condition</th>
-              <th>Risk / severity</th>
-              <th>Reference</th>
+              <th>{{ t("Rule") }}</th>
+              <th>{{ t("Condition") }}</th>
+              <th>{{ t("Risk / severity") }}</th>
+              <th>{{ t("Reference") }}</th>
             </tr>
           </thead>
           <tbody>
@@ -124,7 +125,7 @@ onMounted(loadProfiles);
               </td>
               <td><strong>{{ conditionLabel(rule) }}</strong><span>{{ rule.evaluator }}</span></td>
               <td>
-                <span class="severity-chip" :class="`severity-${rule.severity}`">{{ rule.severity }}</span>
+                <span class="severity-chip" :class="`severity-${rule.severity}`">{{ t(rule.severity) }}</span>
                 <span>{{ rule.risk_type }}</span>
               </td>
               <td>
@@ -135,8 +136,8 @@ onMounted(loadProfiles);
           </tbody>
         </table>
       </div>
-      <p v-if="filteredRules.length === 0" class="workspace-state">No rules match these filters.</p>
+      <p v-if="filteredRules.length === 0" class="workspace-state">{{ t("No rules match these filters.") }}</p>
     </template>
-    <p v-else class="workspace-state">No approved rule profile is available.</p>
+    <p v-else class="workspace-state">{{ t("No approved rule profile is available.") }}</p>
   </section>
 </template>

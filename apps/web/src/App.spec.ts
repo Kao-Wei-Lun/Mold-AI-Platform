@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
 import App from "./App.vue";
+import { setLocale } from "./i18n";
 
 const readiness = {
   status: "ok",
@@ -39,6 +40,7 @@ function installApiMock(healthPayload: unknown = readiness): ReturnType<typeof v
 
 describe("App", () => {
   beforeEach(() => {
+    setLocale("en");
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("scrollTo", vi.fn());
   });
@@ -93,5 +95,21 @@ describe("App", () => {
 
     await wrapper.get('a[href="/status"]').trigger("click");
     expect(wrapper.get('[role="alert"]').text()).toContain("network unavailable");
+  });
+
+  it("switches the full shell to Traditional Chinese and persists the preference", async () => {
+    installApiMock();
+    const wrapper = mount(App);
+    await flushPromises();
+
+    await wrapper.findAll(".language-switch button")[1].trigger("click");
+
+    expect(wrapper.text()).toContain("完成七步驟 Demo 導引");
+    expect(wrapper.text()).toContain("模具規定");
+    expect(document.documentElement.lang).toBe("zh-TW");
+    expect(window.localStorage.getItem("mold-ai.locale")).toBe("zh-TW");
+
+    await wrapper.findAll(".language-switch button")[0].trigger("click");
+    expect(wrapper.text()).toContain("Complete the seven-step guided Demo");
   });
 });

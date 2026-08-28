@@ -1,5 +1,9 @@
 # Stage 17 — Engineering Web UI/UX Improvement Plan
 
+Implementation note: Phase A multi-route navigation and Phase B English/Traditional Chinese UI
+switching are complete. Governed API source records intentionally remain in their authored language
+until approved localized fields are part of the data contract.
+
 - 狀態：Phase A implemented; workflow refinement in progress
 - 優先級：P1
 - 前置：Stage 13–16 contracts與UAT穩定

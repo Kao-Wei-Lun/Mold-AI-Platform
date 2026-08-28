@@ -65,3 +65,7 @@ full-volume rebuild, and automated isolated Qdrant/CAD-worker fault-recovery evi
 Stage 17 Phase A replaces the single scrolling page with a route-based Engineering Workspace,
 Guided Demo home, persistent CAD context, responsive navigation and a governed Mold Rule catalog.
 See [`docs/development/stage-17-ui-phase-a.md`](docs/development/stage-17-ui-phase-a.md).
+
+Stage 17 Phase B adds application-wide English/Traditional Chinese switching with a persisted
+browser preference and explicit governed-source translation boundary. See
+[`docs/development/stage-17-ui-phase-b-i18n.md`](docs/development/stage-17-ui-phase-b-i18n.md).

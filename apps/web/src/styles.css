@@ -2330,6 +2330,32 @@ button:disabled {
   background: #fff0c7;
 }
 
+.language-switch {
+  display: inline-flex;
+  gap: 0.15rem;
+  border: 1px solid #d7dfec;
+  border-radius: 999px;
+  padding: 0.18rem;
+  background: #f4f6fa;
+}
+
+.language-switch button {
+  min-width: 2.35rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.48rem;
+  color: #637087;
+  background: transparent;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.language-switch button.active {
+  color: #fff;
+  background: #294c8b;
+  box-shadow: 0 2px 5px rgb(23 52 105 / 20%);
+}
+
 .assistant-toggle,
 .mobile-nav-button {
   padding: 0.5rem 0.7rem;

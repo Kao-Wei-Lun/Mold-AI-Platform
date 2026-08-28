@@ -11,6 +11,9 @@ import {
   type HMIField,
 } from "../api/hmi";
 import { downloadProtectedArtifact } from "../api/client";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 const selectedFile = ref<File | null>(null);
 const previewUrl = ref("");
@@ -47,7 +50,7 @@ async function loadDemo(): Promise<void> {
   try {
     setFile(await fetchDemoHMI());
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to load the Demo HMI image.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to load the Demo HMI image.");
   } finally {
     loadingDemo.value = false;
   }
@@ -55,7 +58,7 @@ async function loadDemo(): Promise<void> {
 
 async function extract(): Promise<void> {
   if (!selectedFile.value) {
-    error.value = "Choose an HMI PNG or JPG, or load the bounded Demo screen first.";
+    error.value = t("Choose an HMI PNG or JPG, or load the bounded Demo screen first.");
     return;
   }
   extracting.value = true;
@@ -66,7 +69,7 @@ async function extract(): Promise<void> {
       extraction.value.fields.map((field) => [field.field_id, String(field.effective_value ?? "")]),
     );
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "HMI extraction failed.";
+    error.value = caught instanceof Error ? caught.message : t("HMI extraction failed.");
   } finally {
     extracting.value = false;
   }
@@ -88,7 +91,7 @@ async function decide(field: HMIField, action: "confirm" | "correct" | "reject")
         : { field_id: field.field_id, action };
     extraction.value = await reviewHMI(extraction.value.extraction_id, [decision]);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Field review failed.";
+    error.value = caught instanceof Error ? caught.message : t("Field review failed.");
   } finally {
     reviewingField.value = "";
   }
@@ -101,7 +104,7 @@ async function createExport(): Promise<void> {
   try {
     exported.value = await exportHMI(extraction.value.extraction_id);
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Workbook export failed.";
+    error.value = caught instanceof Error ? caught.message : t("Workbook export failed.");
   } finally {
     exporting.value = false;
   }
@@ -113,7 +116,7 @@ async function downloadExport(): Promise<void> {
   try {
     await downloadProtectedArtifact(exported.value.download_url, "reviewed-hmi-parameters.xlsx");
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Workbook download failed.";
+    error.value = caught instanceof Error ? caught.message : t("Workbook download failed.");
   }
 }
 
@@ -130,43 +133,43 @@ onBeforeUnmount(() => {
   <section id="hmi" class="hmi-workspace" aria-labelledby="hmi-title">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">Machine UI to Excel</p>
-        <h2 id="hmi-title">Review bounded HMI extraction before exporting</h2>
+        <p class="eyebrow">{{ t("Machine UI to Excel") }}</p>
+        <h2 id="hmi-title">{{ t("Review bounded HMI extraction before exporting") }}</h2>
       </div>
-      <span class="demo-label">Fixed synthetic profile · No cloud vision</span>
+      <span class="demo-label">{{ t("Fixed synthetic profile · No cloud vision") }}</span>
     </div>
 
     <div class="hmi-input-bar">
       <label class="hmi-file-picker">
-        <span>PNG or JPG · maximum 10 MB</span>
+        <span>{{ t("PNG or JPG · maximum 10 MB") }}</span>
         <input type="file" accept="image/png,image/jpeg" @change="onFile" />
       </label>
       <button type="button" class="secondary-button" :disabled="loadingDemo" @click="loadDemo">
-        {{ loadingDemo ? "Loading..." : "Load low-confidence Demo screen" }}
+        {{ loadingDemo ? t("Loading...") : t("Load low-confidence Demo screen") }}
       </button>
       <button type="button" :disabled="extracting || !selectedFile" @click="extract">
-        {{ extracting ? "Extracting..." : "Extract four parameters" }}
+        {{ extracting ? t("Extracting...") : t("Extract four parameters") }}
       </button>
     </div>
 
     <div v-if="previewUrl" class="hmi-preview-card">
-      <img :src="previewUrl" alt="Selected injection molding machine HMI screen" />
+      <img :src="previewUrl" :alt="t('Selected injection molding machine HMI screen')" />
       <div>
         <strong>{{ selectedFile?.name }}</strong>
-        <span>Local preview · content is sent only to this platform API</span>
+        <span>{{ t("Local preview · content is sent only to this platform API") }}</span>
       </div>
     </div>
 
     <template v-if="extraction">
       <div class="hmi-status" :class="extraction.review_status">
         <div>
-          <span>Review gate</span>
-          <strong v-if="extraction.review_status === 'ready_for_export'">Ready for export</strong>
-          <strong v-else-if="extraction.review_status === 'rejected'">Rejected</strong>
-          <strong v-else>{{ pendingCount }} field requires review</strong>
+          <span>{{ t("Review gate") }}</span>
+          <strong v-if="extraction.review_status === 'ready_for_export'">{{ t("Ready for export") }}</strong>
+          <strong v-else-if="extraction.review_status === 'rejected'">{{ t("Rejected") }}</strong>
+          <strong v-else>{{ t("{count} field requires review", { count: pendingCount }) }}</strong>
         </div>
         <div>
-          <span>Profile / extractor</span>
+          <span>{{ t("Profile / extractor") }}</span>
           <code>{{ extraction.profile }} · {{ extraction.extractor_version }}</code>
         </div>
       </div>
@@ -175,18 +178,18 @@ onBeforeUnmount(() => {
         <table class="hmi-table">
           <thead>
             <tr>
-              <th>Parameter</th>
-              <th>Raw OCR</th>
-              <th>Normalized</th>
-              <th>Confidence</th>
-              <th>Source region</th>
-              <th>Review</th>
+              <th>{{ t("Parameter") }}</th>
+              <th>{{ t("Raw OCR") }}</th>
+              <th>{{ t("Normalized") }}</th>
+              <th>{{ t("Confidence") }}</th>
+              <th>{{ t("Source region") }}</th>
+              <th>{{ t("Review") }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="field in extraction.fields" :key="field.field_id">
-              <td><strong>{{ field.display_label }}</strong><code>{{ field.parameter_code }}</code></td>
-              <td>{{ field.raw_text || "unreadable" }}</td>
+              <td><strong>{{ t(field.display_label) }}</strong><code>{{ field.parameter_code }}</code></td>
+              <td>{{ field.raw_text || t("unreadable") }}</td>
               <td>{{ field.effective_value }} {{ field.effective_unit }}</td>
               <td>
                 <span class="confidence-pill" :class="{ low: field.confidence < 0.9 }">
@@ -205,7 +208,7 @@ onBeforeUnmount(() => {
                     v-model="edits[field.field_id]"
                     type="number"
                     step="0.1"
-                    :aria-label="`Correct ${field.display_label}`"
+                    :aria-label="t('Correct {label}', { label: t(field.display_label) })"
                   />
                   <span>{{ field.unit }}</span>
                   <button
@@ -214,18 +217,18 @@ onBeforeUnmount(() => {
                     :disabled="reviewingField === field.field_id"
                     @click="decide(field, 'confirm')"
                   >
-                    Confirm OCR
+                    {{ t("Confirm OCR") }}
                   </button>
                   <button
                     type="button"
                     :disabled="reviewingField === field.field_id"
                     @click="decide(field, 'correct')"
                   >
-                    Save correction
+                    {{ t("Save correction") }}
                   </button>
                 </div>
                 <span v-else class="review-state" :class="field.review_status">
-                  {{ field.review_status.replaceAll("_", " ") }}
+                  {{ t(field.review_status.replaceAll("_", " ")) }}
                 </span>
               </td>
             </tr>
@@ -235,24 +238,24 @@ onBeforeUnmount(() => {
 
       <div class="hmi-export-bar">
         <div>
-          <strong>Versioned reviewed-parameter workbook</strong>
-          <span>Includes source SHA-256, profile, extractor, confidence, regions, and audit data.</span>
+          <strong>{{ t("Versioned reviewed-parameter workbook") }}</strong>
+          <span>{{ t("Includes source SHA-256, profile, extractor, confidence, regions, and audit data.") }}</span>
         </div>
         <button
           type="button"
           :disabled="exporting || extraction.review_status !== 'ready_for_export'"
           @click="createExport"
         >
-          {{ exporting ? "Generating..." : "Generate XLSX" }}
+          {{ exporting ? t("Generating...") : t("Generate XLSX") }}
         </button>
         <button v-if="exported" type="button" class="download-link" @click="downloadExport">
-          Download {{ exported.template_version }}
+          {{ t("Download {version}", { version: exported.template_version }) }}
         </button>
       </div>
 
       <div class="hmi-lineage">
-        <span>Source SHA-256</span><code>{{ extraction.image_sha256 }}</code>
-        <span>Lineage</span><code>{{ extraction.lineage_ref }}</code>
+        <span>{{ t("Source SHA-256") }}</span><code>{{ extraction.image_sha256 }}</code>
+        <span>{{ t("Lineage") }}</span><code>{{ extraction.lineage_ref }}</code>
       </div>
       <p class="limitation-note">{{ extraction.limitations.join(" ") }}</p>
     </template>

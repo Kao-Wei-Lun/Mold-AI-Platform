@@ -17,6 +17,7 @@ import RuleManagementWorkspace from "./components/RuleManagementWorkspace.vue";
 import ServiceStatus from "./components/ServiceStatus.vue";
 import SimilarityWorkspace from "./components/SimilarityWorkspace.vue";
 import { parseDeepLink } from "./deepLinks";
+import { useI18n } from "./i18n";
 import {
   resolveWorkspaceRoute,
   routeForDeepLink,
@@ -24,6 +25,8 @@ import {
   type WorkspaceRoute,
   type WorkspaceRouteId,
 } from "./routing";
+
+const { locale, setLocale, t } = useI18n();
 
 const readiness = ref<ReadinessResponse | null>(null);
 const loading = ref(true);
@@ -42,7 +45,7 @@ const currentRoute = ref<WorkspaceRoute>(initialRoute);
 const assistantContext = ref<AssistantContext>({
   context_version: "1.0",
   page: "engineering_workspace",
-  ui_locale: "zh-TW",
+  ui_locale: locale.value,
 });
 
 const navigationGroups = computed(() =>
@@ -58,7 +61,7 @@ const activeDeepLink = computed(() => {
     : null;
 });
 const selectedCadLabel = computed(() =>
-  activeCAD.value ? activeCAD.value.artifact_version_id.slice(0, 8) : "No CAD selected",
+  activeCAD.value ? activeCAD.value.artifact_version_id.slice(0, 8) : t("No CAD selected"),
 );
 
 const guidedSteps: Array<{ number: string; route: WorkspaceRouteId; title: string; detail: string }> = [
@@ -101,7 +104,7 @@ async function refreshHealth(): Promise<void> {
   try {
     readiness.value = await fetchReadiness();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to reach platform API";
+    error.value = caught instanceof Error ? caught.message : t("Unable to reach platform API");
     readiness.value = null;
   } finally {
     loading.value = false;
@@ -111,15 +114,20 @@ async function refreshHealth(): Promise<void> {
 watch(
   () => currentRoute.value.id,
   () => {
-    document.title = `${currentRoute.value.label} · Mold AI Platform`;
+    document.title = `${t(currentRoute.value.label)} · Mold AI Platform`;
     assistantContext.value = {
       context_version: "1.0",
       page: "engineering_workspace",
-      ui_locale: "zh-TW",
+      ui_locale: locale.value,
     };
   },
   { immediate: true },
 );
+
+watch(locale, () => {
+  document.title = `${t(currentRoute.value.label)} · Mold AI Platform`;
+  assistantContext.value = { ...assistantContext.value, ui_locale: locale.value };
+});
 
 onMounted(() => {
   if (deepLinkState.context && window.location.pathname !== initialRoute.path) {
@@ -140,12 +148,12 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
     <aside class="sidebar" :class="{ 'navigation-open': navigationOpen }">
       <div class="sidebar-brand">
         <span class="brand-mark">MA</span>
-        <span><strong>Mold AI</strong><small>Engineering Platform</small></span>
+        <span><strong>Mold AI</strong><small>{{ t("Engineering Platform") }}</small></span>
       </div>
 
-      <nav id="primary-navigation" aria-label="Primary navigation">
+      <nav id="primary-navigation" :aria-label="t('Primary navigation')">
         <div v-for="group in navigationGroups" :key="group.group" class="navigation-group">
-          <p>{{ group.group }}</p>
+          <p>{{ t(group.group) }}</p>
           <a
             v-for="route in group.routes"
             :key="route.id"
@@ -154,15 +162,15 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
             :aria-current="currentRoute.id === route.id ? 'page' : undefined"
             @click.prevent="navigate(route.id)"
           >
-            <span class="navigation-marker">{{ route.label.slice(0, 2).toUpperCase() }}</span>
-            <span>{{ route.label }}</span>
+            <span class="navigation-marker">{{ t(route.label).slice(0, 2).toUpperCase() }}</span>
+            <span>{{ t(route.label) }}</span>
           </a>
         </div>
       </nav>
 
       <div class="sidebar-foot">
         <span class="demo-scope-dot"></span>
-        <span><strong>Public synthetic Demo</strong><small>No company data</small></span>
+        <span><strong>{{ t("Public synthetic Demo") }}</strong><small>{{ t("No company data") }}</small></span>
       </div>
     </aside>
 
@@ -175,16 +183,20 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :aria-expanded="navigationOpen"
           @click="navigationOpen = !navigationOpen"
         >
-          Menu
+          {{ t("Menu") }}
         </button>
-        <div class="breadcrumb" aria-label="Current location">
-          <span>Mold AI</span><b>/</b><strong>{{ currentRoute.group }}</strong><b>/</b><span>{{ currentRoute.label }}</span>
+        <div class="breadcrumb" :aria-label="t('Current location')">
+          <span>Mold AI</span><b>/</b><strong>{{ t(currentRoute.group) }}</strong><b>/</b><span>{{ t(currentRoute.label) }}</span>
         </div>
         <div class="top-context-actions">
           <span class="context-chip" :title="activeCAD?.artifact_version_id || ''">{{ selectedCadLabel }}</span>
           <span class="environment-chip">Demo</span>
+          <div class="language-switch" role="group" :aria-label="t('Switch language')">
+            <button type="button" :class="{ active: locale === 'en' }" :aria-pressed="locale === 'en'" @click="setLocale('en')">EN</button>
+            <button type="button" :class="{ active: locale === 'zh-TW' }" :aria-pressed="locale === 'zh-TW'" @click="setLocale('zh-TW')">中文</button>
+          </div>
           <button type="button" class="assistant-toggle" @click="assistantOpen = !assistantOpen">
-            {{ assistantOpen ? "Hide assistant" : "Open assistant" }}
+            {{ assistantOpen ? t("Hide assistant") : t("Open assistant") }}
           </button>
         </div>
       </header>
@@ -192,11 +204,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
       <main class="workspace">
         <header class="page-header">
           <div>
-            <p class="eyebrow">{{ currentRoute.eyebrow }}</p>
-            <h1>{{ currentRoute.title }}</h1>
-            <p>{{ currentRoute.description }}</p>
+            <p class="eyebrow">{{ t(currentRoute.eyebrow) }}</p>
+            <h1>{{ t(currentRoute.title) }}</h1>
+            <p>{{ t(currentRoute.description) }}</p>
           </div>
-          <span v-if="activeDeepLink" class="opened-from-mcp">Opened from ChatGPT MCP</span>
+          <span v-if="activeDeepLink" class="opened-from-mcp">{{ t("Opened from ChatGPT MCP") }}</span>
         </header>
 
         <AccessPanel :compact="true" @ready="accessReady = $event" />
@@ -209,41 +221,41 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <template v-if="currentRoute.id === 'home'">
           <section class="home-overview" aria-labelledby="guided-demo-title">
             <div class="home-intro-card">
-              <p class="eyebrow">Recommended path</p>
-              <h2 id="guided-demo-title">Complete the seven-step guided Demo</h2>
-              <p>Each step opens a focused workspace. Your selected CAD context remains available while navigating.</p>
-              <button type="button" @click="navigate('cad')">Start with CAD & artifacts</button>
+              <p class="eyebrow">{{ t("Recommended path") }}</p>
+              <h2 id="guided-demo-title">{{ t("Complete the seven-step guided Demo") }}</h2>
+              <p>{{ t("Each step opens a focused workspace. Your selected CAD context remains available while navigating.") }}</p>
+              <button type="button" @click="navigate('cad')">{{ t("Start with CAD & artifacts") }}</button>
             </div>
             <div class="home-status-card">
-              <span>Core services</span>
-              <strong v-if="loading">Checking…</strong>
-              <strong v-else-if="readiness" :class="readiness.status">{{ readiness.status }}</strong>
-              <strong v-else class="error">Unavailable</strong>
-              <small>Database · Redis · Qdrant</small>
-              <button type="button" class="text-button" :disabled="loading" @click="refreshHealth">Refresh status</button>
+              <span>{{ t("Core services") }}</span>
+              <strong v-if="loading">{{ t("Checking…") }}</strong>
+              <strong v-else-if="readiness" :class="readiness.status">{{ t(readiness.status) }}</strong>
+              <strong v-else class="error">{{ t("Unavailable") }}</strong>
+              <small>{{ t("Database · Redis · Qdrant") }}</small>
+              <button type="button" class="text-button" :disabled="loading" @click="refreshHealth">{{ t("Refresh status") }}</button>
             </div>
           </section>
-          <section class="guided-grid" aria-label="Guided Demo steps">
+          <section class="guided-grid" :aria-label="t('Guided Demo steps')">
             <article v-for="step in guidedSteps" :key="step.route">
               <span>{{ step.number }}</span>
-              <div><h3>{{ step.title }}</h3><p>{{ step.detail }}</p></div>
-              <button type="button" :aria-label="`Open ${step.title}`" @click="navigate(step.route)">Open →</button>
+              <div><h3>{{ t(step.title) }}</h3><p>{{ t(step.detail) }}</p></div>
+              <button type="button" :aria-label="t('Open {title}', { title: t(step.title) })" @click="navigate(step.route)">{{ t("Open →") }}</button>
             </article>
           </section>
           <section class="governance-callout">
-            <div><p class="eyebrow">New governance workspace</p><h2>Review mold rules before running design review</h2></div>
-            <p>See profile ownership, approval, versions, thresholds and references in the system—not only in fixture files.</p>
-            <button type="button" @click="navigate('rules')">Open mold rules</button>
+            <div><p class="eyebrow">{{ t("New governance workspace") }}</p><h2>{{ t("Review mold rules before running design review") }}</h2></div>
+            <p>{{ t("See profile ownership, approval, versions, thresholds and references in the system—not only in fixture files.") }}</p>
+            <button type="button" @click="navigate('rules')">{{ t("Open mold rules") }}</button>
           </section>
         </template>
 
         <section v-else-if="currentRoute.id === 'status'" class="status-card" aria-labelledby="platform-status-title">
           <div class="card-heading">
-            <div><p class="eyebrow">Environment status</p><h2 id="platform-status-title">Platform services</h2></div>
-            <button type="button" :disabled="loading" @click="refreshHealth">{{ loading ? "Checking…" : "Check again" }}</button>
+            <div><p class="eyebrow">{{ t("Environment status") }}</p><h2 id="platform-status-title">{{ t("Platform services") }}</h2></div>
+            <button type="button" :disabled="loading" @click="refreshHealth">{{ loading ? t("Checking…") : t("Check again") }}</button>
           </div>
           <p v-if="error" class="error-message" role="alert">{{ error }}</p>
-          <p v-else-if="loading" class="muted">Connecting to the platform API…</p>
+          <p v-else-if="loading" class="muted">{{ t("Connecting to the platform API…") }}</p>
           <ul v-else-if="readiness" class="service-list">
             <ServiceStatus v-for="service in readiness.services" :key="service.name" :service="service" />
           </ul>
@@ -277,11 +289,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <HMIWorkspace v-else-if="currentRoute.id === 'hmi' && accessReady" />
         <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" />
         <section v-else-if="currentRoute.id === 'not_found'" class="workspace-state error-state">
-          <strong>Unsupported page</strong><span>The URL does not map to a Mold AI workspace.</span>
-          <button type="button" @click="navigate('home')">Return to Demo guide</button>
+          <strong>{{ t("Unsupported page") }}</strong><span>{{ t("The URL does not map to a Mold AI workspace.") }}</span>
+          <button type="button" @click="navigate('home')">{{ t("Return to Demo guide") }}</button>
         </section>
         <section v-else-if="!accessReady" class="workspace-state">
-          Unlock the private Demo above to load this engineering workspace.
+          {{ t("Unlock the private Demo above to load this engineering workspace.") }}
         </section>
       </main>
     </div>

@@ -11,6 +11,9 @@ import {
   type SimilarityMatch,
 } from "../api/similarity";
 import type { DeepLinkContext } from "../deepLinks";
+import { useI18n } from "../i18n";
+
+const { locale, t } = useI18n();
 
 const props = defineProps<{
   query: CADModelResult | null;
@@ -57,13 +60,13 @@ async function refreshJob(): Promise<void> {
     acceptJob(await fetchSimilarityJob(job.value.job_id));
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to refresh similarity job.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to refresh similarity job.");
   }
 }
 
 async function submit(): Promise<void> {
   if (!props.query) {
-    error.value = "Upload and process a CAD artifact first.";
+    error.value = t("Upload and process a CAD artifact first.");
     return;
   }
   submitting.value = true;
@@ -84,7 +87,7 @@ async function submit(): Promise<void> {
     acceptJob(await fetchSimilarityJob(accepted.job_id));
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Similarity search failed.";
+    error.value = caught instanceof Error ? caught.message : t("Similarity search failed.");
   } finally {
     submitting.value = false;
   }
@@ -108,8 +111,8 @@ async function loadDeepLink(): Promise<void> {
   } catch (caught) {
     error.value =
       caught instanceof Error && caught.message === "DEEP_LINK_CONTEXT_MISMATCH"
-        ? "The linked candidate does not belong to this similarity search."
-        : "The linked similarity result is unavailable or not authorized.";
+        ? t("The linked candidate does not belong to this similarity search.")
+        : t("The linked similarity result is unavailable or not authorized.");
   }
 }
 
@@ -144,7 +147,7 @@ watch(
       similarity_search_id: result.value.search_id,
       selected_candidate_artifact_version_id: selectedMatch.value.artifact_version_id,
       job_id: job.value.job_id,
-      ui_locale: "zh-TW",
+      ui_locale: locale.value,
     });
   },
 );
@@ -174,49 +177,49 @@ onBeforeUnmount(() => {
   <section id="similarity" class="similarity-workspace" aria-labelledby="similarity-title">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">CAD similarity</p>
-        <h2 id="similarity-title">Find explainable reference geometry</h2>
+        <p class="eyebrow">{{ t("CAD similarity") }}</p>
+        <h2 id="similarity-title">{{ t("Find explainable reference geometry") }}</h2>
       </div>
-      <span class="demo-label">Deterministic Demo Profile</span>
+      <span class="demo-label">{{ t("Deterministic Demo Profile") }}</span>
     </div>
 
     <p v-if="!query" class="muted similarity-intro">
-      Process a CAD artifact above to use it as the similarity query.
+      {{ t("Process a CAD artifact above to use it as the similarity query.") }}
     </p>
     <template v-else>
       <div class="query-summary">
         <div>
-          <span>Query artifact version</span>
+          <span>{{ t("Query artifact version") }}</span>
           <code>{{ query.artifact_version_id }}</code>
         </div>
         <span class="index-state" :class="query.similarity_index?.status || 'missing'">
-          {{ query.similarity_index?.status || "not indexed" }}
+          {{ t(query.similarity_index?.status || "not indexed") }}
         </span>
       </div>
 
       <form class="similarity-form" @submit.prevent="submit">
         <label>
-          <span>Dataset filter</span>
+          <span>{{ t("Dataset filter") }}</span>
           <input v-model="datasetId" type="text" maxlength="128" />
         </label>
         <label>
-          <span>Product type</span>
-          <input v-model="productType" type="text" maxlength="128" placeholder="Any" />
+          <span>{{ t("Product type") }}</span>
+          <input v-model="productType" type="text" maxlength="128" :placeholder="t('Any')" />
         </label>
         <label>
-          <span>Material</span>
-          <input v-model="materialCode" type="text" maxlength="128" placeholder="Any" />
+          <span>{{ t("Material") }}</span>
+          <input v-model="materialCode" type="text" maxlength="128" :placeholder="t('Any')" />
         </label>
         <label>
-          <span>Top K</span>
+          <span>{{ t("Top K") }}</span>
           <input v-model.number="topK" type="number" min="1" max="20" />
         </label>
         <button type="submit" :disabled="submitting || !indexed">
-          {{ submitting ? "Starting..." : "Search similar CAD" }}
+          {{ submitting ? t("Starting...") : t("Search similar CAD") }}
         </button>
       </form>
       <p v-if="!indexed" class="warning-message">
-        This CAD is not indexed. Reprocess it while Qdrant is available before searching.
+        {{ t("This CAD is not indexed. Reprocess it while Qdrant is available before searching.") }}
       </p>
     </template>
 
@@ -225,12 +228,12 @@ onBeforeUnmount(() => {
     <div v-if="job" class="job-panel">
       <div class="job-heading">
         <div>
-          <span class="job-state" :class="job.state">{{ job.state }}</span>
-          <strong>{{ job.stage.replaceAll("_", " ") }}</strong>
+          <span class="job-state" :class="job.state">{{ t(job.state) }}</span>
+          <strong>{{ t(job.stage.replaceAll("_", " ")) }}</strong>
         </div>
         <span>{{ job.progress }}%</span>
       </div>
-      <div class="progress-track" aria-label="Similarity search progress">
+      <div class="progress-track" :aria-label="t('Similarity search progress')">
         <span :style="{ width: `${job.progress}%` }"></span>
       </div>
       <p v-if="job.error" class="error-message">
@@ -241,17 +244,17 @@ onBeforeUnmount(() => {
     <div v-if="result" class="similarity-results">
       <div class="result-header">
         <div>
-          <strong>{{ result.result_count }} ranked candidates</strong>
+          <strong>{{ t("{count} ranked candidates", { count: result.result_count }) }}</strong>
           <span>{{ result.profile }} · {{ result.index_version }}</span>
         </div>
-        <span>Missing lanes are reweighted, never scored as zero.</span>
+        <span>{{ t("Missing lanes are reweighted, never scored as zero.") }}</span>
       </div>
 
       <p v-if="result.results.length === 0" class="muted">
-        No indexed candidates matched the active dataset and metadata filters.
+        {{ t("No indexed candidates matched the active dataset and metadata filters.") }}
       </p>
       <div v-else class="similarity-layout">
-        <ol class="match-list" aria-label="Ranked similarity candidates">
+        <ol class="match-list" :aria-label="t('Ranked similarity candidates')">
           <li v-for="match in result.results" :key="match.artifact_version_id">
             <button
               type="button"
@@ -262,7 +265,7 @@ onBeforeUnmount(() => {
               <span class="rank">#{{ match.rank }}</span>
               <span>
                 <strong>{{ match.artifact_name }}</strong>
-                <small>{{ match.product_type || "Unspecified product" }} · {{ match.dataset_id }}</small>
+                <small>{{ match.product_type || t("Unspecified product") }} · {{ match.dataset_id }}</small>
               </span>
               <strong class="overall-score">{{ scorePercent(match.overall_score) }}</strong>
             </button>
@@ -272,11 +275,11 @@ onBeforeUnmount(() => {
         <article v-if="selectedMatch" class="match-detail">
           <div class="comparison-viewers">
             <div v-if="result.query_ref.preview">
-              <span>Query</span>
+              <span>{{ t("Query") }}</span>
               <CadPreview :source="result.query_ref.preview.download_url" />
             </div>
             <div v-if="selectedMatch.preview">
-              <span>Candidate #{{ selectedMatch.rank }}</span>
+              <span>{{ t("Candidate #{rank}", { rank: selectedMatch.rank }) }}</span>
               <CadPreview :source="selectedMatch.preview.download_url" />
             </div>
           </div>
@@ -290,7 +293,7 @@ onBeforeUnmount(() => {
 
           <div class="evidence-columns">
             <div>
-              <h3>Major similarities</h3>
+              <h3>{{ t("Major similarities") }}</h3>
               <ul>
                 <li v-for="item in selectedMatch.similarities" :key="item.evidence_ref">
                   {{ item.message }}
@@ -298,7 +301,7 @@ onBeforeUnmount(() => {
               </ul>
             </div>
             <div>
-              <h3>Major differences</h3>
+              <h3>{{ t("Major differences") }}</h3>
               <ul>
                 <li v-for="item in selectedMatch.differences" :key="item.evidence_ref">
                   {{ item.message }}

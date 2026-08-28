@@ -12,6 +12,9 @@ import {
   type ReviewFinding,
 } from "../api/designReview";
 import type { DeepLinkContext } from "../deepLinks";
+import { useI18n } from "../i18n";
+
+const { locale, t } = useI18n();
 
 const props = defineProps<{ query: CADModelResult | null; deepLink?: DeepLinkContext | null }>();
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
@@ -44,7 +47,7 @@ function numericContext(): Record<string, number> {
 }
 
 function formatMeasurement(value: number | null, unit: string): string {
-  return value === null ? "Not available" : `${value.toFixed(3).replace(/\.?0+$/, "")} ${unit}`;
+  return value === null ? t("Not available") : `${value.toFixed(3).replace(/\.?0+$/, "")} ${unit}`;
 }
 
 function acceptJob(nextJob: DesignReviewJob): void {
@@ -67,13 +70,13 @@ async function refreshJob(): Promise<void> {
     acceptJob(await fetchDesignReviewJob(job.value.job_id));
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to refresh design review.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to refresh design review.");
   }
 }
 
 async function submit(): Promise<void> {
   if (!props.query) {
-    error.value = "Upload and process a CAD artifact first.";
+    error.value = t("Upload and process a CAD artifact first.");
     return;
   }
   submitting.value = true;
@@ -86,7 +89,7 @@ async function submit(): Promise<void> {
     acceptJob(await fetchDesignReviewJob(accepted.job_id));
     schedulePoll();
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Design review failed.";
+    error.value = caught instanceof Error ? caught.message : t("Design review failed.");
   } finally {
     submitting.value = false;
   }
@@ -108,8 +111,8 @@ async function loadDeepLink(): Promise<void> {
   } catch (caught) {
     error.value =
       caught instanceof Error && caught.message === "DEEP_LINK_CONTEXT_MISMATCH"
-        ? "The linked finding does not belong to this design review."
-        : "The linked design review is unavailable or not authorized.";
+        ? t("The linked finding does not belong to this design review.")
+        : t("The linked design review is unavailable or not authorized.");
   }
 }
 
@@ -131,7 +134,7 @@ async function saveDecision(): Promise<void> {
     decisionReason.value = "";
     decisionApprover.value = "";
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Unable to save review decision.";
+    error.value = caught instanceof Error ? caught.message : t("Unable to save review decision.");
   } finally {
     savingDecision.value = false;
   }
@@ -154,7 +157,7 @@ watch(
     emit("contextChange", {
       context_version: "1.0",
       page: "design_review",
-      ui_locale: "zh-TW",
+      ui_locale: locale.value,
       ...(result.value?.review_id ? { review_id: result.value.review_id } : {}),
       ...(selectedFinding.value?.finding_id
         ? { finding_id: selectedFinding.value.finding_id }
@@ -182,43 +185,43 @@ onBeforeUnmount(() => {
   <section id="design-review" class="design-review-workspace" aria-labelledby="design-review-title">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">Deterministic design review</p>
-        <h2 id="design-review-title">Evaluate versioned engineering rules</h2>
+        <p class="eyebrow">{{ t("Deterministic design review") }}</p>
+        <h2 id="design-review-title">{{ t("Evaluate versioned engineering rules") }}</h2>
       </div>
-      <span class="demo-label">13 Synthetic Demo Rules</span>
+      <span class="demo-label">{{ t("13 Synthetic Demo Rules") }}</span>
     </div>
 
     <p v-if="!query" class="muted review-intro">
-      Process a CAD artifact above before starting a design review.
+      {{ t("Process a CAD artifact above before starting a design review.") }}
     </p>
     <template v-else>
       <div class="query-summary">
         <div>
-          <span>Input artifact version</span>
+          <span>{{ t("Input artifact version") }}</span>
           <code>{{ query.artifact_version_id }}</code>
         </div>
-        <span class="index-state indexed">Geometry ready</span>
+        <span class="index-state indexed">{{ t("Geometry ready") }}</span>
       </div>
 
       <form class="review-form" @submit.prevent="submit">
         <label>
-          <span>Nominal wall (mm)</span>
-          <input v-model="nominalWall" type="number" min="0" step="0.01" placeholder="Optional" />
+          <span>{{ t("Nominal wall (mm)") }}</span>
+          <input v-model="nominalWall" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
         </label>
         <label>
-          <span>Max rib (mm)</span>
-          <input v-model="maximumRib" type="number" min="0" step="0.01" placeholder="Optional" />
+          <span>{{ t("Max rib (mm)") }}</span>
+          <input v-model="maximumRib" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
         </label>
         <label>
-          <span>Min draft (deg)</span>
-          <input v-model="minimumDraft" type="number" min="0" step="0.01" placeholder="Optional" />
+          <span>{{ t("Min draft (deg)") }}</span>
+          <input v-model="minimumDraft" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
         </label>
         <button type="submit" :disabled="submitting">
-          {{ submitting ? "Starting..." : "Run design review" }}
+          {{ submitting ? t("Starting...") : t("Run design review") }}
         </button>
       </form>
       <p class="limitation-note">
-        Optional values are explicit Demo measurements, not measurements extracted from local CAD faces.
+        {{ t("Optional values are explicit Demo measurements, not measurements extracted from local CAD faces.") }}
       </p>
     </template>
 
@@ -227,12 +230,12 @@ onBeforeUnmount(() => {
     <div v-if="job" class="job-panel">
       <div class="job-heading">
         <div>
-          <span class="job-state" :class="job.state">{{ job.state }}</span>
-          <strong>{{ job.stage.replaceAll("_", " ") }}</strong>
+          <span class="job-state" :class="job.state">{{ t(job.state) }}</span>
+          <strong>{{ t(job.stage.replaceAll("_", " ")) }}</strong>
         </div>
         <span>{{ job.progress }}%</span>
       </div>
-      <div class="progress-track" aria-label="Design review progress">
+      <div class="progress-track" :aria-label="t('Design review progress')">
         <span :style="{ width: `${job.progress}%` }"></span>
       </div>
       <p v-if="job.error" class="error-message">
@@ -243,17 +246,17 @@ onBeforeUnmount(() => {
     <div v-if="result" class="review-results">
       <div class="review-summary">
         <div class="review-decision" :class="result.summary.decision.toLowerCase()">
-          <span>Overall</span>
-          <strong>{{ result.summary.decision }}</strong>
+          <span>{{ t("Overall") }}</span>
+          <strong>{{ t(result.summary.decision) }}</strong>
         </div>
         <div v-for="(count, state) in result.summary.counts" :key="state">
-          <span>{{ state.replaceAll("_", " ") }}</span>
+          <span>{{ t(state) }}</span>
           <strong>{{ count }}</strong>
         </div>
       </div>
 
       <div class="review-layout">
-        <ol class="finding-list" aria-label="Design review findings">
+        <ol class="finding-list" :aria-label="t('Design review findings')">
           <li v-for="finding in result.findings" :key="finding.finding_id">
             <button
               type="button"
@@ -264,7 +267,7 @@ onBeforeUnmount(() => {
               ]"
               @click="selectedFinding = finding"
             >
-              <span class="finding-state">{{ finding.result.replaceAll("_", " ") }}</span>
+              <span class="finding-state">{{ t(finding.result) }}</span>
               <strong>{{ finding.rule.title }}</strong>
               <small>{{ finding.rule.rule_id }}@{{ finding.rule.rule_version }}</small>
             </button>
@@ -277,44 +280,44 @@ onBeforeUnmount(() => {
               :source="result.preview.download_url"
               :accent="selectedFinding.result === 'FAIL' ? 'warning' : 'default'"
             />
-            <span>Evidence scope: {{ selectedFinding.geometry_location.scope }}</span>
+            <span>{{ t("Evidence scope: {scope}", { scope: selectedFinding.geometry_location.scope }) }}</span>
           </div>
 
           <div class="finding-heading">
             <div>
               <span class="finding-state" :class="selectedFinding.result.toLowerCase()">
-                {{ selectedFinding.result.replaceAll("_", " ") }}
+                {{ t(selectedFinding.result) }}
               </span>
               <h3>{{ selectedFinding.rule.title }}</h3>
             </div>
-            <span>{{ selectedFinding.severity }} severity</span>
+            <span>{{ t("{severity} severity", { severity: selectedFinding.severity }) }}</span>
           </div>
 
           <p>{{ selectedFinding.message }}</p>
           <div class="measurement-grid">
             <div>
-              <span>Actual</span>
+              <span>{{ t("Actual") }}</span>
               <strong>{{ formatMeasurement(selectedFinding.actual_value, selectedFinding.unit) }}</strong>
             </div>
             <div>
-              <span>Limit</span>
+              <span>{{ t("Limit") }}</span>
               <strong>{{ formatMeasurement(selectedFinding.limit_value, selectedFinding.unit) }}</strong>
             </div>
             <div>
-              <span>Risk</span>
+              <span>{{ t("Risk") }}</span>
               <strong>{{ selectedFinding.risk_type }}</strong>
             </div>
             <div>
-              <span>Rule reference</span>
+              <span>{{ t("Rule reference") }}</span>
               <strong>{{ selectedFinding.rule.reference.document }} rev. {{ selectedFinding.rule.reference.revision }}</strong>
             </div>
           </div>
-          <p class="recommendation"><strong>Recommendation:</strong> {{ selectedFinding.rule.recommendation }}</p>
+          <p class="recommendation"><strong>{{ t("Recommendation:") }}</strong> {{ selectedFinding.rule.recommendation }}</p>
 
           <div v-if="selectedFinding.decisions.length" class="decision-history">
-            <strong>Recorded decisions</strong>
+            <strong>{{ t("Recorded decisions") }}</strong>
             <p v-for="record in selectedFinding.decisions" :key="record.decision_id">
-              {{ record.decision }} by {{ record.decided_by }}
+              {{ t("{decision} by {user}", { decision: t(record.decision), user: record.decided_by }) }}
               <span v-if="record.reason"> — {{ record.reason }}</span>
             </p>
           </div>
@@ -324,25 +327,25 @@ onBeforeUnmount(() => {
             class="decision-form"
             @submit.prevent="saveDecision"
           >
-            <h3>Record reviewer decision</h3>
+            <h3>{{ t("Record reviewer decision") }}</h3>
             <label>
-              <span>Decision</span>
+              <span>{{ t("Decision") }}</span>
               <select v-model="decisionChoice">
-                <option value="accepted">Accept finding</option>
-                <option value="rejected">Reject finding</option>
-                <option value="waived">Waive finding</option>
+                <option value="accepted">{{ t("Accept finding") }}</option>
+                <option value="rejected">{{ t("Reject finding") }}</option>
+                <option value="waived">{{ t("Waive finding") }}</option>
               </select>
             </label>
             <label>
-              <span>Reason</span>
+              <span>{{ t("Reason") }}</span>
               <textarea v-model="decisionReason" rows="2" maxlength="2000"></textarea>
             </label>
             <label>
-              <span>Approver (required for waiver)</span>
+              <span>{{ t("Approver (required for waiver)") }}</span>
               <input v-model="decisionApprover" type="text" maxlength="128" />
             </label>
             <button type="submit" :disabled="savingDecision">
-              {{ savingDecision ? "Saving..." : "Record decision" }}
+              {{ savingDecision ? t("Saving...") : t("Record decision") }}
             </button>
           </form>
         </article>

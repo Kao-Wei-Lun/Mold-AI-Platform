@@ -99,6 +99,9 @@ The detailed implementation backlog is maintained in the
 - Stage 16: unified start/status/reset/backup/stop, security evidence, external UAT, and the `1.0.0-demo` release gate.
 - Stage 17 Phase A: route-based Engineering Web App Shell, Guided Demo and governed read-only Mold
   Rule catalog are implemented. Workflow-level refinement and rule authoring remain later phases.
+- Stage 17 Phase B: application-wide English/Traditional Chinese switching, browser preference,
+  accessibility language metadata and Assistant locale propagation are implemented. Governed source
+  records remain in their authored language.
 
 Stages 13–16 complete the functional Demo contract. Stage 17 follows after that contract is stable
 so visual and interaction changes do not obscure backend, data, security, or release regressions.

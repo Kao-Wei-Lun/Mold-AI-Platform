@@ -8,6 +8,9 @@ import {
   fetchSecurityPreflight,
   type SecurityPreflight,
 } from "../api/security";
+import { useI18n } from "../i18n";
+
+const { t } = useI18n();
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
 const emit = defineEmits<{ ready: [ready: boolean] }>();
@@ -47,7 +50,7 @@ async function loadPreflight(): Promise<void> {
       await verifyStoredToken();
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : "Security preflight failed.";
+    error.value = caught instanceof Error ? caught.message : t("Security preflight failed.");
     emit("ready", false);
   }
 }
@@ -63,7 +66,7 @@ async function connect(): Promise<void> {
     emit("ready", true);
   } catch (caught) {
     connected.value = false;
-    error.value = caught instanceof Error ? caught.message : "Demo access failed.";
+    error.value = caught instanceof Error ? caught.message : t("Demo access failed.");
     emit("ready", false);
   } finally {
     connecting.value = false;
@@ -79,7 +82,7 @@ function disconnect(): void {
 function onUnauthorized(): void {
   clearDemoAccessToken();
   connected.value = false;
-  error.value = "The Demo session expired or was rejected. Enter the access token again.";
+  error.value = t("The Demo session expired or was rejected. Enter the access token again.");
   emit("ready", false);
 }
 
@@ -94,25 +97,25 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
 <template>
   <section class="access-panel" :class="{ 'access-panel-compact': compact && connected }" aria-labelledby="access-title">
     <div>
-      <p v-if="!compact || !connected" class="eyebrow">Release security</p>
-      <h2 id="access-title">{{ compact && connected ? "Private Demo connected" : "Demo access boundary" }}</h2>
+      <p v-if="!compact || !connected" class="eyebrow">{{ t("Release security") }}</p>
+      <h2 id="access-title">{{ compact && connected ? t("Private Demo connected") : t("Demo access boundary") }}</h2>
       <p v-if="preflight">
         <span class="access-state" :class="connected ? 'connected' : 'locked'">
-          {{ connected ? "Access ready" : "Access locked" }}
+          {{ connected ? t("Access ready") : t("Access locked") }}
         </span>
         <span>
-          {{ preflight.auth.required ? "Bearer token required" : "Local authentication disabled" }}
+          {{ preflight.auth.required ? t("Bearer token required") : t("Local authentication disabled") }}
         </span>
       </p>
     </div>
 
     <form v-if="preflight?.auth.required && !connected" class="access-form" @submit.prevent="connect">
       <label>
-        <span>Demo access token</span>
+        <span>{{ t("Demo access token") }}</span>
         <input v-model="token" type="password" autocomplete="current-password" required />
       </label>
       <button type="submit" :disabled="connecting || !token.trim()">
-        {{ connecting ? "Verifying..." : "Unlock workspace" }}
+        {{ connecting ? t("Verifying...") : t("Unlock workspace") }}
       </button>
     </form>
     <button
@@ -121,20 +124,20 @@ onBeforeUnmount(() => window.removeEventListener("mold-ai:unauthorized", onUnaut
       class="secondary-button"
       @click="disconnect"
     >
-      Clear Demo session
+      {{ t("Clear Demo session") }}
     </button>
 
     <details v-if="preflight && (!compact || !connected)" class="release-preflight">
       <summary>
-        External release preflight:
-        {{ preflight.production_ready ? "ready" : `${failedChecks.length} checks pending` }}
+        {{ t("External release preflight:") }}
+        {{ preflight.production_ready ? t("ready") : t("{count} checks pending", { count: failedChecks.length }) }}
       </summary>
       <ul v-if="failedChecks.length">
         <li v-for="check in failedChecks" :key="check">{{ check }}</li>
       </ul>
       <p>
-        MCP path: {{ preflight.mcp.secure_tunnel_configured ? "Secure MCP Tunnel" : "not configured" }}.
-        OAuth implemented: {{ preflight.mcp.oauth_implemented ? "yes" : "no" }}.
+        {{ t("MCP path:") }} {{ preflight.mcp.secure_tunnel_configured ? t("Secure MCP Tunnel") : t("not configured") }}.
+        {{ t("OAuth implemented:") }} {{ preflight.mcp.oauth_implemented ? t("yes") : t("no") }}.
       </p>
     </details>
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>

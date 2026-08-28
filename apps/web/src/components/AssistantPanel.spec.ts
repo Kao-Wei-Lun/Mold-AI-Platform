@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 
 import type { AssistantContext } from "../api/assistant";
 import AssistantPanel from "./AssistantPanel.vue";
+import { setLocale } from "../i18n";
 
 const context: AssistantContext = {
   context_version: "1.0",
@@ -18,6 +19,7 @@ function jsonResponse(payload: object): Response {
 }
 
 describe("AssistantPanel", () => {
+  beforeEach(() => setLocale("en"));
   afterEach(() => vi.restoreAllMocks());
 
   it("sends minimal UI references and renders a grounded fallback answer", async () => {
@@ -93,7 +95,7 @@ describe("AssistantPanel", () => {
 
     const request = fetchMock.mock.calls[1][1] as RequestInit;
     const body = JSON.parse(String(request.body));
-    expect(body.context).toEqual(context);
+    expect(body.context).toEqual({ ...context, ui_locale: "en" });
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(wrapper.text()).toContain("92.8%");
     expect(wrapper.text()).toContain("safe fallback");
