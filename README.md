@@ -57,3 +57,7 @@ Stage 16 Phase B adds explicit core/external/optional readiness, live Celery wor
 and audited stale-job recovery, and a sanitized HTTP/concurrency/queue performance baseline that is
 included in acceptance evidence. See
 [`docs/development/stage-16-operations-uat-phase-b.md`](docs/development/stage-16-operations-uat-phase-b.md).
+
+Stage 16 Phase C adds the backup-first canonical dataset reset, a double-confirmed clean-room
+full-volume rebuild, and automated isolated Qdrant/CAD-worker fault-recovery evidence. See
+[`docs/development/stage-16-operations-uat-phase-c.md`](docs/development/stage-16-operations-uat-phase-c.md).

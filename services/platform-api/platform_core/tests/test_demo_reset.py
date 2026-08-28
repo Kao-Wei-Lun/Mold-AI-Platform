@@ -4,7 +4,11 @@ from unittest.mock import patch
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from platform_core.demo_reset import DemoResetError, reset_demo_operations
+from platform_core.demo_reset import (
+    DemoResetError,
+    reset_demo_datasets,
+    reset_demo_operations,
+)
 from platform_core.ingestion import create_upload_records
 from platform_core.models import (
     Artifact,
@@ -12,6 +16,9 @@ from platform_core.models import (
     AuditEvent,
     CADModel,
     KnowledgeSearch,
+    RuleProfile,
+    RuleVersion,
+    SimilarityProfile,
 )
 
 
@@ -113,3 +120,92 @@ class DemoOperationsResetTests(TestCase):
         self.assertTrue(AuditEvent.objects.filter(event_type="existing.audit").exists())
         self.assertTrue(AuditEvent.objects.filter(event_type="demo.operations_reset.v1").exists())
         delete_points.assert_called_once_with([])
+
+
+class DemoDatasetsResetTests(TestCase):
+    def setUp(self) -> None:
+        self.media_directory = TemporaryDirectory()
+        self.settings_override = override_settings(MEDIA_ROOT=self.media_directory.name)
+        self.settings_override.enable()
+
+    def tearDown(self) -> None:
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    def _configuration_and_data(self):
+        similarity_profile = SimilarityProfile.objects.create(
+            profile_key="dataset-reset-test",
+            weights={},
+            candidate_collection="cad",
+            index_version="test",
+        )
+        rule_profile = RuleProfile.objects.create(
+            profile_key="dataset-reset-rules",
+            version="1.0",
+            owner="tester",
+            approved_by="tester",
+            ruleset_checksum="a" * 64,
+        )
+        rule = RuleVersion.objects.create(
+            profile=rule_profile,
+            rule_id="TEST-001",
+            rule_version="1.0",
+            title="Test rule",
+            description="Test",
+            evaluator="threshold",
+            operator=">=",
+            unit="mm",
+            severity="info",
+            risk_type="test",
+            recommendation="None",
+        )
+        upload = create_upload_records(
+            SimpleUploadedFile(
+                "dataset.stl",
+                b"solid dataset\nfacet normal 0 0 1\nendsolid dataset\n",
+                content_type="model/stl",
+            ),
+            dataset_id="curated-cad-demo-v1",
+        )
+        AuditEvent.objects.create(
+            event_type="existing.audit",
+            actor_id="tester",
+            target_refs=[],
+            detail={},
+            payload_hash="b" * 64,
+        )
+        KnowledgeSearch.objects.create(query="temporary", result={})
+        return similarity_profile, rule_profile, rule, upload
+
+    def test_dataset_dry_run_and_confirmation_are_safe(self) -> None:
+        _, _, _, upload = self._configuration_and_data()
+
+        result = reset_demo_datasets()
+        self.assertTrue(result.dry_run)
+        self.assertEqual(result.counts["artifacts"], 1)
+        self.assertTrue(Artifact.objects.filter(pk=upload.artifact.id).exists())
+
+        with self.assertRaises(DemoResetError):
+            reset_demo_datasets(confirmation="RESET EVERYTHING", dry_run=False)
+        self.assertTrue(Artifact.objects.filter(pk=upload.artifact.id).exists())
+
+    @patch("platform_core.demo_reset.delete_named_points")
+    @patch("platform_core.demo_reset.delete_feature_points")
+    def test_confirmed_dataset_reset_preserves_profiles_rules_and_audits(
+        self, delete_features, delete_knowledge
+    ) -> None:
+        similarity_profile, rule_profile, rule, upload = self._configuration_and_data()
+
+        result = reset_demo_datasets(confirmation="RESET DATASETS", dry_run=False)
+
+        self.assertFalse(result.dry_run)
+        self.assertFalse(Artifact.objects.filter(pk=upload.artifact.id).exists())
+        self.assertEqual(KnowledgeSearch.objects.count(), 0)
+        self.assertTrue(SimilarityProfile.objects.filter(pk=similarity_profile.id).exists())
+        self.assertTrue(RuleProfile.objects.filter(pk=rule_profile.id).exists())
+        self.assertTrue(RuleVersion.objects.filter(pk=rule.id).exists())
+        self.assertTrue(AuditEvent.objects.filter(event_type="existing.audit").exists())
+        self.assertTrue(AuditEvent.objects.filter(event_type="demo.datasets_reset.v1").exists())
+        delete_features.assert_called_once_with([])
+        delete_knowledge.assert_called_once()
+        self.assertEqual(delete_knowledge.call_args.kwargs["point_ids"], [])

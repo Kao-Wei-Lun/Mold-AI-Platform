@@ -368,7 +368,22 @@ curated fixtures、canonical Process/CAE、rule profiles 與既有 113 個 Audit
 sessions 全數成功，五個 queued jobs 全數完成。數值僅為此 Windows/Docker host 的 Demo baseline，
 不是企業容量承諾。
 
-仍未完成：datasets/full-volume reset、Qdrant/Quick Tunnel automated fault injection、CAD parse/similarity
-hardware microbenchmark、不同網路與 ChatGPT workspace manual UAT、optional live provider UAT 與
-`1.0.0-demo` tag。操作細節見
+Phase C 已完成 datasets/full-volume clean-room reset 與 Qdrant/Worker automated fault injection。
+仍未完成：Quick Tunnel interruption UAT、CAD parse/similarity hardware microbenchmark、不同網路與
+ChatGPT workspace manual UAT、optional live provider UAT 與 `1.0.0-demo` tag。Phase B 操作細節見
 [Stage 16 Phase B operations](../../development/stage-16-operations-uat-phase-b.md)。
+
+## 14. Phase C implementation evidence（2026-08-28）
+
+- `datasets` reset 已具備 exact preview、backup-first execution、明確 PostgreSQL/Qdrant/artifact
+  scope、Audit retention 與 deterministic reseed/re-index。
+- `full-demo-volume` 是 double-confirmed clean-room rebuild，只允許名稱結尾為
+  `-rebuild-drill` 的隔離 Compose project，不刪除 active Sites Demo 或 unrelated volumes。
+- `demo-recovery-drill.ps1` 已自動驗證 Qdrant typed degradation、canonical record preservation、
+  re-index recovery、`worker-cad` 停止期間 queue persistence 與 restart 後完成工作。
+- 實際隔離測試從 fresh volumes 重建 16/16 curated CAD；dataset reset 清除 35 Artifacts、35
+  ArtifactVersions 與 22 個明確 vector points，保留 profiles/Audit，再 seed 後 strict snapshot ready。
+- Sanitized recovery evidence 只寫入 ignored `.runtime/evidence`，不含 URL、secret、Tunnel/task/container ID。
+
+操作與安全邊界詳見
+[Stage 16 Phase C operations](../../development/stage-16-operations-uat-phase-c.md)。

@@ -72,10 +72,10 @@ Those remain hardware/provider-specific profiles.
 checksummed evidence bundle. `-SkipPerformance` is intended only for focused development checks;
 a skipped performance gate cannot produce a release candidate.
 
-## Remaining Phase B gates
+## Remaining gates after Phase B
 
-- dataset and full-volume reset modes with independent destructive-operation drills;
-- automated Qdrant and Quick Tunnel fault injection;
+- dataset and full-volume reset modes with independent destructive-operation drills (completed in Phase C);
+- automated Qdrant fault injection (completed in Phase C) and Quick Tunnel interruption UAT;
 - CAD parse and similarity hardware microbenchmarks;
 - manual different-network Sites UAT and ChatGPT account/workspace MCP UAT;
 - optional paid-provider UAT;

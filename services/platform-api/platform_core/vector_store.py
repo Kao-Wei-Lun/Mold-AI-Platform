@@ -124,6 +124,18 @@ def delete_feature_points(feature_set_ids: list[str]) -> None:
     )
 
 
+def delete_named_points(*, collection_name: str, point_ids: list[str]) -> None:
+    """Delete only the explicitly named points from a non-CAD collection."""
+    if not point_ids:
+        return
+    collection = quote(collection_name, safe="")
+    _request(
+        "POST",
+        f"/collections/{collection}/points/delete?wait=true",
+        {"points": point_ids},
+    )
+
+
 def upsert_named_vector(
     *,
     collection_name: str,
