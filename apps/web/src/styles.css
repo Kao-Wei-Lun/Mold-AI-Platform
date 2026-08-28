@@ -2864,3 +2864,20 @@ button:disabled {
     width: 100%;
   }
 }
+
+/* ── Form field enhancements ── */
+
+.required-mark {
+  color: var(--color-danger);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.3;
+}

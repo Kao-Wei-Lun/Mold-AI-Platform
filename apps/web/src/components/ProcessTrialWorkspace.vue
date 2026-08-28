@@ -237,7 +237,14 @@ watch(
       </label>
       <label>
         <span>{{ t("Location") }}</span>
-        <input v-model="location" type="text" maxlength="128" />
+        <select v-model="location">
+          <option value="">{{ t("Any location") }}</option>
+          <option value="far_flow_end">{{ t("Far flow end") }}</option>
+          <option value="gate_area">{{ t("Gate area") }}</option>
+          <option value="core_side">{{ t("Core side") }}</option>
+          <option value="cavity_side">{{ t("Cavity side") }}</option>
+          <option value="parting_line">{{ t("Parting line") }}</option>
+        </select>
       </label>
       <label>
         <span>{{ t("Injection pressure (MPa)") }}</span>

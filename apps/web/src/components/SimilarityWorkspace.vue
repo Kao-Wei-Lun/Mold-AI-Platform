@@ -23,7 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
-const datasetId = ref("public-demo-v1");
+const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
 const topK = ref(5);
@@ -200,15 +200,32 @@ onBeforeUnmount(() => {
       <form class="similarity-form" @submit.prevent="submit">
         <label>
           <span>{{ t("Dataset filter") }}</span>
-          <input v-model="datasetId" type="text" maxlength="128" />
+          <select v-model="datasetId">
+            <option value="">{{ t("Any") }}</option>
+            <option value="public-demo-v1">public-demo-v1</option>
+            <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
+            <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
+          </select>
         </label>
         <label>
           <span>{{ t("Product type") }}</span>
-          <input v-model="productType" type="text" maxlength="128" :placeholder="t('Any')" />
+          <select v-model="productType">
+            <option value="">{{ t("Any") }}</option>
+            <option value="housing">{{ t("Housing") }}</option>
+            <option value="connector_housing">{{ t("Connector housing") }}</option>
+            <option value="electronics_cover">{{ t("Electronics cover") }}</option>
+            <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
+          </select>
         </label>
         <label>
           <span>{{ t("Material") }}</span>
-          <input v-model="materialCode" type="text" maxlength="128" :placeholder="t('Any')" />
+          <select v-model="materialCode">
+            <option value="">{{ t("Any") }}</option>
+            <option value="PA6-GF30">PA6-GF30</option>
+            <option value="ABS-GENERAL">ABS-GENERAL</option>
+            <option value="PP-HOMO">PP-HOMO</option>
+            <option value="PC_ABS">PC_ABS</option>
+          </select>
         </label>
         <label>
           <span>{{ t("Top K") }}</span>

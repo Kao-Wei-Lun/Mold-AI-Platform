@@ -206,15 +206,18 @@ onBeforeUnmount(() => {
       <form class="review-form" @submit.prevent="submit">
         <label>
           <span>{{ t("Nominal wall (mm)") }}</span>
-          <input v-model="nominalWall" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
+          <input v-model="nominalWall" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 1.5 – 5.0')" />
+          <small class="field-hint">{{ t("Typical range: 1.0 – 5.0 mm") }}</small>
         </label>
         <label>
           <span>{{ t("Max rib (mm)") }}</span>
-          <input v-model="maximumRib" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
+          <input v-model="maximumRib" type="number" min="0" max="10" step="0.01" :placeholder="t('e.g. 0.5 – 4.0')" />
+          <small class="field-hint">{{ t("Typical range: 0.5 – 4.0 mm") }}</small>
         </label>
         <label>
           <span>{{ t("Min draft (deg)") }}</span>
-          <input v-model="minimumDraft" type="number" min="0" step="0.01" :placeholder="t('Optional')" />
+          <input v-model="minimumDraft" type="number" min="0" max="30" step="0.01" :placeholder="t('e.g. 0.5 – 5.0')" />
+          <small class="field-hint">{{ t("Typical range: 0.5 – 5.0°") }}</small>
         </label>
         <button type="submit" :disabled="submitting">
           {{ submitting ? t("Starting...") : t("Run design review") }}
@@ -342,7 +345,12 @@ onBeforeUnmount(() => {
             </label>
             <label>
               <span>{{ t("Approver (required for waiver)") }}</span>
-              <input v-model="decisionApprover" type="text" maxlength="128" />
+              <select v-model="decisionApprover">
+                <option value="">{{ t("Select approver") }}</option>
+                <option value="demo-lead-engineer">{{ t("Lead Engineer") }}</option>
+                <option value="demo-quality-manager">{{ t("Quality Manager") }}</option>
+                <option value="demo-tooling-supervisor">{{ t("Tooling Supervisor") }}</option>
+              </select>
             </label>
             <button type="submit" :disabled="savingDecision">
               {{ savingDecision ? t("Saving...") : t("Record decision") }}

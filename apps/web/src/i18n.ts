@@ -533,7 +533,28 @@ const zhTW: Record<string, string> = {
   "No approved rule profile is available.": "目前沒有可用的已核准規則 Profile。",
   "Unable to load mold rules.": "無法載入模具規定。",
   "approved read only": "已核准 · 唯讀",
-  "Ready": "就緒"
+  "Ready": "就緒",
+
+  "Not specified": "未指定",
+  "Housing": "外殼",
+  "Required": "必填",
+  "Any location": "任何位置",
+  "Far flow end": "遠流末端",
+  "Gate area": "澆口區域",
+  "Core side": "公模側",
+  "Cavity side": "母模側",
+  "Parting line": "分模線",
+  "e.g. 1.5 – 5.0": "例如 1.5 – 5.0",
+  "e.g. 0.5 – 4.0": "例如 0.5 – 4.0",
+  "e.g. 0.5 – 5.0": "例如 0.5 – 5.0",
+  "Typical range: 1.0 – 5.0 mm": "常見範圍：1.0 – 5.0 mm",
+  "Typical range: 0.5 – 4.0 mm": "常見範圍：0.5 – 4.0 mm",
+  "Typical range: 0.5 – 5.0°": "常見範圍：0.5 – 5.0°",
+  "Select approver": "選擇核准者",
+  "Lead Engineer": "主任工程師",
+  "Quality Manager": "品質經理",
+  "Tooling Supervisor": "模具主管",
+  "Reload fixtures": "重新載入測試資料"
 };
 
 function initialLocale(): Locale {

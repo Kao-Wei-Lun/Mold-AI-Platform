@@ -163,9 +163,10 @@ describe("DesignReviewWorkspace", () => {
     expect(wrapper.text()).toContain("0.6 ratio");
     expect(wrapper.text()).toContain("context:rib-measurement");
 
-    await wrapper.get(".decision-form select").setValue("waived");
+    const decisionSelects = wrapper.findAll(".decision-form select");
+    await decisionSelects[0].setValue("waived");
     await wrapper.get(".decision-form textarea").setValue("Synthetic fixture exception.");
-    await wrapper.get('.decision-form input[type="text"]').setValue("demo-approver");
+    await decisionSelects[1].setValue("demo-lead-engineer");
     await wrapper.get(".decision-form").trigger("submit");
     await flushPromises();
 
@@ -179,7 +180,7 @@ describe("DesignReviewWorkspace", () => {
     const decisionRequest = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
     expect(decisionRequest).toMatchObject({
       decision: "waived",
-      approved_by: "demo-approver",
+      approved_by: "demo-lead-engineer",
     });
   });
 

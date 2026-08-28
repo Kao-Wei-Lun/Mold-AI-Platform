@@ -212,7 +212,7 @@ onBeforeUnmount(() => {
           </label>
           <label>
             <span>{{ t("Title") }}</span>
-            <input v-model="title" type="text" maxlength="255" :placeholder="t('Demo molding SOP')" />
+            <input v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" />
           </label>
           <label>
             <span>{{ t("Document type") }}</span>

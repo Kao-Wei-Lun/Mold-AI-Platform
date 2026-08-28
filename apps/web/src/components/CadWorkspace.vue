@@ -171,16 +171,32 @@ onBeforeUnmount(() => {
         <input v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" />
       </label>
       <label>
-        <span>{{ t("Dataset") }}</span>
-        <input v-model="datasetId" type="text" maxlength="128" required />
+        <span>{{ t("Dataset") }} <abbr class="required-mark" :title="t('Required')">*</abbr></span>
+        <select v-model="datasetId" required>
+          <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
+          <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
+          <option value="public-demo-v1">public-demo-v1</option>
+        </select>
       </label>
       <label>
         <span>{{ t("Product type") }}</span>
-        <input v-model="productType" type="text" maxlength="128" placeholder="housing" />
+        <select v-model="productType">
+          <option value="">{{ t("Not specified") }}</option>
+          <option value="housing">{{ t("Housing") }}</option>
+          <option value="connector_housing">{{ t("Connector housing") }}</option>
+          <option value="electronics_cover">{{ t("Electronics cover") }}</option>
+          <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
+        </select>
       </label>
       <label>
         <span>{{ t("Material") }}</span>
-        <input v-model="materialCode" type="text" maxlength="128" placeholder="PC_ABS" />
+        <select v-model="materialCode">
+          <option value="">{{ t("Not specified") }}</option>
+          <option value="PA6-GF30">PA6-GF30</option>
+          <option value="ABS-GENERAL">ABS-GENERAL</option>
+          <option value="PP-HOMO">PP-HOMO</option>
+          <option value="PC_ABS">PC_ABS</option>
+        </select>
       </label>
       <button type="submit" :disabled="uploading">
         {{ uploading ? t("Submitting...") : t("Upload and process") }}
