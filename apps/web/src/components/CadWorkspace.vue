@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 
-import { fetchCADJob, fetchRecentCAD, type CADJob, uploadCAD } from "../api/cad";
+import {
+  fetchCADJob,
+  fetchRecentCAD,
+  type CADJob,
+  type CADModelResult,
+  uploadCAD,
+} from "../api/cad";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { t } = useI18n();
 
+const props = withDefaults(defineProps<{ activeResult?: CADModelResult | null }>(), {
+  activeResult: null,
+});
 const emit = defineEmits<{ ready: [result: NonNullable<CADJob["result"]>] }>();
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
@@ -25,12 +34,15 @@ const recentJobs = ref<Array<{ job: CADJob; label: string }>>([]);
 const selectedRecentJobId = ref("");
 const loadingRecent = ref(false);
 const catalogLabel = ref("recent processed CAD");
+const restoreActiveResult = ref(true);
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
   ["succeeded", "failed", "cancelled", "expired"].includes(job.value?.state || ""),
 );
-const result = computed(() => job.value?.result || null);
+const result = computed(() =>
+  job.value?.result || (restoreActiveResult.value ? props.activeResult : null),
+);
 const dimensions = computed(() => {
   if (!result.value) return "-";
   const size = result.value.bounding_box.size;
@@ -73,6 +85,7 @@ async function submit(): Promise<void> {
   error.value = null;
   warning.value = null;
   job.value = null;
+  restoreActiveResult.value = false;
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 
   try {
@@ -127,6 +140,7 @@ function activateRecent(): void {
   const selected = recentJobs.value.find((candidate) => candidate.job.job_id === selectedRecentJobId.value);
   if (!selected?.job.result) return;
   if (pollTimer !== null) window.clearTimeout(pollTimer);
+  restoreActiveResult.value = false;
   job.value = selected.job;
   emit("ready", selected.job.result);
 }

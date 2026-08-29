@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
+import type { CADModelResult } from "../api/cad";
 import CadWorkspace from "./CadWorkspace.vue";
 
 const stlFile = new File(["solid test\nfacet normal 0 0 1\nendsolid test"], "part.stl", {
@@ -281,5 +282,48 @@ describe("CadWorkspace", () => {
     expect(wrapper.emitted("ready")?.[0]?.[0]).toMatchObject({
       artifact_version_id: "version-query",
     });
+  });
+
+  it("restores the active CAD preview after the workspace is mounted again", () => {
+    const activeResult: CADModelResult = {
+      cad_model_id: "cad-restored",
+      artifact_version_id: "version-restored",
+      cad_format: "stl",
+      unit_system: "mm",
+      parser: { name: "trimesh", version: "4.12.2" },
+      geometry_status: "succeeded",
+      bounding_box: {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 160, y: 160, z: 5 },
+        size: { x: 160, y: 160, z: 5 },
+      },
+      volume: 117091.109,
+      surface_area: 53218.77,
+      face_count: 79558,
+      edge_count: 119337,
+      surface_type_histogram: { triangle: 79558 },
+      quality_flags: ["UNIT_UNCERTAIN"],
+      preview: {
+        artifact_version_id: "preview-restored",
+        original_filename: "restored.preview.stl",
+        media_type: "model/stl",
+        format: "stl",
+        size_bytes: 3977984,
+        sha256: "restored-sha",
+        download_url: "/preview-restored",
+      },
+      similarity_index: null,
+    };
+
+    const wrapper = mount(CadWorkspace, {
+      props: { activeResult },
+      global: { stubs: { CadPreview: true } },
+    });
+
+    expect(wrapper.text()).toContain("160.00 x 160.00 x 5.00 mm");
+    expect(wrapper.text()).toContain("79558 / 119337");
+    expect(wrapper.findComponent({ name: "CadPreview" }).attributes("source")).toBe(
+      "/preview-restored",
+    );
   });
 });

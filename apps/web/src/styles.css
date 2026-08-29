@@ -637,6 +637,12 @@ button[aria-busy="true"]::before {
   display: block;
   width: 100%;
   height: 440px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cad-preview canvas:active {
+  cursor: grabbing;
 }
 
 .viewer-toolbar {
@@ -644,8 +650,15 @@ button[aria-busy="true"]::before {
   z-index: 2;
   top: 0.75rem;
   left: 0.75rem;
+  right: 0.75rem;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.viewer-toolbar .secondary-button[aria-pressed="true"] {
+  color: white;
+  background: #315fd4;
 }
 
 .secondary-button {
@@ -663,6 +676,26 @@ button[aria-busy="true"]::before {
   margin: 0;
   color: #5d687d;
   font-size: 0.78rem;
+}
+
+.viewer-help {
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 3px 12px rgb(30 47 81 / 10%);
+}
+
+.viewer-error {
+  display: grid;
+  justify-items: end;
+  gap: 0.3rem;
+  max-width: min(32rem, calc(100% - 2rem));
+  color: #a7352a;
+  text-align: right;
+}
+
+.viewer-error small {
+  color: #6d4d49;
 }
 
 .geometry-summary {

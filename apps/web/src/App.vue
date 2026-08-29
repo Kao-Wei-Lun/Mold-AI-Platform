@@ -275,7 +275,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           </ul>
         </section>
 
-        <CadWorkspace v-else-if="currentRoute.id === 'cad' && accessReady" @ready="activeCAD = $event" />
+        <CadWorkspace
+          v-else-if="currentRoute.id === 'cad' && accessReady"
+          :active-result="activeCAD"
+          @ready="activeCAD = $event"
+        />
         <SimilarityWorkspace
           v-else-if="currentRoute.id === 'similarity' && accessReady"
           :query="activeCAD"

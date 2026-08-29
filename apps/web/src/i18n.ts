@@ -271,6 +271,12 @@ const zhTW: Record<string, string> = {
   "Iso": "等角視圖",
   "Front": "前視圖",
   "Top": "上視圖",
+  "Zoom in": "放大",
+  "Zoom out": "縮小",
+  "Reset view": "重設視角",
+  "Retry preview": "重試預覽",
+  "Drag to rotate · Scroll or pinch to zoom · Right-drag to pan":
+    "拖曳旋轉 · 滾輪或雙指縮放 · 右鍵拖曳平移",
   "Interactive CAD preview": "互動式 CAD 預覽",
   "Loading engineering preview...": "正在載入工程預覽…",
   "Preview geometry could not be loaded with the current Demo session.": "目前 Demo 工作階段無法載入幾何預覽。",

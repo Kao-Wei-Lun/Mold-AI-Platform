@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
+import type { CADModelResult } from "./api/cad";
 import App from "./App.vue";
 import { setLocale } from "./i18n";
 
@@ -44,6 +45,35 @@ const adminAccount = {
   ],
   last_login_at: "2026-08-28T04:00:00Z",
   created_at: "2026-08-28T00:00:00Z",
+};
+const activeCADResult: CADModelResult = {
+  cad_model_id: "cad-persistent",
+  artifact_version_id: "version-persistent",
+  cad_format: "stl",
+  unit_system: "mm",
+  parser: { name: "trimesh", version: "4.12.2" },
+  geometry_status: "succeeded",
+  bounding_box: {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 160, y: 160, z: 5 },
+    size: { x: 160, y: 160, z: 5 },
+  },
+  volume: 117091.109,
+  surface_area: 53218.77,
+  face_count: 79558,
+  edge_count: 119337,
+  surface_type_histogram: { triangle: 79558 },
+  quality_flags: ["UNIT_UNCERTAIN"],
+  preview: {
+    artifact_version_id: "preview-persistent",
+    original_filename: "persistent.preview.stl",
+    media_type: "model/stl",
+    format: "stl",
+    size_bytes: 3977984,
+    sha256: "persistent-sha",
+    download_url: "/preview-persistent",
+  },
+  similarity_index: null,
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -105,6 +135,26 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/governance/rules");
     expect(wrapper.text()).toContain("Understand the rules that govern design review");
     expect(wrapper.find(".cad-workspace").exists()).toBe(false);
+  });
+
+  it("keeps the selected CAD result when navigating away and returning", async () => {
+    window.history.replaceState(null, "", "/engineering/cad");
+    installApiMock();
+    const wrapper = mount(App, { global: { stubs: { CadPreview: true } } });
+    await flushPromises();
+
+    wrapper.findComponent({ name: "CadWorkspace" }).vm.$emit("ready", activeCADResult);
+    await flushPromises();
+    expect(wrapper.text()).toContain("160.00 x 160.00 x 5.00 mm");
+
+    await wrapper.get('a[href="/engineering/similarity"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".cad-workspace").exists()).toBe(false);
+
+    await wrapper.get('a[href="/engineering/cad"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("160.00 x 160.00 x 5.00 mm");
+    expect(wrapper.text()).toContain("79558 / 119337");
   });
 
   it("restores an administrator session before loading a direct identity route", async () => {
