@@ -6,6 +6,7 @@ describe("Engineering Workspace routes", () => {
     expect(resolveWorkspaceRoute("/governance/rules/").id).toBe("rules");
     expect(resolveWorkspaceRoute("/governance/identity").id).toBe("identity");
     expect(resolveWorkspaceRoute("/governance/mold-registry").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/engineering-data").id).toBe("engineering_data");
     expect(resolveWorkspaceRoute("/missing").id).toBe("not_found");
   });
 

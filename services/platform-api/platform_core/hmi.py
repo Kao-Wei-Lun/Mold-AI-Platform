@@ -18,9 +18,11 @@ from .models import (
     Artifact,
     ArtifactVersion,
     AuditEvent,
+    HMICorrectionDecision,
     HMIExport,
     HMIExtractedField,
     HMIExtraction,
+    HMIProfileVersion,
 )
 
 PROFILE_KEY = "demo-generic-injection"
@@ -89,6 +91,48 @@ FIELD_SPECS = (
         18,
     ),
 )
+
+
+def _profile_specs_payload() -> list[dict[str, object]]:
+    return [
+        {
+            "code": spec.code,
+            "label": spec.label,
+            "unit": spec.unit,
+            "minimum": spec.minimum,
+            "maximum": spec.maximum,
+            "region": list(spec.region),
+        }
+        for spec in FIELD_SPECS
+    ]
+
+
+def get_published_hmi_profile() -> HMIProfileVersion:
+    specs = _profile_specs_payload()
+    checksum = _sha256(json.dumps(specs, sort_keys=True).encode())
+    profile = HMIProfileVersion.objects.filter(
+        profile_key=PROFILE_KEY, status=HMIProfileVersion.Status.PUBLISHED
+    ).first()
+    if profile is None and not HMIProfileVersion.objects.filter(profile_key=PROFILE_KEY).exists():
+        profile = HMIProfileVersion.objects.create(
+            profile_key=PROFILE_KEY,
+            version=PROFILE_VERSION,
+            status=HMIProfileVersion.Status.PUBLISHED,
+            field_specs=specs,
+            profile_checksum=checksum,
+            change_summary="Synthetic fixed-layout seven-segment Demo profile",
+            created_by="system:demo",
+            published_by="system:demo",
+            published_at=timezone.now(),
+        )
+    if profile is None:
+        raise HMIValidationError("HMI_PROFILE_NOT_PUBLISHED", "No published HMI profile exists.")
+    if profile.profile_checksum != checksum:
+        raise HMIValidationError(
+            "HMI_PROFILE_CHECKSUM_MISMATCH", "The published HMI profile checksum differs."
+        )
+    return profile
+
 
 SEGMENTS = {
     "0": "abcdef",
@@ -229,9 +273,22 @@ def _validate_image(data: bytes, filename: str) -> tuple[Image.Image, str]:
 def create_hmi_extraction(
     upload, *, profile: str = f"{PROFILE_KEY}@{PROFILE_VERSION}"
 ) -> HMIExtraction:
-    if profile != f"{PROFILE_KEY}@{PROFILE_VERSION}":
+    try:
+        profile_key, profile_version = profile.rsplit("@", 1)
+    except ValueError as exc:
         raise HMIValidationError(
-            "VALIDATION_HMI_PROFILE", "Only the Demo HMI profile is available."
+            "VALIDATION_HMI_PROFILE", "HMI profile must use the key@version format."
+        ) from exc
+    expected_checksum = _sha256(json.dumps(_profile_specs_payload(), sort_keys=True).encode())
+    profile_definition = HMIProfileVersion.objects.filter(
+        profile_key=profile_key,
+        version=profile_version,
+        status=HMIProfileVersion.Status.PUBLISHED,
+    ).first()
+    if profile_definition is None or profile_definition.profile_checksum != expected_checksum:
+        raise HMIValidationError(
+            "VALIDATION_HMI_PROFILE",
+            "The selected HMI profile is not published or is incompatible with this extractor.",
         )
     data = upload.read()
     image, extension = _validate_image(data, upload.name)
@@ -260,8 +317,9 @@ def create_hmi_extraction(
     )
     extraction = HMIExtraction.objects.create(
         image_artifact_version=version,
-        profile_key=PROFILE_KEY,
-        profile_version=PROFILE_VERSION,
+        profile_definition=profile_definition,
+        profile_key=profile_key,
+        profile_version=profile_version,
         extractor_version=EXTRACTOR_VERSION,
         status=HMIExtraction.Status.SUCCEEDED,
         image_width=image.width,
@@ -335,6 +393,18 @@ def field_payload(field: HMIExtractedField) -> dict[str, object]:
         ),
         "effective_value": effective_value,
         "effective_unit": effective_unit,
+        "correction_decisions": [
+            {
+                "decision_id": str(item.id),
+                "action": item.action,
+                "before_value": item.before_value,
+                "after_value": item.after_value,
+                "reason": item.reason,
+                "decided_by": item.decided_by,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in field.correction_decisions.all()
+        ],
     }
 
 
@@ -359,6 +429,9 @@ def extraction_payload(extraction: HMIExtraction) -> dict[str, object]:
             f"/api/v1/artifact-versions/{extraction.image_artifact_version_id}/download"
         ),
         "profile": f"{extraction.profile_key}@{extraction.profile_version}",
+        "profile_definition_id": (
+            str(extraction.profile_definition_id) if extraction.profile_definition_id else None
+        ),
         "extractor_version": extraction.extractor_version,
         "status": extraction.status,
         "image_dimensions": {"width": extraction.image_width, "height": extraction.image_height},
@@ -397,6 +470,11 @@ def review_hmi_fields(
                 "VALIDATION_REVIEW_FIELD_ID", "A field ID is invalid."
             ) from exc
         action = str(decision.get("action", ""))
+        before_value = {
+            "review_status": field.review_status,
+            "reviewer_value": field.reviewer_value,
+            "reviewer_unit": field.reviewer_unit,
+        }
         if action == "confirm":
             if field.normalized_value is None:
                 raise HMIValidationError(
@@ -428,6 +506,18 @@ def review_hmi_fields(
         field.reviewed_by = reviewer[:128]
         field.reviewed_at = timezone.now()
         field.save()
+        HMICorrectionDecision.objects.create(
+            field=field,
+            action=action,
+            before_value=before_value,
+            after_value={
+                "review_status": field.review_status,
+                "reviewer_value": field.reviewer_value,
+                "reviewer_unit": field.reviewer_unit,
+            },
+            reason=str(decision.get("reason", "Reviewed extracted value"))[:512],
+            decided_by=reviewer[:128],
+        )
     unresolved = extraction.fields.filter(
         review_status=HMIExtractedField.ReviewStatus.NEEDS_REVIEW
     ).exists()

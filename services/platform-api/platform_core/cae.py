@@ -89,6 +89,10 @@ def cae_study_payload(study: CAEStudy) -> dict[str, object]:
         "classification": study.classification,
         "acl_scopes": study.acl_scopes,
         "data_quality": study.data_quality,
+        "lifecycle_status": study.lifecycle_status,
+        "row_version": study.row_version,
+        "archive_reason": study.archive_reason or None,
+        "archived_at": study.archived_at.isoformat() if study.archived_at else None,
         "provenance": {
             "connector_key": study.connector_key,
             "integration_level": study.integration_level,

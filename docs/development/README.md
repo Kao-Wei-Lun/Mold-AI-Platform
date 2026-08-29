@@ -313,3 +313,16 @@ Stage 19 packages the compiled Engineering Web, Platform API, MCP Gateway and bo
 into one versioned production application image while retaining separate containers for each
 runtime role. See
 [`stage-19-unified-application-image.md`](stage-19-unified-application-image.md).
+
+## Implemented governed data lifecycles
+
+Stage 19 Phase 3 introduces the Project → Product Part → Mold → Revision → Artifact registry. See
+[`stage-19-phase-3-mold-registry.md`](stage-19-phase-3-mold-registry.md).
+
+Stage 20 Phase 4 adds versioned Mold Rule and Knowledge publishing, separation of duties and
+immutable published history. See
+[`stage-20-phase-4-rule-knowledge-lifecycle.md`](stage-20-phase-4-rule-knowledge-lifecycle.md).
+
+Stage 21 Phase 5 adds Trial close/reopen/correction, canonical Mapping Backlog, structured CAE
+import/archive and versioned HMI profile/correction management in one external Demo UI. See
+[`stage-21-phase-5-engineering-data-lifecycle.md`](stage-21-phase-5-engineering-data-lifecycle.md).

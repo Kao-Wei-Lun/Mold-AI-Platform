@@ -12,6 +12,7 @@ export type WorkspaceRouteId =
   | "rules"
   | "master_data"
   | "mold_registry"
+  | "engineering_data"
   | "identity"
   | "status"
   | "not_found";
@@ -117,6 +118,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     eyebrow: "Governance / Mold registry",
     title: "Govern molds, revisions and CAD relationships",
     description: "Keep project, part, mold, revision and artifact lineage in one controlled hierarchy.",
+  },
+  {
+    id: "engineering_data",
+    path: "/governance/engineering-data",
+    label: "Engineering data",
+    group: "Governance",
+    eyebrow: "Governance / Operational evidence",
+    title: "Govern trial, CAE and HMI evidence",
+    description: "Manage controlled lifecycles, corrections, versions and lineage without overwriting source evidence.",
   },
   {
     id: "identity",

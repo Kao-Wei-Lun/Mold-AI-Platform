@@ -1,5 +1,14 @@
 from django.urls import path
 
+from .engineering_data_views import (
+    GovernedCAERunCreateView,
+    GovernedCAEStudyDetailView,
+    GovernedCAEStudyListView,
+    GovernedTrialCaseDetailView,
+    GovernedTrialCaseListView,
+    HMIProfileActionView,
+    HMIProfileListCreateView,
+)
 from .governance_views import (
     KnowledgeDocumentWorkflowView,
     RuleProfileGovernanceListView,
@@ -36,8 +45,6 @@ from .views import (
     CAEComparisonDetailView,
     CAEComparisonListCreateView,
     CAEDemoFixtureView,
-    CAEStudyDetailView,
-    CAEStudyListView,
     DemoStatusView,
     DesignReviewDetailView,
     DesignReviewListCreateView,
@@ -62,8 +69,6 @@ from .views import (
     SimilaritySearchDetailView,
     SimilaritySearchListCreateView,
     SystemInfoView,
-    TrialCaseDetailView,
-    TrialCaseListView,
 )
 
 app_name = "platform_core"
@@ -152,11 +157,16 @@ urlpatterns = [
     ),
     path("assistant/messages", AssistantMessageView.as_view(), name="assistant-messages"),
     path("cae/demo-fixtures", CAEDemoFixtureView.as_view(), name="cae-demo-fixtures"),
-    path("cae-studies", CAEStudyListView.as_view(), name="cae-study-list"),
+    path("cae-studies", GovernedCAEStudyListView.as_view(), name="cae-study-list"),
     path(
         "cae-studies/<uuid:study_id>",
-        CAEStudyDetailView.as_view(),
+        GovernedCAEStudyDetailView.as_view(),
         name="cae-study-detail",
+    ),
+    path(
+        "cae-studies/<uuid:study_id>/runs",
+        GovernedCAERunCreateView.as_view(),
+        name="cae-run-create",
     ),
     path(
         "cae-comparisons",
@@ -173,11 +183,17 @@ urlpatterns = [
         ProcessTrialDemoFixtureView.as_view(),
         name="process-trial-demo-fixtures",
     ),
-    path("trial-cases", TrialCaseListView.as_view(), name="trial-case-list"),
+    path("trial-cases", GovernedTrialCaseListView.as_view(), name="trial-case-list"),
     path(
         "trial-cases/<uuid:trial_case_id>",
-        TrialCaseDetailView.as_view(),
+        GovernedTrialCaseDetailView.as_view(),
         name="trial-case-detail",
+    ),
+    path("hmi-profiles", HMIProfileListCreateView.as_view(), name="hmi-profile-list-create"),
+    path(
+        "hmi-profiles/<uuid:profile_id>/actions",
+        HMIProfileActionView.as_view(),
+        name="hmi-profile-actions",
     ),
     path(
         "process-case-searches",

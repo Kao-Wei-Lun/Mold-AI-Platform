@@ -4012,6 +4012,14 @@ button:not(:disabled):active { transform: translateY(0); }
   box-shadow: 0 12px 28px rgb(24 43 68 / 6%);
 }
 
+.engineering-data-workspace .registry-catalog article {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.engineering-data-workspace .registry-catalog article > .text-button {
+  grid-column: 1 / -1;
+}
+
 .registry-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -818,6 +818,36 @@ class MasterDataItem(models.Model):
         return f"{self.kind}:{self.code}"
 
 
+class MasterDataMappingBacklog(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        MAPPED = "mapped", "Mapped"
+        IGNORED = "ignored", "Ignored"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_domain = models.CharField(max_length=64)
+    source_record_ref = models.CharField(max_length=128)
+    field_name = models.CharField(max_length=64)
+    raw_value = models.CharField(max_length=255)
+    target_kind = models.CharField(max_length=32, choices=MasterDataItem.Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    occurrence_count = models.PositiveIntegerField(default=1)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_domain", "field_name", "raw_value", "target_kind"],
+                name="unique_pending_mapping_value",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source_domain}:{self.field_name}={self.raw_value}"
+
+
 class KnowledgeDocument(models.Model):
     class IngestionStatus(models.TextChoices):
         QUEUED = "queued", "Queued"
@@ -936,6 +966,12 @@ class KnowledgeSearch(models.Model):
 
 
 class TrialCase(models.Model):
+    class LifecycleStatus(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        CLOSED = "closed", "Closed"
+        REOPENED = "reopened", "Reopened"
+        ARCHIVED = "archived", "Archived"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case_code = models.CharField(max_length=64, unique=True)
     connector_key = models.CharField(max_length=64)
@@ -956,7 +992,14 @@ class TrialCase(models.Model):
     outcome = models.CharField(max_length=64)
     started_at = models.DateTimeField()
     data_quality = models.JSONField(default=dict)
+    lifecycle_status = models.CharField(
+        max_length=16, choices=LifecycleStatus.choices, default=LifecycleStatus.CLOSED
+    )
+    row_version = models.PositiveIntegerField(default=1)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    archive_reason = models.CharField(max_length=512, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["case_code"]
@@ -974,6 +1017,22 @@ class TrialCase(models.Model):
 
     def __str__(self) -> str:
         return self.case_code
+
+
+class TrialCorrectionRecord(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    trial = models.ForeignKey(TrialCase, related_name="corrections", on_delete=models.PROTECT)
+    before_values = models.JSONField(default=dict)
+    after_values = models.JSONField(default=dict)
+    reason = models.CharField(max_length=512)
+    corrected_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.trial_id}:correction:{self.id}"
 
 
 class ProcessRun(models.Model):
@@ -1105,7 +1164,12 @@ class CAEStudy(models.Model):
     classification = models.CharField(max_length=32, default="public_demo")
     acl_scopes = models.JSONField(default=list)
     data_quality = models.JSONField(default=dict)
+    lifecycle_status = models.CharField(max_length=16, default="active")
+    row_version = models.PositiveIntegerField(default=1)
+    archive_reason = models.CharField(max_length=512, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["study_code"]
@@ -1213,6 +1277,13 @@ class HMIExtraction(models.Model):
     image_artifact_version = models.OneToOneField(
         ArtifactVersion, related_name="hmi_extraction", on_delete=models.PROTECT
     )
+    profile_definition = models.ForeignKey(
+        "HMIProfileVersion",
+        related_name="extractions",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
     profile_key = models.CharField(max_length=128)
     profile_version = models.CharField(max_length=32)
     extractor_version = models.CharField(max_length=64)
@@ -1266,6 +1337,55 @@ class HMIExtractedField(models.Model):
 
     def __str__(self) -> str:
         return f"{self.extraction_id}:{self.parameter_code}"
+
+
+class HMIProfileVersion(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+        RETIRED = "retired", "Retired"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile_key = models.CharField(max_length=128)
+    version = models.CharField(max_length=32)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    field_specs = models.JSONField(default=list)
+    profile_checksum = models.CharField(max_length=64)
+    change_summary = models.TextField(blank=True)
+    created_by = models.CharField(max_length=128)
+    published_by = models.CharField(max_length=128, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["profile_key", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile_key", "version"], name="unique_hmi_profile_version"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.profile_key}@{self.version} [{self.status}]"
+
+
+class HMICorrectionDecision(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    field = models.ForeignKey(
+        HMIExtractedField, related_name="correction_decisions", on_delete=models.PROTECT
+    )
+    action = models.CharField(max_length=16)
+    before_value = models.JSONField(default=dict)
+    after_value = models.JSONField(default=dict)
+    reason = models.CharField(max_length=512)
+    decided_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.field_id}:{self.action}:{self.id}"
 
 
 class HMIExport(models.Model):

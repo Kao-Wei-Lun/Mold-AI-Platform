@@ -13,6 +13,7 @@ import CadWorkspace from "./components/CadWorkspace.vue";
 import DeepLinkStatus from "./components/DeepLinkStatus.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
+import EngineeringDataManagementWorkspace from "./components/EngineeringDataManagementWorkspace.vue";
 import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
@@ -67,7 +68,8 @@ const navigationGroups = computed(() =>
         route.group === group &&
         (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")) &&
         (route.id !== "master_data" || currentAccount.value?.permissions.includes("master-data:read")) &&
-        (route.id !== "mold_registry" || currentAccount.value?.permissions.includes("registry:read")),
+        (route.id !== "mold_registry" || currentAccount.value?.permissions.includes("registry:read")) &&
+        (route.id !== "engineering_data" || currentAccount.value?.permissions.includes("engineering-data:read")),
     ),
   })),
 );
@@ -357,6 +359,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         />
         <MoldRegistryWorkspace
           v-else-if="currentRoute.id === 'mold_registry' && accessReady"
+          :current-account="currentAccount"
+          :master-data-options="masterDataOptions"
+        />
+        <EngineeringDataManagementWorkspace
+          v-else-if="currentRoute.id === 'engineering_data' && accessReady"
           :current-account="currentAccount"
           :master-data-options="masterDataOptions"
         />

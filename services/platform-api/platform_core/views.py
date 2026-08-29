@@ -187,8 +187,8 @@ class SecurityPreflightView(APIView):
 
 def _hmi_extraction_queryset():
     return HMIExtraction.objects.select_related(
-        "image_artifact_version__artifact"
-    ).prefetch_related("fields", "exports__artifact_version")
+        "image_artifact_version__artifact", "profile_definition"
+    ).prefetch_related("fields__correction_decisions", "exports__artifact_version")
 
 
 class HMIDemoFixtureView(APIView):

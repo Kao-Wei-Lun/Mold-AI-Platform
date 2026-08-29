@@ -29,6 +29,8 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "knowledge:read",
     "knowledge:author",
     "knowledge:approve",
+    "engineering-data:read",
+    "engineering-data:manage",
 }
 
 

@@ -197,6 +197,21 @@ def trial_case_payload(trial: TrialCase) -> dict[str, object]:
         "classification": trial.classification,
         "acl_scopes": trial.acl_scopes,
         "data_quality": trial.data_quality,
+        "lifecycle_status": trial.lifecycle_status,
+        "row_version": trial.row_version,
+        "closed_at": trial.closed_at.isoformat() if trial.closed_at else None,
+        "archive_reason": trial.archive_reason or None,
+        "corrections": [
+            {
+                "correction_id": str(item.id),
+                "before_values": item.before_values,
+                "after_values": item.after_values,
+                "reason": item.reason,
+                "corrected_by": item.corrected_by,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in trial.corrections.all()
+        ],
         "provenance": {
             "connector_key": trial.connector_key,
             "source_record_id": trial.source_record_id,
@@ -211,7 +226,7 @@ def trial_case_payload(trial: TrialCase) -> dict[str, object]:
 
 def trial_case_queryset():
     return TrialCase.objects.filter(classification="public_demo").prefetch_related(
-        "runs__parameters", "runs__defects", "runs__actions"
+        "runs__parameters", "runs__defects", "runs__actions", "corrections"
     )
 
 
