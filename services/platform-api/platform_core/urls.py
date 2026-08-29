@@ -11,6 +11,7 @@ from .identity_views import (
     LocalLogoutView,
     RoleAssignmentCreateRevokeView,
 )
+from .master_data_views import MasterDataDetailView, MasterDataListCreateView, MasterDataOptionsView
 from .views import (
     ArtifactVersionDownloadView,
     AssistantCapabilitiesView,
@@ -66,6 +67,9 @@ urlpatterns = [
         name="admin-user-state",
     ),
     path("admin/identity-catalog", IdentityCatalogView.as_view(), name="identity-catalog"),
+    path("master-data/options", MasterDataOptionsView.as_view(), name="master-data-options"),
+    path("master-data", MasterDataListCreateView.as_view(), name="master-data-list-create"),
+    path("master-data/<uuid:item_id>", MasterDataDetailView.as_view(), name="master-data-detail"),
     path(
         "admin/role-assignments",
         RoleAssignmentCreateRevokeView.as_view(),

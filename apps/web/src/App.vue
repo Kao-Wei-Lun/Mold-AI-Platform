@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { AssistantContext, UIAction } from "./api/assistant";
 import type { CADModelResult } from "./api/cad";
 import type { LocalAccount } from "./api/identity";
+import { emptyMasterDataOptions, fetchMasterDataOptions, type MasterDataOptions } from "./api/masterData";
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
 import AccessPanel from "./components/AccessPanel.vue";
 import AssistantPanel from "./components/AssistantPanel.vue";
@@ -14,6 +15,7 @@ import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
 import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
+import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import RuleManagementWorkspace from "./components/RuleManagementWorkspace.vue";
@@ -41,6 +43,9 @@ const accessReady = ref(false);
 const currentAccount = ref<LocalAccount | null>(null);
 const assistantOpen = ref(true);
 const navigationOpen = ref(false);
+const masterDataOptions = ref<MasterDataOptions>(emptyMasterDataOptions());
+const masterDataLoading = ref(false);
+const masterDataError = ref<string | null>(null);
 const deepLinkState = parseDeepLink(window.location.search);
 const deepLinkVisible = ref(Boolean(deepLinkState.context || deepLinkState.error));
 const initialRoute = deepLinkState.context
@@ -59,7 +64,8 @@ const navigationGroups = computed(() =>
     routes: workspaceRoutes.filter(
       (route) =>
         route.group === group &&
-        (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")),
+        (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")) &&
+        (route.id !== "master_data" || currentAccount.value?.permissions.includes("master-data:read")),
     ),
   })),
 );
@@ -120,6 +126,20 @@ async function refreshHealth(): Promise<void> {
   }
 }
 
+async function refreshMasterData(): Promise<void> {
+  if (!currentAccount.value?.permissions.includes("master-data:read")) return;
+  masterDataLoading.value = true;
+  masterDataError.value = null;
+  try {
+    masterDataOptions.value = await fetchMasterDataOptions();
+  } catch (caught) {
+    masterDataOptions.value = emptyMasterDataOptions();
+    masterDataError.value = caught instanceof Error ? caught.message : t("Unable to load governed master data.");
+  } finally {
+    masterDataLoading.value = false;
+  }
+}
+
 watch(
   () => currentRoute.value.id,
   () => {
@@ -137,6 +157,13 @@ watch(locale, () => {
   document.title = `${t(currentRoute.value.label)} · Mold AI Platform`;
   assistantContext.value = { ...assistantContext.value, ui_locale: locale.value };
 });
+
+watch(
+  () => [accessReady.value, currentAccount.value?.id],
+  ([ready]) => {
+    if (ready) refreshMasterData();
+  },
+);
 
 onMounted(() => {
   if (deepLinkState.context && window.location.pathname !== initialRoute.path) {
@@ -278,6 +305,10 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <CadWorkspace
           v-else-if="currentRoute.id === 'cad' && accessReady"
           :active-result="activeCAD"
+          :master-data-options="masterDataOptions"
+          :master-data-loading="masterDataLoading"
+          :master-data-error="masterDataError"
+          @retry-master-data="refreshMasterData"
           @ready="activeCAD = $event"
         />
         <SimilarityWorkspace
@@ -285,6 +316,10 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :query="activeCAD"
           :ui-action="pendingUIAction"
           :deep-link="activeDeepLink"
+          :master-data-options="masterDataOptions"
+          :master-data-loading="masterDataLoading"
+          :master-data-error="masterDataError"
+          @retry-master-data="refreshMasterData"
           @context-change="assistantContext = $event"
           @navigate="navigate"
         />
@@ -303,11 +338,20 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <ProcessTrialWorkspace
           v-else-if="currentRoute.id === 'process_trial' && accessReady"
           :deep-link="activeDeepLink"
+          :master-data-options="masterDataOptions"
+          :master-data-loading="masterDataLoading"
+          :master-data-error="masterDataError"
+          @retry-master-data="refreshMasterData"
           @context-change="assistantContext = $event"
         />
         <CAEWorkspace v-else-if="currentRoute.id === 'cae' && accessReady" @context-change="assistantContext = $event" />
         <HMIWorkspace v-else-if="currentRoute.id === 'hmi' && accessReady" />
         <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" />
+        <MasterDataWorkspace
+          v-else-if="currentRoute.id === 'master_data' && accessReady"
+          :current-account="currentAccount"
+          @changed="refreshMasterData"
+        />
         <IdentityManagementWorkspace
           v-else-if="currentRoute.id === 'identity' && accessReady"
           :current-account="currentAccount"

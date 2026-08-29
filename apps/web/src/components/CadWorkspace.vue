@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from "vue";
 
 import {
   fetchCADJob,
@@ -9,21 +9,33 @@ import {
   uploadCAD,
 } from "../api/cad";
 import { useI18n } from "../i18n";
+import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
-const { t } = useI18n();
+const { locale, t } = useI18n();
 
-const props = withDefaults(defineProps<{ activeResult?: CADModelResult | null }>(), {
+const props = withDefaults(defineProps<{
+  activeResult?: CADModelResult | null;
+  masterDataOptions?: MasterDataOptions;
+  masterDataLoading?: boolean;
+  masterDataError?: string | null;
+}>(), {
   activeResult: null,
+  masterDataOptions: emptyMasterDataOptions,
+  masterDataLoading: false,
+  masterDataError: null,
 });
-const emit = defineEmits<{ ready: [result: NonNullable<CADJob["result"]>] }>();
+const emit = defineEmits<{
+  ready: [result: NonNullable<CADJob["result"]>];
+  retryMasterData: [];
+}>();
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 const selectedFile = ref<File | null>(null);
 const artifactName = ref("");
-const datasetId = ref("manual-cad-upload-v1");
+const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
 const uploading = ref(false);
@@ -50,6 +62,19 @@ const dimensions = computed(() => {
 });
 const missingUploadFields = computed(
   () => Number(!selectedFile.value) + Number(!datasetId.value),
+);
+
+function optionLabel(option: MasterDataOption): string {
+  return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
+}
+
+watch(
+  () => props.masterDataOptions.dataset,
+  (options) => {
+    if (!options.length || options.some((option) => option.code === datasetId.value)) return;
+    datasetId.value = options.find((option) => option.attributes.default === true)?.code || options[0].code;
+  },
+  { immediate: true },
 );
 
 function chooseFile(event: Event): void {
@@ -183,6 +208,10 @@ onBeforeUnmount(() => {
     </div>
 
     <form class="upload-form" @submit.prevent="submit">
+      <div v-if="masterDataError" class="master-data-error form-wide" role="alert">
+        <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
+        <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
+      </div>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
         <input :id="fieldId" type="file" accept=".step,.stp,.stl" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="chooseFile" />
       </FormField>
@@ -190,28 +219,21 @@ onBeforeUnmount(() => {
         <input :id="fieldId" v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" :aria-describedby="describedBy" :aria-invalid="invalid" />
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset')" required :helper="t('Select where this CAD record belongs.')">
-        <select :id="fieldId" v-model="datasetId" required :aria-describedby="describedBy" :aria-invalid="invalid">
-          <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
-          <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
-          <option value="public-demo-v1">public-demo-v1</option>
+        <select :id="fieldId" v-model="datasetId" required :disabled="masterDataLoading || Boolean(masterDataError)" :aria-describedby="describedBy" :aria-invalid="invalid">
+          <option value="" disabled>{{ masterDataLoading ? t("Loading governed choices...") : t("Select a dataset") }}</option>
+          <option v-for="option in masterDataOptions.dataset" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
         <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
-          <option value="housing">{{ t("Housing") }}</option>
-          <option value="connector_housing">{{ t("Connector housing") }}</option>
-          <option value="electronics_cover">{{ t("Electronics cover") }}</option>
-          <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
+          <option v-for="option in masterDataOptions.product_type" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
         <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
-          <option value="PA6-GF30">PA6-GF30</option>
-          <option value="ABS-GENERAL">ABS-GENERAL</option>
-          <option value="PP-HOMO">PP-HOMO</option>
-          <option value="PC_ABS">PC_ABS</option>
+          <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
       <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">

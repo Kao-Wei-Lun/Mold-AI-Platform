@@ -19,6 +19,8 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "public-demo:write",
     "identity:manage",
     "identity:audit",
+    "master-data:read",
+    "master-data:manage",
 }
 
 

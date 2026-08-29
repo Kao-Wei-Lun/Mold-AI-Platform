@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import type { AssistantContext } from "../api/assistant";
+import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 
 import {
   fetchProcessFixtureStatus,
@@ -22,8 +23,20 @@ import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
 const { locale, t } = useI18n();
 
-const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
-const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
+const props = withDefaults(defineProps<{
+  deepLink?: DeepLinkContext | null;
+  masterDataOptions?: MasterDataOptions;
+  masterDataLoading?: boolean;
+  masterDataError?: string | null;
+}>(), {
+  masterDataOptions: emptyMasterDataOptions,
+  masterDataLoading: false,
+  masterDataError: null,
+});
+const emit = defineEmits<{
+  contextChange: [context: AssistantContext];
+  retryMasterData: [];
+}>();
 
 const loadedCaseCount = ref(0);
 const sourceVersion = ref("");
@@ -46,6 +59,15 @@ const injectionSpeed = ref<number | null>(null);
 const meltTemperature = ref<number | null>(null);
 const topK = ref(5);
 
+function optionLabel(option: MasterDataOption): string {
+  return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
+}
+
+function demoOption(kind: keyof MasterDataOptions, preferred: string): string {
+  const choices = props.masterDataOptions[kind];
+  return choices.find((choice) => choice.code === preferred)?.code || choices[0]?.code || preferred;
+}
+
 const recommendation = computed(() => result.value?.recommendation || null);
 const missingQueryFields = computed(
   () => Number(!defectCode.value) + Number(!materialCode.value),
@@ -58,11 +80,11 @@ const materialError = computed(() =>
 );
 
 function useExplicitDemoInputs(): void {
-  defectCode.value = "short_shot";
-  materialCode.value = "PA6-GF30";
-  machineCode.value = "IM-180T";
-  productType.value = "connector_housing";
-  location.value = "far_flow_end";
+  defectCode.value = demoOption("defect", "short_shot");
+  materialCode.value = demoOption("material", "PA6-GF30");
+  machineCode.value = demoOption("machine", "IM-180T");
+  productType.value = demoOption("product_type", "connector_housing");
+  location.value = demoOption("location", "far_flow_end");
   injectionPressure.value = 84;
   injectionSpeed.value = 43;
   meltTemperature.value = 279;
@@ -222,6 +244,10 @@ watch(
     />
 
     <form class="process-query-form" @submit.prevent="submitSearch">
+      <div v-if="masterDataError" class="master-data-error form-wide" role="alert">
+        <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
+        <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
+      </div>
       <div class="form-wide demo-input-notice">
         <p>{{ t("Inputs are empty by default so the platform never presents Demo values as user context.") }}</p>
         <button type="button" class="secondary-button" @click="useExplicitDemoInputs">
@@ -231,44 +257,31 @@ watch(
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Defect')" required :error="defectError">
         <select :id="fieldId" v-model="defectCode" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Select a defect") }}</option>
-          <option value="short_shot">{{ t("Short shot") }}</option>
-          <option value="sink_mark">{{ t("Sink mark") }}</option>
-          <option value="warpage">{{ t("Warpage") }}</option>
-          <option value="flash">{{ t("Flash") }}</option>
+          <option v-for="option in masterDataOptions.defect" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')" required :error="materialError">
         <select :id="fieldId" v-model="materialCode" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not provided — abstain") }}</option>
-          <option value="PA6-GF30">PA6-GF30</option>
-          <option value="ABS-GENERAL">ABS-GENERAL</option>
-          <option value="PP-HOMO">PP-HOMO</option>
+          <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Machine')">
         <select :id="fieldId" v-model="machineCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not provided — no ranges") }}</option>
-          <option value="IM-120T">IM-120T</option>
-          <option value="IM-180T">IM-180T</option>
-          <option value="IM-220T">IM-220T</option>
+          <option v-for="option in masterDataOptions.machine" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
         <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Any") }}</option>
-          <option value="connector_housing">{{ t("Connector housing") }}</option>
-          <option value="electronics_cover">{{ t("Electronics cover") }}</option>
-          <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
+          <option v-for="option in masterDataOptions.product_type" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Location')">
         <select :id="fieldId" v-model="location" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Any location") }}</option>
-          <option value="far_flow_end">{{ t("Far flow end") }}</option>
-          <option value="gate_area">{{ t("Gate area") }}</option>
-          <option value="core_side">{{ t("Core side") }}</option>
-          <option value="cavity_side">{{ t("Cavity side") }}</option>
-          <option value="parting_line">{{ t("Parting line") }}</option>
+          <option v-for="option in masterDataOptions.location" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
         </select>
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Injection pressure (MPa)')" :helper="t('Allowed range: 0–500 MPa.')">

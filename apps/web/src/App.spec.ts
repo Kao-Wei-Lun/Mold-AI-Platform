@@ -30,7 +30,7 @@ const adminAccount = {
   timezone: "Asia/Taipei",
   row_version: 1,
   roles: ["platform_admin"],
-  permissions: ["public-demo:read", "public-demo:write", "identity:manage"],
+  permissions: ["public-demo:read", "public-demo:write", "identity:manage", "master-data:read", "master-data:manage"],
   data_scopes: ["public-demo"],
   role_assignments: [
     {

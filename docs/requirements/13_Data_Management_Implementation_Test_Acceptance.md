@@ -119,6 +119,10 @@ Vue Engineering Web
 
 ### Phase 2 — Master Data 管理與動態工程選項
 
+> Implementation status (2026-08-29): complete for the Demo scope. Evidence and deployment notes
+> are recorded in
+> [`../development/stage-18-phase-2-governed-master-data.md`](../development/stage-18-phase-2-governed-master-data.md).
+
 #### Demo Deliverable
 
 - Dataset、Product Type、Material、Machine、Defect、Location、Unit 的 canonical model/API/UI。

@@ -297,6 +297,11 @@ creation and profile updates, scoped role assignment/revocation, lifecycle actio
 revocation, direct-route session restoration and self-lockout protection. See
 [`stage-18-phase-1c-identity-management-ui.md`](stage-18-phase-1c-identity-management-ui.md).
 
+Stage 18 Phase 2 adds seven governed master-data domains, bilingual lifecycle management,
+optimistic locking, reference summaries and API-driven engineering choices while preserving the
+single external Demo deployment. See
+[`stage-18-phase-2-governed-master-data.md`](stage-18-phase-2-governed-master-data.md).
+
 Stage 18 Phases 1D–1E replace the shared Sites browser token with local-account sessions,
 isolate the MCP-to-Platform service identity, and add the ChatGPT Plugin UI external-open
 experience. See

@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class Artifact(models.Model):
@@ -568,6 +569,61 @@ class RoleAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.username}:{self.role_id}@{self.data_scope.code}"
+
+
+class MasterDataItem(models.Model):
+    class Kind(models.TextChoices):
+        DATASET = "dataset", "Dataset"
+        PRODUCT_TYPE = "product_type", "Product type"
+        MATERIAL = "material", "Material"
+        MACHINE = "machine", "Machine"
+        DEFECT = "defect", "Defect"
+        LOCATION = "location", "Location"
+        UNIT = "unit", "Unit"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    code = models.CharField(max_length=128)
+    name_en = models.CharField(max_length=255)
+    name_zh_tw = models.CharField(max_length=255)
+    description_en = models.TextField(blank=True)
+    description_zh_tw = models.TextField(blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    sort_order = models.PositiveIntegerField(default=100)
+    attributes = models.JSONField(default=dict, blank=True)
+    aliases = models.JSONField(default=list, blank=True)
+    source_system = models.CharField(max_length=64, default="platform_demo")
+    source_refs = models.JSONField(default=list, blank=True)
+    scope = models.ForeignKey(DataScope, related_name="master_data_items", on_delete=models.PROTECT)
+    classification = models.CharField(max_length=32, default="public_demo")
+    effective_from = models.DateField(null=True, blank=True)
+    effective_to = models.DateField(null=True, blank=True)
+    row_version = models.PositiveIntegerField(default=1)
+    created_by = models.CharField(max_length=128)
+    updated_by = models.CharField(max_length=128)
+    archive_reason = models.CharField(max_length=512, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["kind", "sort_order", "code"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("code"), "scope", "kind", name="unique_master_data_scope_kind_code"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["scope", "kind", "status"], name="master_scope_kind_status_idx")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.code}"
 
 
 class KnowledgeDocument(models.Model):

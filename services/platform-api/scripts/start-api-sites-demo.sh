@@ -2,6 +2,7 @@
 set -eu
 
 python manage.py migrate --noinput
+python manage.py seed_master_data
 python manage.py deployment_preflight \
     --profile quick-tunnel \
     --strict \

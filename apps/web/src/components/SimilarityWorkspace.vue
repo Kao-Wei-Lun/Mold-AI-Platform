@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch }
 
 import type { AssistantContext, UIAction } from "../api/assistant";
 import type { CADModelResult } from "../api/cad";
+import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import {
   createSimilaritySearch,
   fetchSimilarityJob,
@@ -22,10 +23,14 @@ const props = defineProps<{
   query: CADModelResult | null;
   uiAction?: UIAction | null;
   deepLink?: DeepLinkContext | null;
+  masterDataOptions?: MasterDataOptions;
+  masterDataLoading?: boolean;
+  masterDataError?: string | null;
 }>();
 const emit = defineEmits<{
   contextChange: [context: AssistantContext];
   navigate: [route: "cad"];
+  retryMasterData: [];
 }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
@@ -44,6 +49,11 @@ const terminal = computed(() =>
 );
 const result = computed(() => job.value?.result || null);
 const indexed = computed(() => props.query?.similarity_index?.status === "indexed");
+const governedOptions = computed(() => props.masterDataOptions || emptyMasterDataOptions());
+
+function optionLabel(option: MasterDataOption): string {
+  return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
+}
 
 function scorePercent(score: number | null): string {
   return score === null ? "N/A" : `${(score * 100).toFixed(1)}%`;
@@ -211,30 +221,26 @@ onBeforeUnmount(() => {
       </div>
 
       <form class="similarity-form" @submit.prevent="submit">
+        <div v-if="masterDataError" class="master-data-error form-wide" role="alert">
+          <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
+          <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
+        </div>
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset filter')">
           <select :id="fieldId" v-model="datasetId" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
-            <option value="public-demo-v1">public-demo-v1</option>
-            <option value="curated-cad-demo-v1">curated-cad-demo-v1</option>
-            <option value="manual-cad-upload-v1">manual-cad-upload-v1</option>
+            <option v-for="option in governedOptions.dataset" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
           </select>
         </FormField>
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
           <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
-            <option value="housing">{{ t("Housing") }}</option>
-            <option value="connector_housing">{{ t("Connector housing") }}</option>
-            <option value="electronics_cover">{{ t("Electronics cover") }}</option>
-            <option value="thin_wall_tray">{{ t("Thin-wall tray") }}</option>
+            <option v-for="option in governedOptions.product_type" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
           </select>
         </FormField>
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
           <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
-            <option value="PA6-GF30">PA6-GF30</option>
-            <option value="ABS-GENERAL">ABS-GENERAL</option>
-            <option value="PP-HOMO">PP-HOMO</option>
-            <option value="PC_ABS">PC_ABS</option>
+            <option v-for="option in governedOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
           </select>
         </FormField>
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 20 ranked candidates.')">

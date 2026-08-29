@@ -10,6 +10,7 @@ export type WorkspaceRouteId =
   | "cae"
   | "hmi"
   | "rules"
+  | "master_data"
   | "identity"
   | "status"
   | "not_found";
@@ -115,6 +116,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     eyebrow: "Governance / Identity and access",
     title: "Manage individual accounts and governed access",
     description: "Control local Demo identities, roles, data scopes and active sessions with audit evidence.",
+  },
+  {
+    id: "master_data",
+    path: "/governance/master-data",
+    label: "Master data",
+    group: "Governance",
+    eyebrow: "Governance / Master data",
+    title: "Govern canonical engineering choices",
+    description: "Manage bilingual names and lifecycle while preserving immutable engineering codes and references.",
   },
   {
     id: "status",

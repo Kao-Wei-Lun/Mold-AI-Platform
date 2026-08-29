@@ -34,6 +34,9 @@ defineProps<{ name: string }>();
     <template v-else-if="name === 'identity'">
       <circle cx="9" cy="8" r="3" /><path d="M3.5 19c.8-3.2 2.7-5 5.5-5s4.7 1.8 5.5 5" /><path d="M16 8h5M18.5 5.5v5M16 15h5M16 19h5" />
     </template>
+    <template v-else-if="name === 'master_data'">
+      <ellipse cx="12" cy="5" rx="7" ry="3" /><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" /><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </template>
     <template v-else>
       <path d="M7 3h10v4H7z" /><path d="M5 5H3v16h18V5h-2M8 12h8M8 16h5" />
     </template>
