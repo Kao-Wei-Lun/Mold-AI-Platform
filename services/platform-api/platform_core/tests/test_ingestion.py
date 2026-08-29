@@ -6,7 +6,16 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from platform_core.models import Artifact, ArtifactVersion, CADModel, Job
+from platform_core.models import (
+    Artifact,
+    ArtifactVersion,
+    CADModel,
+    DataScope,
+    Job,
+    Mold,
+    MoldRevision,
+    Project,
+)
 
 from .fixtures import ASCII_TETRAHEDRON_STL
 
@@ -39,6 +48,9 @@ class CADUploadEndpointTests(TestCase):
         self.assertEqual(response.status_code, 202)
         payload = response.json()
         self.assertEqual(payload["status"], "accepted")
+        self.assertEqual(payload["ingestion_mode"], "quick_analysis")
+        self.assertEqual(payload["governance_status"], "unassigned")
+        self.assertIsNone(payload["mold_revision_id"])
         self.assertFalse(payload["idempotent_replay"])
         self.assertEqual(Artifact.objects.count(), 1)
         self.assertEqual(ArtifactVersion.objects.count(), 1)
@@ -51,9 +63,83 @@ class CADUploadEndpointTests(TestCase):
         self.assertNotIn(version.original_filename, version.storage_key)
         apply_async.assert_called_once_with(args=[payload["job_id"]], queue="cad")
 
+        artifact = Artifact.objects.get()
+        self.assertIsNone(artifact.mold_revision_id)
+        self.assertEqual(
+            Job.objects.get().input_snapshot["source"],
+            {
+                "type": "manual_upload",
+                "ingestion_mode": "quick_analysis",
+                "governance_status": "unassigned",
+            },
+        )
+
         job_response = self.client.get(payload["links"]["status"])
         self.assertEqual(job_response.status_code, 200)
         self.assertEqual(job_response.json()["state"], "queued")
+
+    @patch("platform_core.views.process_cad_job.apply_async")
+    def test_governed_archive_requires_mold_revision(self, apply_async) -> None:
+        response = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(),
+                "ingestion_mode": "governed_archive",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_MOLD_REVISION_REQUIRED")
+        self.assertEqual(Artifact.objects.count(), 0)
+        apply_async.assert_not_called()
+
+    @patch("platform_core.views.process_cad_job.apply_async")
+    def test_governed_archive_links_artifact_to_revision(self, apply_async) -> None:
+        scope, _ = DataScope.objects.get_or_create(
+            code="cad-upload-test",
+            defaults={"name": "CAD upload test", "classification": "public_demo"},
+        )
+        project = Project.objects.create(scope=scope, code="CAD-UPLOAD", name="CAD upload")
+        mold = Mold.objects.create(project=project, mold_code="MOLD-UPLOAD", name="Upload mold")
+        revision = MoldRevision.objects.create(
+            mold=mold,
+            revision_code="A",
+            status=MoldRevision.Status.RELEASED,
+        )
+
+        response = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(),
+                "ingestion_mode": "governed_archive",
+                "mold_revision_id": str(revision.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 202)
+        payload = response.json()
+        self.assertEqual(payload["ingestion_mode"], "governed_archive")
+        self.assertEqual(payload["governance_status"], "governed")
+        self.assertEqual(payload["mold_revision_id"], str(revision.id))
+        self.assertEqual(Artifact.objects.get().mold_revision_id, revision.id)
+        self.assertEqual(
+            Job.objects.get().input_snapshot["source"]["governance_status"], "governed"
+        )
+        apply_async.assert_called_once()
+
+    @patch("platform_core.views.process_cad_job.apply_async")
+    def test_rejects_unknown_ingestion_mode(self, apply_async) -> None:
+        response = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(),
+                "ingestion_mode": "temporary",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_INGESTION_MODE")
+        apply_async.assert_not_called()
 
     @patch("platform_core.views.process_cad_job.apply_async")
     def test_idempotency_key_returns_original_job_without_requeue(self, apply_async) -> None:

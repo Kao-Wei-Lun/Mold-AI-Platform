@@ -326,3 +326,8 @@ immutable published history. See
 Stage 21 Phase 5 adds Trial close/reopen/correction, canonical Mapping Backlog, structured CAE
 import/archive and versioned HMI profile/correction management in one external Demo UI. See
 [`stage-21-phase-5-engineering-data-lifecycle.md`](stage-21-phase-5-engineering-data-lifecycle.md).
+
+Stage 23 separates quick CAD analysis from governed archiving. Exploratory uploads no longer
+require a MoldRevision, while formal history continues to enforce one and both intents remain
+traceable in the API and Job snapshot. See
+[`stage-23-cad-upload-governance-modes.md`](stage-23-cad-upload-governance-modes.md).

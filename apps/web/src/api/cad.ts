@@ -81,6 +81,9 @@ export type CADUploadAccepted = {
   artifact_id: string;
   artifact_version_id: string;
   job_id: string;
+  ingestion_mode: "quick_analysis" | "governed_archive";
+  governance_status: "unassigned" | "governed";
+  mold_revision_id: string | null;
   idempotent_replay: boolean;
   warnings: string[];
   links: { artifact: string; status: string; ui: string };
@@ -159,13 +162,20 @@ export async function uploadCAD(
   file: File,
   artifactName: string,
   idempotencyKey: string,
-  metadata: { datasetId: string; productType: string; materialCode: string; moldRevisionId?: string },
+  metadata: {
+    datasetId: string;
+    productType: string;
+    materialCode: string;
+    uploadMode: "quick_analysis" | "governed_archive";
+    moldRevisionId?: string;
+  },
 ): Promise<CADUploadAccepted> {
   const body = new FormData();
   body.append("file", file);
   if (artifactName.trim()) body.append("artifact_name", artifactName.trim());
   body.append("idempotency_key", idempotencyKey);
   body.append("dataset_id", metadata.datasetId);
+  body.append("ingestion_mode", metadata.uploadMode);
   if (metadata.productType.trim()) body.append("product_type", metadata.productType.trim());
   if (metadata.materialCode.trim()) body.append("material_code", metadata.materialCode.trim());
   if (metadata.moldRevisionId) body.append("mold_revision_id", metadata.moldRevisionId);

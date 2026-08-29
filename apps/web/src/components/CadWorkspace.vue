@@ -39,6 +39,7 @@ const artifactName = ref("");
 const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
+const uploadMode = ref<"quick_analysis" | "governed_archive">("quick_analysis");
 const moldRevisionId = ref("");
 const revisions = ref<RegistryRevision[]>([]);
 const uploading = ref(false);
@@ -64,7 +65,10 @@ const dimensions = computed(() => {
   return `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
 });
 const missingUploadFields = computed(
-  () => Number(!selectedFile.value) + Number(!datasetId.value) + Number(!moldRevisionId.value),
+  () =>
+    Number(!selectedFile.value) +
+    Number(!datasetId.value) +
+    Number(uploadMode.value === "governed_archive" && !moldRevisionId.value),
 );
 
 function optionLabel(option: MasterDataOption): string {
@@ -84,13 +88,22 @@ async function loadRevisions(): Promise<void> {
   try {
     const registry = await fetchRegistry();
     revisions.value = registry.revisions.filter((revision) => revision.status !== "archived");
-    if (!moldRevisionId.value) {
+    if (uploadMode.value === "governed_archive" && !moldRevisionId.value) {
       moldRevisionId.value = revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
     }
   } catch {
     revisions.value = [];
   }
 }
+
+watch(uploadMode, (mode) => {
+  if (mode === "quick_analysis") {
+    moldRevisionId.value = "";
+    return;
+  }
+  moldRevisionId.value =
+    revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
+});
 
 function chooseFile(event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -120,6 +133,10 @@ async function submit(): Promise<void> {
     error.value = t("Choose a STEP or STL file first.");
     return;
   }
+  if (uploadMode.value === "governed_archive" && !moldRevisionId.value) {
+    error.value = t("Select a mold revision for governed archiving.");
+    return;
+  }
 
   uploading.value = true;
   error.value = null;
@@ -134,9 +151,10 @@ async function submit(): Promise<void> {
       datasetId: datasetId.value,
       productType: productType.value,
       materialCode: materialCode.value,
-      moldRevisionId: moldRevisionId.value,
+      uploadMode: uploadMode.value,
+      moldRevisionId: uploadMode.value === "governed_archive" ? moldRevisionId.value : undefined,
     });
-    warning.value = accepted.warnings[0] || null;
+    warning.value = accepted.warnings.map((message) => t(message)).join(" ") || null;
     job.value = await fetchCADJob(accepted.job_id);
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
@@ -230,6 +248,28 @@ loadRevisions();
         <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
         <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
       </div>
+      <fieldset class="cad-upload-purpose form-wide">
+        <legend>{{ t("Upload purpose") }}</legend>
+        <div class="upload-purpose-options">
+          <label class="upload-purpose-option" :class="{ selected: uploadMode === 'quick_analysis' }">
+            <input v-model="uploadMode" type="radio" name="upload-purpose" value="quick_analysis" />
+            <span>
+              <strong>{{ t("Quick analysis") }}</strong>
+              <small>{{ t("Upload now for preview, similarity and generic review. Link it to a mold revision later.") }}</small>
+            </span>
+          </label>
+          <label class="upload-purpose-option" :class="{ selected: uploadMode === 'governed_archive' }">
+            <input v-model="uploadMode" type="radio" name="upload-purpose" value="governed_archive" />
+            <span>
+              <strong>{{ t("Governed archive") }}</strong>
+              <small>{{ t("Attach this CAD to an existing mold design revision for formal traceability.") }}</small>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+      <p v-if="uploadMode === 'quick_analysis'" class="cad-governance-note form-wide">
+        {{ t("This CAD will be stored as unassigned. Preview and generic analysis remain available; mold-specific rules and formal engineering history require a mold revision.") }}
+      </p>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
         <input :id="fieldId" type="file" accept=".step,.stp,.stl" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="chooseFile" />
       </FormField>
@@ -254,7 +294,13 @@ loadRevisions();
           <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
-      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Mold revision')" required :helper="t('Every new CAD artifact must belong to a governed mold revision.')">
+      <FormField
+        v-if="uploadMode === 'governed_archive'"
+        v-slot="{ fieldId, describedBy, invalid }"
+        :label="t('Related mold / design revision')"
+        required
+        :helper="revisions.length ? t('Required for governed archiving and formal Trial, CAE and review traceability.') : t('No active mold revisions are available. Create one in Mold Registry first.')"
+      >
         <select :id="fieldId" v-model="moldRevisionId" required :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="" disabled>{{ t("Select a mold revision") }}</option>
           <option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }} · {{ t(revision.status) }}</option>

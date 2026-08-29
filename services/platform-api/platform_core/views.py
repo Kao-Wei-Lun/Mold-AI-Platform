@@ -478,6 +478,35 @@ class CADArtifactListCreateView(APIView):
                 status.HTTP_400_BAD_REQUEST,
             )
 
+        mold_revision_id = (
+            str(request.data.get("mold_revision_id")).strip()
+            if request.data.get("mold_revision_id")
+            else None
+        )
+        requested_ingestion_mode = str(request.data.get("ingestion_mode", "")).strip()
+        ingestion_mode = requested_ingestion_mode or (
+            "governed_archive" if mold_revision_id else "quick_analysis"
+        )
+        if ingestion_mode not in {"quick_analysis", "governed_archive"}:
+            return _error_response(
+                "VALIDATION_INGESTION_MODE",
+                "Ingestion mode must be quick_analysis or governed_archive.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if ingestion_mode == "governed_archive" and not mold_revision_id:
+            return _error_response(
+                "VALIDATION_MOLD_REVISION_REQUIRED",
+                "A mold revision is required for governed archiving.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if ingestion_mode == "quick_analysis" and mold_revision_id:
+            return _error_response(
+                "VALIDATION_INGESTION_MODE",
+                "Quick analysis uploads cannot include a mold revision; "
+                "use governed_archive instead.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             records = create_upload_records(
                 upload,
@@ -486,11 +515,14 @@ class CADArtifactListCreateView(APIView):
                 product_type=str(request.data.get("product_type", "")),
                 material_code=str(request.data.get("material_code", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
-                mold_revision_id=(
-                    str(request.data.get("mold_revision_id"))
-                    if request.data.get("mold_revision_id")
-                    else None
-                ),
+                mold_revision_id=mold_revision_id,
+                source_context={
+                    "type": "manual_upload",
+                    "ingestion_mode": ingestion_mode,
+                    "governance_status": (
+                        "governed" if ingestion_mode == "governed_archive" else "unassigned"
+                    ),
+                },
             )
         except UploadValidationError as exc:
             http_status = (
@@ -520,9 +552,24 @@ class CADArtifactListCreateView(APIView):
             .exclude(id=records.version.id)
             .count()
         )
-        warnings = [
+        source = records.job.input_snapshot.get("source", {})
+        if not isinstance(source, dict):
+            source = {}
+        actual_ingestion_mode = source.get("ingestion_mode") or (
+            "governed_archive" if records.artifact.mold_revision_id else "quick_analysis"
+        )
+        governance_status = source.get("governance_status") or (
+            "governed" if records.artifact.mold_revision_id else "unassigned"
+        )
+        warnings = []
+        if governance_status == "unassigned":
+            warnings.append(
+                "This CAD is unassigned and available for quick analysis. "
+                "Link it to a governed mold revision before formal release."
+            )
+        warnings.append(
             "Basic signature screening passed; a full malware scanner is not configured yet."
-        ]
+        )
         if duplicate_count:
             warnings.append(
                 f"Duplicate content detected in {duplicate_count} existing artifact version(s)."
@@ -535,6 +582,13 @@ class CADArtifactListCreateView(APIView):
                 "artifact_id": str(records.artifact.id),
                 "artifact_version_id": str(records.version.id),
                 "job_id": str(records.job.id),
+                "ingestion_mode": actual_ingestion_mode,
+                "governance_status": governance_status,
+                "mold_revision_id": (
+                    str(records.artifact.mold_revision_id)
+                    if records.artifact.mold_revision_id
+                    else None
+                ),
                 "idempotent_replay": not records.created,
                 "warnings": warnings,
                 "links": {

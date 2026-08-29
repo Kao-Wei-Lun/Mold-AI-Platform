@@ -437,6 +437,10 @@ Dry Run 不得建立 Domain Entity；只允許建立匯入工作、原始 Artifa
 - `RDI-MOLD-04`：替換檔案不得覆寫舊 ArtifactVersion。
 - `RDI-MOLD-05`：Registry XLSX 匯入必須驗證 Project → Part → Mold → Revision 的階層。
 - `RDI-MOLD-06`：封存前顯示 Trial、CAE、Review、Artifact 與 Knowledge 引用影響。
+- `RDI-MOLD-07`：CAD 上傳必須明確區分「快速分析」與「正式歸檔」；快速分析不得強迫建立 Mold Revision，正式歸檔則必須關聯有效 Revision。
+- `RDI-MOLD-08`：快速分析仍須建立 immutable ArtifactVersion、Checksum、Job 與 Lineage，並標記為 `unassigned`，不得當成未受追蹤的暫存檔。
+- `RDI-MOLD-09`：快速分析可執行預覽、幾何解析、相似度與通用規則審查；模具專屬規則、正式 Trial／CAE 關聯及發布證據必須先完成受稽核的 Revision 關聯。
+- `RDI-MOLD-10`：API 必須保存使用者選擇的 `ingestion_mode` 與 `governance_status`，Idempotency Replay 不得改變原始治理語意。
 
 ### 13.2 Trial／Process
 
@@ -766,4 +770,3 @@ Gate：完整 API/Web test、migration drift、lint、build、security smoke、p
 建議依序執行 Phase 0 → Phase 1 → Phase 2，先解決使用者最直接感受到的「模具規定不能直覺編輯、不能依模具類型選用」問題；其後執行 Phase 3 建立共用 Ingestion Foundation，再逐一新增 Domain Adapter。
 
 不得先為每個頁面各做一套上傳功能，否則 Mapping、Security、Job、Audit、Lineage 與錯誤處理將再次分裂。
-

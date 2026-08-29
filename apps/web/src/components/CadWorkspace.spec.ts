@@ -116,10 +116,68 @@ describe("CadWorkspace", () => {
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(uploadBody.get("ingestion_mode")).toBe("quick_analysis");
+    expect(uploadBody.has("mold_revision_id")).toBe(false);
     expect(wrapper.text()).toContain("succeeded");
     expect(wrapper.text()).toContain("1.00 x 1.00 x 1.00");
     expect(wrapper.text()).toContain("4 / 6");
     expect(wrapper.text()).toContain("UNIT_UNCERTAIN");
+  });
+
+  it("requires and submits a mold revision for governed archiving", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            status: "accepted",
+            artifact_id: "artifact-governed",
+            artifact_version_id: "version-governed",
+            job_id: "job-governed",
+            ingestion_mode: "governed_archive",
+            governance_status: "governed",
+            mold_revision_id: "revision-1",
+            idempotent_replay: false,
+            warnings: [],
+            links: { artifact: "/artifact-governed", status: "/job-governed", ui: "/cad/job-governed" },
+          },
+          true,
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1.0",
+          job_id: "job-governed",
+          capability: "cad.parse@1.0.0",
+          state: "queued",
+          stage: "queued",
+          progress: 0,
+          attempt: 1,
+          artifact_version_id: "version-governed",
+          correlation_id: "correlation-governed",
+          error: null,
+          result: null,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
+    await flushPromises();
+    await wrapper.get('input[value="governed_archive"]').setValue(true);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Related mold / design revision");
+
+    const fileInput = wrapper.get('input[type="file"]');
+    Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
+    await fileInput.trigger("change");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(uploadBody.get("ingestion_mode")).toBe("governed_archive");
+    expect(uploadBody.get("mold_revision_id")).toBe("revision-1");
   });
 
   it("shows a server validation message", async () => {

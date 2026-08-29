@@ -508,6 +508,89 @@ button[aria-busy="true"]::before {
   margin-top: 1.5rem;
 }
 
+.upload-form .form-wide {
+  grid-column: 1 / -1;
+}
+
+.cad-upload-purpose {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.cad-upload-purpose legend {
+  margin-bottom: 0.55rem;
+  color: #31415a;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.upload-purpose-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.upload-purpose-option {
+  display: flex !important;
+  grid-template-columns: none !important;
+  gap: 0.75rem !important;
+  align-items: flex-start;
+  min-height: 92px;
+  border: 1px solid #cad6e5;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.upload-purpose-option:hover {
+  border-color: #8aa8db;
+}
+
+.upload-purpose-option.selected {
+  border-color: #3971d8;
+  background: #f2f6ff;
+  box-shadow: 0 0 0 2px rgb(57 113 216 / 12%);
+}
+
+.upload-purpose-option input {
+  width: 1rem;
+  min-height: auto;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  accent-color: #2f66d4;
+}
+
+.upload-purpose-option span {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.upload-purpose-option strong {
+  color: #172b49;
+  font-size: 0.9rem;
+}
+
+.upload-purpose-option small {
+  color: #6f7f96;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.cad-governance-note {
+  margin: -0.15rem 0 0;
+  border-left: 4px solid #d18b00;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  color: #6b4b00;
+  background: #fff8e8;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .recent-cad-loader {
   display: flex;
   gap: 0.75rem;
@@ -2256,6 +2339,10 @@ button[aria-busy="true"]::before {
     .evidence-columns,
     .measurement-grid,
     .decision-form {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-purpose-options {
     grid-template-columns: 1fr;
   }
 
