@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
@@ -12,6 +13,7 @@ from rest_framework.views import APIView
 
 from .identity import audit_identity_event
 from .models import Artifact, DataScope, Mold, MoldRevision, ProductPart, Project
+from .pagination import PaginationValueError, paginate
 
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 
@@ -44,6 +46,18 @@ def _require(request: Request, permission: str) -> Response | None:
 
 def _actor(request: Request) -> str:
     return str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+
+
+def _allowed_scope_codes(request: Request) -> set[str]:
+    return set(getattr(request._request, "mold_ai_data_scopes", set())) or {"public-demo"}
+
+
+def _allowed_classifications(request: Request) -> list[str]:
+    return list(
+        DataScope.objects.filter(code__in=_allowed_scope_codes(request), is_active=True)
+        .values_list("classification", flat=True)
+        .distinct()
+    )
 
 
 def _required_text(
@@ -191,6 +205,20 @@ def artifact_governance_payload(artifact: Artifact) -> dict[str, object]:
     }
 
 
+def _paginated_response(
+    request: Request, queryset, serializer, *, allowed_sort: dict[str, str], default_sort: str
+) -> Response:
+    try:
+        items, page = paginate(
+            request, queryset, allowed_sort=allowed_sort, default_sort=default_sort
+        )
+    except PaginationValueError as exc:
+        return _error(request, "VALIDATION_PAGINATION", str(exc), 400)
+    return Response(
+        {"schema_version": "1.0", "items": [serializer(item) for item in items], "page": page}
+    )
+
+
 class ProjectListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []
@@ -198,8 +226,22 @@ class ProjectListCreateView(APIView):
     def get(self, request: Request) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        projects = Project.objects.select_related("scope").prefetch_related("parts", "molds")
-        return Response({"schema_version": "1.0", "items": [project_payload(p) for p in projects]})
+        projects = (
+            Project.objects.select_related("scope")
+            .prefetch_related("parts", "molds")
+            .filter(scope__code__in=_allowed_scope_codes(request))
+        )
+        if query := request.query_params.get("q"):
+            projects = projects.filter(Q(code__icontains=query) | Q(name__icontains=query))
+        if status_filter := request.query_params.get("status"):
+            projects = projects.filter(status=status_filter)
+        return _paginated_response(
+            request,
+            projects,
+            project_payload,
+            allowed_sort={"code": "code", "name": "name", "created_at": "created_at"},
+            default_sort="code",
+        )
 
     def post(self, request: Request) -> Response:
         if denied := _require(request, "registry:manage"):
@@ -214,7 +256,9 @@ class ProjectListCreateView(APIView):
         if invalid:
             return invalid
         scope = DataScope.objects.filter(
-            code=str(request.data.get("scope", "public-demo")), is_active=True
+            code=str(request.data.get("scope", "public-demo")),
+            code__in=_allowed_scope_codes(request),
+            is_active=True,
         ).first()
         if scope is None:
             return _error(request, "VALIDATION_SCOPE", "The selected scope is invalid.", 400)
@@ -247,7 +291,9 @@ class ProjectDetailView(APIView):
     def get(self, request: Request, project_id: str) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        project = Project.objects.select_related("scope").filter(id=project_id).first()
+        project = Project.objects.select_related("scope").filter(
+            id=project_id, scope__code__in=_allowed_scope_codes(request)
+        ).first()
         if project is None:
             return _error(request, "NOT_FOUND", "Project not found.", 404)
         return Response(project_payload(project))
@@ -255,7 +301,9 @@ class ProjectDetailView(APIView):
     def patch(self, request: Request, project_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        project = Project.objects.select_related("scope").filter(id=project_id).first()
+        project = Project.objects.select_related("scope").filter(
+            id=project_id, scope__code__in=_allowed_scope_codes(request)
+        ).first()
         if project is None:
             return _error(request, "NOT_FOUND", "Project not found.", 404)
         reason, invalid = _reason(request)
@@ -289,10 +337,26 @@ class PartListCreateView(APIView):
     def get(self, request: Request) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        items = ProductPart.objects.select_related("project").prefetch_related("molds")
+        items = (
+            ProductPart.objects.select_related("project")
+            .prefetch_related("molds")
+            .filter(project__scope__code__in=_allowed_scope_codes(request))
+        )
         if project_id := request.query_params.get("project_id"):
             items = items.filter(project_id=project_id)
-        return Response({"schema_version": "1.0", "items": [part_payload(p) for p in items]})
+        if query := request.query_params.get("q"):
+            items = items.filter(Q(part_number__icontains=query) | Q(name__icontains=query))
+        return _paginated_response(
+            request,
+            items,
+            part_payload,
+            allowed_sort={
+                "part_number": "part_number",
+                "name": "name",
+                "created_at": "created_at",
+            },
+            default_sort="part_number",
+        )
 
     def post(self, request: Request) -> Response:
         if denied := _require(request, "registry:manage"):
@@ -306,7 +370,11 @@ class PartListCreateView(APIView):
         reason, invalid = _reason(request)
         if invalid:
             return invalid
-        project = Project.objects.filter(id=request.data.get("project_id"), status="active").first()
+        project = Project.objects.filter(
+            id=request.data.get("project_id"),
+            status="active",
+            scope__code__in=_allowed_scope_codes(request),
+        ).first()
         if project is None:
             return _error(request, "VALIDATION_PROJECT", "An active project is required.", 400)
         actor = _actor(request)
@@ -343,7 +411,7 @@ class PartDetailView(APIView):
         part = (
             ProductPart.objects.select_related("project")
             .prefetch_related("molds__revisions")
-            .filter(id=part_id)
+            .filter(id=part_id, project__scope__code__in=_allowed_scope_codes(request))
             .first()
         )
         if part is None:
@@ -355,7 +423,9 @@ class PartDetailView(APIView):
     def patch(self, request: Request, part_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        part = ProductPart.objects.select_related("project").filter(id=part_id).first()
+        part = ProductPart.objects.select_related("project").filter(
+            id=part_id, project__scope__code__in=_allowed_scope_codes(request)
+        ).first()
         if part is None:
             return _error(request, "NOT_FOUND", "Product part not found.", 404)
         reason, invalid = _reason(request)
@@ -389,10 +459,26 @@ class MoldListCreateView(APIView):
     def get(self, request: Request) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        items = Mold.objects.select_related("project", "product_part").prefetch_related("revisions")
+        items = (
+            Mold.objects.select_related("project", "product_part")
+            .prefetch_related("revisions")
+            .filter(project__scope__code__in=_allowed_scope_codes(request))
+        )
         if project_id := request.query_params.get("project_id"):
             items = items.filter(project_id=project_id)
-        return Response({"schema_version": "1.0", "items": [mold_payload(m) for m in items]})
+        if query := request.query_params.get("q"):
+            items = items.filter(Q(mold_code__icontains=query) | Q(name__icontains=query))
+        return _paginated_response(
+            request,
+            items,
+            mold_payload,
+            allowed_sort={
+                "mold_code": "mold_code",
+                "name": "name",
+                "created_at": "created_at",
+            },
+            default_sort="mold_code",
+        )
 
     def post(self, request: Request) -> Response:
         if denied := _require(request, "registry:manage"):
@@ -406,7 +492,11 @@ class MoldListCreateView(APIView):
         reason, invalid = _reason(request)
         if invalid:
             return invalid
-        project = Project.objects.filter(id=request.data.get("project_id"), status="active").first()
+        project = Project.objects.filter(
+            id=request.data.get("project_id"),
+            status="active",
+            scope__code__in=_allowed_scope_codes(request),
+        ).first()
         if project is None:
             return _error(request, "VALIDATION_PROJECT", "An active project is required.", 400)
         part = None
@@ -457,7 +547,7 @@ class MoldDetailView(APIView):
         mold = (
             Mold.objects.select_related("project", "product_part")
             .prefetch_related("revisions__artifacts")
-            .filter(id=mold_id)
+            .filter(id=mold_id, project__scope__code__in=_allowed_scope_codes(request))
             .first()
         )
         if mold is None:
@@ -467,7 +557,9 @@ class MoldDetailView(APIView):
     def patch(self, request: Request, mold_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        mold = Mold.objects.select_related("project", "product_part").filter(id=mold_id).first()
+        mold = Mold.objects.select_related("project", "product_part").filter(
+            id=mold_id, project__scope__code__in=_allowed_scope_codes(request)
+        ).first()
         if mold is None:
             return _error(request, "NOT_FOUND", "Mold not found.", 404)
         reason, invalid = _reason(request)
@@ -511,10 +603,26 @@ class RevisionListCreateView(APIView):
     def get(self, request: Request) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        items = MoldRevision.objects.select_related("mold").prefetch_related("artifacts")
+        items = (
+            MoldRevision.objects.select_related("mold")
+            .prefetch_related("artifacts")
+            .filter(mold__project__scope__code__in=_allowed_scope_codes(request))
+        )
         if mold_id := request.query_params.get("mold_id"):
             items = items.filter(mold_id=mold_id)
-        return Response({"schema_version": "1.0", "items": [revision_payload(r) for r in items]})
+        if status_filter := request.query_params.get("status"):
+            items = items.filter(status=status_filter)
+        return _paginated_response(
+            request,
+            items,
+            revision_payload,
+            allowed_sort={
+                "revision_code": "revision_code",
+                "created_at": "created_at",
+                "status": "status",
+            },
+            default_sort="revision_code",
+        )
 
     def post(self, request: Request) -> Response:
         if denied := _require(request, "registry:manage"):
@@ -525,7 +633,11 @@ class RevisionListCreateView(APIView):
         reason, invalid = _reason(request)
         if invalid:
             return invalid
-        mold = Mold.objects.filter(id=request.data.get("mold_id"), status="active").first()
+        mold = Mold.objects.filter(
+            id=request.data.get("mold_id"),
+            status="active",
+            project__scope__code__in=_allowed_scope_codes(request),
+        ).first()
         if mold is None:
             return _error(request, "VALIDATION_MOLD", "An active mold is required.", 400)
         actor = _actor(request)
@@ -560,7 +672,10 @@ class RevisionDetailView(APIView):
         revision = (
             MoldRevision.objects.select_related("mold")
             .prefetch_related("artifacts")
-            .filter(id=revision_id)
+            .filter(
+                id=revision_id,
+                mold__project__scope__code__in=_allowed_scope_codes(request),
+            )
             .first()
         )
         if revision is None:
@@ -572,7 +687,10 @@ class RevisionDetailView(APIView):
     def patch(self, request: Request, revision_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        revision = MoldRevision.objects.select_related("mold").filter(id=revision_id).first()
+        revision = MoldRevision.objects.select_related("mold").filter(
+            id=revision_id,
+            mold__project__scope__code__in=_allowed_scope_codes(request),
+        ).first()
         if revision is None:
             return _error(request, "NOT_FOUND", "Mold revision not found.", 404)
         reason, invalid = _reason(request)
@@ -640,7 +758,11 @@ class ArtifactGovernanceView(APIView):
                 "versions__cad_model__feature_sets",
                 "versions__cad_model__review_runs",
             )
-            .filter(id=artifact_id, kind=Artifact.Kind.CAD_SOURCE)
+            .filter(
+                id=artifact_id,
+                kind=Artifact.Kind.CAD_SOURCE,
+                classification__in=_allowed_classifications(request),
+            )
             .first()
         )
         if artifact is None:
@@ -651,7 +773,9 @@ class ArtifactGovernanceView(APIView):
         if denied := _require(request, "registry:manage"):
             return denied
         artifact = (
-            Artifact.objects.select_related("mold_revision__mold").filter(id=artifact_id).first()
+            Artifact.objects.select_related("mold_revision__mold")
+            .filter(id=artifact_id, classification__in=_allowed_classifications(request))
+            .first()
         )
         if artifact is None:
             return _error(request, "NOT_FOUND", "CAD artifact not found.", 404)
@@ -665,7 +789,10 @@ class ArtifactGovernanceView(APIView):
             return _error(request, "VALIDATION_STATUS", "Invalid artifact lifecycle status.", 400)
         revision_id = request.data.get("mold_revision_id")
         if revision_id is not None:
-            revision = MoldRevision.objects.filter(id=revision_id).first()
+            revision = MoldRevision.objects.filter(
+                id=revision_id,
+                mold__project__scope__code__in=_allowed_scope_codes(request),
+            ).first()
             if revision is None:
                 return _error(request, "VALIDATION_REVISION", "Mold revision not found.", 400)
             artifact.mold_revision = revision

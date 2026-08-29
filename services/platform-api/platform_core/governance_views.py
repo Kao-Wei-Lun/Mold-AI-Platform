@@ -16,6 +16,7 @@ from .design_review import EVALUATORS, get_demo_rule_profile
 from .identity import audit_identity_event
 from .knowledge import knowledge_document_payload
 from .models import KnowledgeDocument, RuleProfile, RuleVersion
+from .pagination import PaginationValueError, paginate
 
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 KNOWLEDGE_TRANSITIONS = {
@@ -68,10 +69,26 @@ class RuleProfileGovernanceListView(APIView):
         profiles = RuleProfile.objects.prefetch_related("rules").order_by(
             "profile_key", "-created_at"
         )
+        if workflow_status := request.query_params.get("status"):
+            profiles = profiles.filter(workflow_status=workflow_status)
+        try:
+            records, page = paginate(
+                request,
+                profiles,
+                allowed_sort={
+                    "profile_key": "profile_key",
+                    "created_at": "created_at",
+                    "workflow_status": "workflow_status",
+                },
+                default_sort="-created_at",
+            )
+        except PaginationValueError as exc:
+            return _error(request, "VALIDATION_PAGINATION", str(exc), 400)
         return Response(
             {
                 "schema_version": "1.0",
-                "items": [rule_profile_payload(profile) for profile in profiles],
+                "items": [rule_profile_payload(profile) for profile in records],
+                "page": page,
             }
         )
 

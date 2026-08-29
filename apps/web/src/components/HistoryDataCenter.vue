@@ -6,6 +6,7 @@ import type { LocalAccount } from "../api/identity";
 import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
+import EnterpriseHistoryWorkspace from "./EnterpriseHistoryWorkspace.vue";
 import GovernanceHistoryWorkspace from "./GovernanceHistoryWorkspace.vue";
 import OperationalHistoryWorkspace from "./OperationalHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
@@ -36,6 +37,7 @@ const domains: HistoryDomain[] = [
   { slug: "analysis-results", title: "Analysis results", description: "Similarity, reviews, searches and comparisons with immutable inputs.", stage: "H6", permission: "public-demo:read" },
   { slug: "jobs", title: "Jobs & queue", description: "Processing attempts, event timelines, failures, retry and cancel controls.", stage: "H6", permission: "public-demo:read" },
   { slug: "audit-lineage", title: "Audit & lineage", description: "Actor decisions, changes, source evidence and derived relationships.", stage: "H6", permission: "public-demo:read" },
+  { slug: "enterprise", title: "Enterprise controls", description: "Bulk import, retention, legal hold, DLP, SIEM and connector isolation.", stage: "H7", permission: "enterprise:read" },
 ];
 
 const currentSlug = computed(() => {
@@ -107,6 +109,13 @@ function openDomain(domain: HistoryDomain): void {
     <OperationalHistoryWorkspace
       v-else-if="currentSlug === 'analysis-results' || currentSlug === 'jobs' || currentSlug === 'audit-lineage'"
       :domain="currentSlug"
+      :path="path"
+      :current-account="currentAccount"
+      @navigate="emit('navigate', $event)"
+    />
+
+    <EnterpriseHistoryWorkspace
+      v-else-if="currentSlug === 'enterprise'"
       :path="path"
       :current-account="currentAccount"
       @navigate="emit('navigate', $event)"

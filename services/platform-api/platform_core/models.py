@@ -164,6 +164,12 @@ class Artifact(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["dataset_id", "lifecycle_status", "created_at"],
+                name="artifact_dataset_life_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.id})"
@@ -489,6 +495,12 @@ class RuleProfile(models.Model):
                 fields=["profile_key", "version"], name="unique_rule_profile_key_version"
             )
         ]
+        indexes = [
+            models.Index(
+                fields=["profile_key", "workflow_status", "created_at"],
+                name="rule_key_workflow_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return self.profile_key
@@ -656,6 +668,9 @@ class AuditEvent(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["event_type", "created_at"], name="audit_type_created_idx")
+        ]
 
     def __str__(self) -> str:
         return f"{self.event_type}:{self.id}"
@@ -695,6 +710,90 @@ class HistoryRecordState(models.Model):
 
     def __str__(self) -> str:
         return f"{self.record_type}:{self.record_id}:{self.status}"
+
+
+class EnterpriseDataPolicy(models.Model):
+    class ConnectorMode(models.TextChoices):
+        PUBLIC_DEMO = "public_demo", "Public Demo"
+        COMPANY = "company", "Company connector"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.OneToOneField(
+        "DataScope", related_name="enterprise_policy", on_delete=models.PROTECT
+    )
+    connector_mode = models.CharField(
+        max_length=24, choices=ConnectorMode.choices, default=ConnectorMode.PUBLIC_DEMO
+    )
+    retention_days = models.PositiveIntegerField(default=2555)
+    legal_hold = models.BooleanField(default=False)
+    legal_hold_reason = models.CharField(max_length=512, blank=True)
+    dlp_enabled = models.BooleanField(default=True)
+    export_allowed = models.BooleanField(default=True)
+    siem_enabled = models.BooleanField(default=False)
+    siem_destination = models.CharField(max_length=255, blank=True)
+    index_namespace = models.CharField(max_length=128)
+    cache_namespace = models.CharField(max_length=128)
+    row_version = models.PositiveIntegerField(default=1)
+    updated_by = models.CharField(max_length=128, default="system")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.scope.code}:{self.connector_mode}"
+
+
+class BulkImportBatch(models.Model):
+    class Status(models.TextChoices):
+        VALIDATED = "validated", "Validated"
+        COMMITTED = "committed", "Committed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.ForeignKey("DataScope", related_name="import_batches", on_delete=models.PROTECT)
+    domain = models.CharField(max_length=32)
+    source_name = models.CharField(max_length=255)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    records = models.JSONField(default=list)
+    field_mapping = models.JSONField(default=dict)
+    validation_result = models.JSONField(default=dict)
+    reconciliation = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.VALIDATED)
+    created_by = models.CharField(max_length=128)
+    committed_by = models.CharField(max_length=128, blank=True)
+    committed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["scope", "status", "created_at"], name="bulk_scope_status_idx"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.domain}:{self.id} [{self.status}]"
+
+
+class BulkArchiveOperation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.ForeignKey(
+        "DataScope", related_name="archive_operations", on_delete=models.PROTECT
+    )
+    domain = models.CharField(max_length=32)
+    record_ids = models.JSONField(default=list)
+    dry_run = models.BooleanField(default=True)
+    status = models.CharField(max_length=24, default="validated")
+    result = models.JSONField(default=dict)
+    reason = models.CharField(max_length=512)
+    actor_id = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.domain}:{self.id} [{self.status}]"
 
 
 class AccountProfile(models.Model):
@@ -956,6 +1055,12 @@ class KnowledgeDocument(models.Model):
                 name="unique_knowledge_document_version",
             )
         ]
+        indexes = [
+            models.Index(
+                fields=["classification", "publication_status", "created_at"],
+                name="knowledge_class_pub_idx",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"Knowledge {self.artifact_version_id} [{self.ingestion_status}]"
@@ -1060,6 +1165,10 @@ class TrialCase(models.Model):
         indexes = [
             models.Index(
                 fields=["material_code", "machine_code"], name="trial_material_machine_idx"
+            ),
+            models.Index(
+                fields=["classification", "lifecycle_status", "created_at"],
+                name="trial_class_life_idx",
             ),
         ]
 
@@ -1225,6 +1334,12 @@ class CAEStudy(models.Model):
             models.UniqueConstraint(
                 fields=["connector_key", "source_record_id", "source_version"],
                 name="unique_cae_study_source_version",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["classification", "lifecycle_status", "created_at"],
+                name="cae_class_life_idx",
             )
         ]
 

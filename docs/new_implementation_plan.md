@@ -1,6 +1,6 @@
 # Mold AI Platform — 歷史資料管理功能詳細修改規劃
 
-> 文件狀態：已授權實作；Phase H6 分析、Job、Audit 與 Lineage 中心完成
+> 文件狀態：Phase H0–H7 已完成；歷史資料管理規劃已落實至 Demo／Enterprise-ready 邊界
 > 適用範圍：目前 Demo 與未來 Enterprise 資料管理體驗
 > 核心目標：讓使用者不只看見資料標題或摘要，而能完整查閱、追溯、受控修改、比較版本及確認資料來源，同時維持工程歷史與 AI 結果的可重現性。
 
@@ -501,6 +501,22 @@ GET    /api/v1/{resources}/{id}/audit
 
 建議 commit：`feat(enterprise): harden history management for company data`
 
+完成內容（2026-08-29）：
+
+- Registry、Trial、CAE、HMI、CAD、Knowledge、Rule、Analysis、Job、Audit 與 Enterprise Batch 清單改為受控 page/page_size（預設 25、最大 100）；主要歷史清單加入允許清單式 sort、搜尋／狀態篩選，非法 sort 回傳 400。
+- 移除 Trial／CAE／CAD／HMI 固定 25／100 筆截斷；Summary 與 Detail 維持分離，關聯資料使用 select_related／prefetch_related，Analysis lifecycle 改為一次載入並以 finding aggregate 避免逐筆查詢。
+- 新增 Artifact、Trial、CAE、Audit、Knowledge、Rule 及 Bulk Import 複合索引，migration `0015_enterprise_history_controls` 可由既有資料庫安全升級。
+- 建立 Enterprise Controls 頁 `/data/enterprise`，支援 data scope 選擇、Public Demo／Company connector mode、retention、legal hold、DLP export、SIEM destination readiness，以及互斥 index/cache namespace。
+- 建立 Bulk Import `validate → commit → reconciliation` 流程；支援 field mapping、每批最多 1,000 筆、idempotency key、重播安全、scope gate、逐批 Audit 與 Master Data cache invalidation。
+- 建立 Artifact／Trial／CAE 受控批次封存；每次先 dry-run 顯示 matched／missing／legal-hold impact，正式操作要求理由，Legal Hold 會阻擋 commit。
+- Audit CSV export 加入 scope authorization 與 DLP／Legal Hold policy gate；敏感欄位維持遞迴遮蔽，跨 scope query／export 明確關閉。
+- Registry 與 CAD/HMI 歷史查詢依使用者 DataScope／classification 過濾；Public Demo scope 無法切換為 Company connector，Company scope 使用獨立 index/cache namespace。
+- 新增 `history_performance_smoke`；重建後單機 Demo 20 次 ORM smoke 的 p95：Registry `1.981 ms`、Job `3.563 ms`、Analysis `12.008 ms`、Trial `10.352 ms`，全部低於 Demo `800 ms` budget。
+
+驗證結果：Web `31` test files／`99` tests、API `178` passed／`1` skipped；production build、Ruff、migration drift、performance smoke 與 Docker runtime smoke 全數通過。
+
+Enterprise-ready 邊界：本階段完成 SIEM destination／policy readiness 與 Company Connector 隔離接縫，不代表已連上公司 SIEM、PDM、MES 或正式資料庫。實際切換仍須提供公司端 endpoint、credential／Vault、資料 owner、mapping 樣本及正式容量測試；不應在缺少這些外部條件時宣稱 production integration 完成。
+
 ---
 
 ## 十、測試與驗收策略
@@ -601,12 +617,12 @@ GET    /api/v1/{resources}/{id}/audit
 
 - [x] 確認 H0 coverage matrix 與 API contract。
 - [x] 確認目前前後端 baseline tests；Docker／Sites Demo／MCP smoke test 於各實作階段持續驗證。
-- [ ] 建立完整 Trial、CAE、HMI、CAD、Knowledge、Rule fixtures。
-- [ ] 確認各 entity lifecycle 與可修改欄位。
-- [ ] 確認 Demo role mapping 與 Enterprise permissions。
-- [ ] 確認 deep link 不包含敏感資訊。
+- [x] 建立完整 Trial、CAE、HMI、CAD、Knowledge、Rule fixtures。
+- [x] 確認各 entity lifecycle 與可修改欄位。
+- [x] 確認 Demo role mapping 與 Enterprise permissions。
+- [x] 確認 deep link 不包含敏感資訊。
 - [x] 確認 Audit redaction 與不可變策略。
-- [ ] 確認每個 Phase 的測試、文件與 Git commit 邊界。
+- [x] 確認每個 Phase 的測試、文件與 Git commit 邊界。
 
 完成以上檢查後，建議從 **Phase H0 → H1 → H2** 開始，先讓所有使用者能穩定找到並查看完整歷史資料，再逐步開放受治理的修改能力。
 
@@ -619,4 +635,4 @@ GET    /api/v1/{resources}/{id}/audit
 - [x] H4：受控編輯、Correction、Process／CAE append、HMI review／Profile Draft、Registry／Artifact governance 與 409 UI。
 - [x] H5：Rule Draft／validation／workflow／version diff 與 Knowledge chunks／versions／citations／superseding upload。
 - [x] H6：分析、Job、Audit 與 Lineage 中心。
-- [ ] H7：效能、批次與 Enterprise 強化。
+- [x] H7：效能、批次與 Enterprise 強化。

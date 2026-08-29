@@ -3,6 +3,7 @@ from datetime import date
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db.models import Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -70,6 +71,7 @@ from .models import (
     CAEComparison,
     CAERun,
     CAEStudy,
+    DataScope,
     HMIExtraction,
     Job,
     KnowledgeDocument,
@@ -80,6 +82,7 @@ from .models import (
     SimilaritySearch,
     TrialCase,
 )
+from .pagination import PaginationValueError, paginate
 from .process_connectors import SyntheticProcessTrialConnector, seed_demo_process_trials
 from .process_trial import (
     ProcessTrialValidationError,
@@ -238,17 +241,29 @@ class HMIExtractionListCreateView(APIView):
 
     def get(self, request: Request) -> Response:
         extractions = _hmi_extraction_queryset().filter(
-            image_artifact_version__classification="public_demo"
-        )[:25]
+            image_artifact_version__classification__in=_allowed_classifications(request)
+        )
+        if status_filter := request.query_params.get("status"):
+            extractions = extractions.filter(review_status=status_filter)
         serializer = (
             _hmi_extraction_summary
             if request.query_params.get("view") == "summary"
             else extraction_payload
         )
+        try:
+            records, page = paginate(
+                request,
+                extractions,
+                allowed_sort={"created_at": "created_at", "review_status": "review_status"},
+                default_sort="-created_at",
+            )
+        except PaginationValueError as exc:
+            return _error_response("VALIDATION_PAGINATION", str(exc), 400)
         return Response(
             {
                 "schema_version": "1.0",
-                "items": [serializer(extraction) for extraction in extractions],
+                "items": [serializer(extraction) for extraction in records],
+                "page": page,
             }
         )
 
@@ -385,6 +400,17 @@ def _error_response(code: str, message: str, http_status: int) -> Response:
     )
 
 
+def _allowed_classifications(request: Request) -> list[str]:
+    scope_codes = set(getattr(request._request, "mold_ai_data_scopes", set())) or {
+        "public-demo"
+    }
+    return list(
+        DataScope.objects.filter(code__in=scope_codes, is_active=True)
+        .values_list("classification", flat=True)
+        .distinct()
+    )
+
+
 class CADArtifactListCreateView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -392,7 +418,10 @@ class CADArtifactListCreateView(APIView):
 
     def get(self, request: Request) -> Response:
         dataset_id = request.query_params.get("dataset_id", "").strip()
-        artifacts = Artifact.objects.filter(kind=Artifact.Kind.CAD_SOURCE)
+        artifacts = Artifact.objects.filter(
+            kind=Artifact.Kind.CAD_SOURCE,
+            classification__in=_allowed_classifications(request),
+        )
         if dataset_id:
             artifacts = artifacts.filter(dataset_id=dataset_id[:128])
         else:
@@ -401,14 +430,33 @@ class CADArtifactListCreateView(APIView):
             "versions__input_jobs",
             "versions__cad_model__preview_artifact_version",
             "versions__cad_model__feature_sets",
-        ).order_by("-created_at")[:25]
+        )
+        if status_filter := request.query_params.get("status"):
+            artifacts = artifacts.filter(lifecycle_status=status_filter)
         serializer = (
             artifact_summary_payload
             if request.query_params.get("view") == "summary"
             else artifact_payload
         )
+        try:
+            records, page = paginate(
+                request,
+                artifacts,
+                allowed_sort={
+                    "created_at": "created_at",
+                    "name": "name",
+                    "lifecycle_status": "lifecycle_status",
+                },
+                default_sort="-created_at",
+            )
+        except PaginationValueError as exc:
+            return _error_response("VALIDATION_PAGINATION", str(exc), 400)
         return Response(
-            {"schema_version": "1.0", "items": [serializer(a) for a in artifacts]}
+            {
+                "schema_version": "1.0",
+                "items": [serializer(artifact) for artifact in records],
+                "page": page,
+            }
         )
 
     def post(self, request: Request) -> Response:
@@ -548,31 +596,34 @@ class KnowledgeDocumentListCreateView(APIView):
     def get(self, request: Request) -> Response:
         documents = (
             KnowledgeDocument.objects.select_related("artifact_version__artifact")
-            .order_by("-created_at")
             .filter(artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET)
         )
-        try:
-            page = max(1, int(request.query_params.get("page", 1)))
-            page_size = min(100, max(1, int(request.query_params.get("page_size", 25))))
-        except ValueError:
-            return _error_response(
-                "VALIDATION_PAGINATION",
-                "page and page_size must be integers.",
-                status.HTTP_400_BAD_REQUEST,
-            )
         if publication_status := request.query_params.get("publication_status"):
             documents = documents.filter(publication_status=publication_status)
-        total = documents.count()
-        start = (page - 1) * page_size
-        items = [
-            knowledge_document_payload(document)
-            for document in documents[start : start + page_size]
-        ]
+        if query := request.query_params.get("q"):
+            documents = documents.filter(
+                Q(artifact_version__artifact__name__icontains=query)
+                | Q(document_key__icontains=query)
+                | Q(document_type__icontains=query)
+            )
+        try:
+            records, page = paginate(
+                request,
+                documents,
+                allowed_sort={
+                    "created_at": "created_at",
+                    "document_type": "document_type",
+                    "publication_status": "publication_status",
+                },
+                default_sort="-created_at",
+            )
+        except PaginationValueError as exc:
+            return _error_response("VALIDATION_PAGINATION", str(exc), 400)
         return Response(
             {
                 "schema_version": "1.0",
-                "items": items,
-                "page": {"number": page, "size": page_size, "total": total},
+                "items": [knowledge_document_payload(document) for document in records],
+                "page": page,
             }
         )
 

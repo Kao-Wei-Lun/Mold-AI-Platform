@@ -5,6 +5,7 @@ import json
 import re
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.authentication import SessionAuthentication
@@ -30,6 +31,7 @@ from .models import (
     TrialCase,
     TrialCorrectionRecord,
 )
+from .pagination import PaginationValueError, paginate
 from .process_trial import trial_case_payload, trial_case_queryset
 
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
@@ -131,19 +133,56 @@ def _payload_hash(payload: object) -> str:
     ).hexdigest()
 
 
+def _history_page(
+    request: Request, queryset, serializer, *, allowed_sort: dict[str, str], default_sort: str
+) -> Response:
+    try:
+        records, page = paginate(
+            request, queryset, allowed_sort=allowed_sort, default_sort=default_sort
+        )
+    except PaginationValueError as exc:
+        return _error(request, "VALIDATION_PAGINATION", str(exc), 400)
+    return Response(
+        {
+            "schema_version": "1.0",
+            "items": [serializer(record) for record in records],
+            "page": page,
+        }
+    )
+
+
 class GovernedTrialCaseListView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []
 
     def get(self, request: Request) -> Response:
-        trials = trial_case_queryset().order_by("case_code")[:100]
+        trials = trial_case_queryset()
+        if query := request.query_params.get("q"):
+            trials = trials.filter(
+                Q(case_code__icontains=query)
+                | Q(mold_revision_ref__icontains=query)
+                | Q(material_code__icontains=query)
+            )
+        if status_filter := request.query_params.get("status"):
+            trials = trials.filter(lifecycle_status=status_filter)
+        if machine := request.query_params.get("machine"):
+            trials = trials.filter(machine_code=machine)
         serializer = (
             trial_case_summary
             if request.query_params.get("view") == "summary"
             else trial_case_payload
         )
-        items = [serializer(item) for item in trials if "public-demo" in item.acl_scopes]
-        return Response({"schema_version": "1.0", "items": items})
+        return _history_page(
+            request,
+            trials,
+            serializer,
+            allowed_sort={
+                "case_code": "case_code",
+                "created_at": "created_at",
+                "started_at": "started_at",
+            },
+            default_sort="case_code",
+        )
 
     def post(self, request: Request) -> Response:
         if denied := _require(request, "engineering-data:manage"):
@@ -415,14 +454,24 @@ class GovernedCAEStudyListView(APIView):
     permission_classes: list = []
 
     def get(self, request: Request) -> Response:
-        studies = cae_study_queryset().order_by("study_code")[:100]
+        studies = cae_study_queryset()
+        if query := request.query_params.get("q"):
+            studies = studies.filter(
+                Q(study_code__icontains=query) | Q(mold_revision_ref__icontains=query)
+            )
+        if status_filter := request.query_params.get("status"):
+            studies = studies.filter(lifecycle_status=status_filter)
         serializer = (
             cae_study_summary
             if request.query_params.get("view") == "summary"
             else cae_study_payload
         )
-        return Response(
-            {"schema_version": "1.0", "items": [serializer(item) for item in studies]}
+        return _history_page(
+            request,
+            studies,
+            serializer,
+            allowed_sort={"study_code": "study_code", "created_at": "created_at"},
+            default_sort="study_code",
         )
 
     def post(self, request: Request) -> Response:
@@ -634,8 +683,14 @@ class HMIProfileListCreateView(APIView):
     def get(self, request: Request) -> Response:
         get_published_hmi_profile()
         profiles = HMIProfileVersion.objects.prefetch_related("extractions")
-        return Response(
-            {"schema_version": "1.0", "items": [hmi_profile_payload(item) for item in profiles]}
+        if status_filter := request.query_params.get("status"):
+            profiles = profiles.filter(status=status_filter)
+        return _history_page(
+            request,
+            profiles,
+            hmi_profile_payload,
+            allowed_sort={"profile_key": "profile_key", "created_at": "created_at"},
+            default_sort="-created_at",
         )
 
     def post(self, request: Request) -> Response:

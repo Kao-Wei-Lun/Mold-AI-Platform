@@ -11,6 +11,12 @@ from .engineering_data_views import (
     HMIProfileDetailView,
     HMIProfileListCreateView,
 )
+from .enterprise_views import (
+    BulkArchiveView,
+    BulkImportDetailView,
+    BulkImportListCreateView,
+    EnterprisePolicyView,
+)
 from .governance_views import (
     KnowledgeDocumentWorkflowView,
     RuleProfileDetailView,
@@ -262,6 +268,22 @@ urlpatterns = [
         name="history-audit-detail",
     ),
     path("history/lineage", LineageHistoryView.as_view(), name="history-lineage"),
+    path("enterprise/policy", EnterprisePolicyView.as_view(), name="enterprise-policy"),
+    path(
+        "enterprise/import-batches",
+        BulkImportListCreateView.as_view(),
+        name="enterprise-import-batch-list-create",
+    ),
+    path(
+        "enterprise/import-batches/<uuid:batch_id>",
+        BulkImportDetailView.as_view(),
+        name="enterprise-import-batch-detail",
+    ),
+    path(
+        "enterprise/bulk-archive",
+        BulkArchiveView.as_view(),
+        name="enterprise-bulk-archive",
+    ),
     path(
         "knowledge-documents",
         KnowledgeDocumentListCreateView.as_view(),

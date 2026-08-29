@@ -4,6 +4,7 @@ import csv
 import json
 import uuid
 
+from django.db.models import Count
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.authentication import SessionAuthentication
@@ -20,6 +21,8 @@ from .models import (
     ArtifactVersion,
     AuditEvent,
     CAEComparison,
+    DataScope,
+    EnterpriseDataPolicy,
     HistoryRecordState,
     Job,
     JobEvent,
@@ -96,7 +99,28 @@ def _state(record_type: str, record_id: uuid.UUID) -> dict[str, object]:
 
 def _analysis_rows() -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for item in SimilaritySearch.objects.select_related("job", "query_feature_set")[:100]:
+    states = {
+        (state.record_type, state.record_id): {
+            "status": state.status,
+            "row_version": state.row_version,
+            "archive_reason": state.archive_reason or None,
+            "archived_at": state.archived_at.isoformat() if state.archived_at else None,
+        }
+        for state in HistoryRecordState.objects.all()
+    }
+
+    def lifecycle(record_type: str, record_id: uuid.UUID) -> dict[str, object]:
+        return states.get(
+            (record_type, record_id),
+            {
+                "status": "active",
+                "row_version": 1,
+                "archive_reason": None,
+                "archived_at": None,
+            },
+        )
+
+    for item in SimilaritySearch.objects.select_related("job", "query_feature_set"):
         rows.append(
             {
                 "analysis_type": "similarity",
@@ -106,10 +130,12 @@ def _analysis_rows() -> list[dict[str, object]]:
                 "job_id": str(item.job_id),
                 "created_at": item.created_at.isoformat(),
                 "result_count": len(item.result.get("candidates", [])),
-                "lifecycle": _state("similarity", item.id),
+                "lifecycle": lifecycle("similarity", item.id),
             }
         )
-    for item in ReviewRun.objects.select_related("job", "profile")[:100]:
+    for item in ReviewRun.objects.select_related("job", "profile").annotate(
+        finding_count=Count("findings")
+    ):
         rows.append(
             {
                 "analysis_type": "design_review",
@@ -118,11 +144,11 @@ def _analysis_rows() -> list[dict[str, object]]:
                 "state": item.review_status,
                 "job_id": str(item.job_id),
                 "created_at": item.created_at.isoformat(),
-                "result_count": item.findings.count(),
-                "lifecycle": _state("design_review", item.id),
+                "result_count": item.finding_count,
+                "lifecycle": lifecycle("design_review", item.id),
             }
         )
-    for item in KnowledgeSearch.objects.all()[:100]:
+    for item in KnowledgeSearch.objects.all():
         rows.append(
             {
                 "analysis_type": "knowledge_search",
@@ -132,10 +158,10 @@ def _analysis_rows() -> list[dict[str, object]]:
                 "job_id": None,
                 "created_at": item.created_at.isoformat(),
                 "result_count": len(item.result.get("results", [])),
-                "lifecycle": _state("knowledge_search", item.id),
+                "lifecycle": lifecycle("knowledge_search", item.id),
             }
         )
-    for item in ProcessCaseSearch.objects.all()[:100]:
+    for item in ProcessCaseSearch.objects.all():
         rows.append(
             {
                 "analysis_type": "process_search",
@@ -145,10 +171,10 @@ def _analysis_rows() -> list[dict[str, object]]:
                 "job_id": None,
                 "created_at": item.created_at.isoformat(),
                 "result_count": int(item.result.get("result_count", 0)),
-                "lifecycle": _state("process_search", item.id),
+                "lifecycle": lifecycle("process_search", item.id),
             }
         )
-    for item in CAEComparison.objects.select_related("baseline_run", "candidate_run")[:100]:
+    for item in CAEComparison.objects.select_related("baseline_run", "candidate_run"):
         rows.append(
             {
                 "analysis_type": "cae_comparison",
@@ -158,7 +184,7 @@ def _analysis_rows() -> list[dict[str, object]]:
                 "job_id": None,
                 "created_at": item.created_at.isoformat(),
                 "result_count": len(item.result.get("metric_deltas", [])),
-                "lifecycle": _state("cae_comparison", item.id),
+                "lifecycle": lifecycle("cae_comparison", item.id),
             }
         )
     return sorted(rows, key=lambda item: str(item["created_at"]), reverse=True)
@@ -615,6 +641,20 @@ class AuditExportView(APIView):
     def get(self, request: Request) -> HttpResponse:
         if denied := _require(request, "audit:export"):
             return denied
+        scope_code = str(request.query_params.get("scope", "public-demo"))
+        if scope_code not in getattr(request._request, "mold_ai_data_scopes", {"public-demo"}):
+            return _error(request, "DATA_SCOPE_DENIED", "Data scope is not assigned.", 403)
+        scope = DataScope.objects.filter(code=scope_code, is_active=True).first()
+        if scope is None:
+            return _error(request, "DATA_SCOPE_NOT_FOUND", "Data scope not found.", 404)
+        policy = EnterpriseDataPolicy.objects.filter(scope=scope).first()
+        if policy and (not policy.export_allowed or policy.legal_hold):
+            return _error(
+                request,
+                "DLP_EXPORT_BLOCKED",
+                "Audit export is blocked by the scope data policy.",
+                409,
+            )
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="mold-ai-audit.csv"'
         writer = csv.writer(response)
@@ -645,8 +685,12 @@ class AuditExportView(APIView):
         audit_identity_event(
             "audit.exported.v1",
             actor_id=_actor(request),
-            target_refs=["audit:export"],
-            detail={"reason": "Authorized audit export", "filters": dict(request.query_params)},
+            target_refs=["audit:export", f"scope:{scope.code}"],
+            detail={
+                "reason": "Authorized audit export",
+                "filters": dict(request.query_params),
+                "dlp_redaction": bool(policy and policy.dlp_enabled),
+            },
         )
         return response
 

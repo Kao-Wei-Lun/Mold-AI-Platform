@@ -39,6 +39,9 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "lineage:read",
     "analysis:read",
     "analysis:manage",
+    "enterprise:read",
+    "enterprise:manage",
+    "bulk:manage",
 }
 
 
