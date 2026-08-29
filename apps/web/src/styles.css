@@ -4300,6 +4300,10 @@ button:not(:disabled):active { transform: translateY(0); }
 .history-export-list article small,
 .history-export-list article time { color: #748497; font-size: 0.68rem; }
 .history-export-list article a { border-radius: 8px; padding: 0.5rem 0.7rem; color: #fff; background: #2f67c5; font-size: 0.72rem; text-decoration: none; }
+.registry-cad-history { display: grid; gap: 0.9rem; }
+.registry-history-tabs { display: flex; gap: 0.4rem; border-bottom: 1px solid #dbe4ed; }
+.registry-history-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0.6rem 0.8rem; color: #65778d; background: transparent; box-shadow: none; }
+.registry-history-tabs button.active { border-bottom-color: #2f68c7; color: #2458aa; }
 
 @media (prefers-reduced-motion: no-preference) {
   .page-header,

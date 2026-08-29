@@ -28,6 +28,7 @@ from .cae_connectors import SyntheticCAEConnector, seed_demo_cae_studies
 from .capabilities import engineering_capabilities_payload
 from .contracts import (
     artifact_payload,
+    artifact_summary_payload,
     job_payload,
     review_decision_payload,
     review_payload,
@@ -401,8 +402,13 @@ class CADArtifactListCreateView(APIView):
             "versions__cad_model__preview_artifact_version",
             "versions__cad_model__feature_sets",
         ).order_by("-created_at")[:25]
+        serializer = (
+            artifact_summary_payload
+            if request.query_params.get("view") == "summary"
+            else artifact_payload
+        )
         return Response(
-            {"schema_version": "1.0", "items": [artifact_payload(a) for a in artifacts]}
+            {"schema_version": "1.0", "items": [serializer(a) for a in artifacts]}
         )
 
     def post(self, request: Request) -> Response:
@@ -503,6 +509,8 @@ class CADArtifactDetailView(APIView):
                 "versions__input_jobs",
                 "versions__cad_model__preview_artifact_version",
                 "versions__cad_model__feature_sets",
+                "versions__lineage_out",
+                "versions__lineage_in",
             ),
             pk=artifact_id,
             kind=Artifact.Kind.CAD_SOURCE,

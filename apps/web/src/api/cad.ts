@@ -7,6 +7,12 @@ export type ArtifactVersion = {
   format: string;
   size_bytes: number;
   sha256: string;
+  version_number?: number;
+  classification?: string;
+  malware_status?: string;
+  source_system?: string;
+  supersedes_id?: string | null;
+  created_at?: string;
   download_url: string;
 };
 
@@ -37,6 +43,16 @@ export type CADModelResult = {
     status: "pending" | "indexed" | "failed";
     error_code: string | null;
   } | null;
+  feature_sets?: Array<{
+    feature_set_id: string;
+    schema_version: string;
+    extractor_version: string;
+    index_collection: string;
+    index_version: string;
+    status: string;
+    error_code: string | null;
+    created_at: string;
+  }>;
 };
 
 export type CADJob = {
@@ -92,6 +108,38 @@ export type CADArtifactSummary = {
     dataset_version?: string;
   } | null;
   jobs: CADJob[];
+  versions?: ArtifactVersion[];
+  lineage?: CADLineageEdge[];
+};
+
+export type CADHistorySummary = {
+  artifact_id: string;
+  name: string;
+  kind: "cad_source";
+  classification: string;
+  dataset_id: string;
+  product_type: string;
+  material_code: string;
+  mold_revision_id: string | null;
+  mold_revision: string | null;
+  lifecycle_status: string;
+  quality_status: string;
+  version_count: number;
+  job_count: number;
+  latest_version_id: string | null;
+  latest_format: string | null;
+  latest_job_state: string | null;
+  created_at: string;
+};
+
+export type CADLineageEdge = {
+  edge_id: string;
+  from_artifact_version_id: string;
+  to_artifact_version_id: string;
+  relationship: string;
+  job_id: string;
+  direction: "inbound" | "outbound";
+  created_at: string;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
@@ -147,4 +195,21 @@ export async function fetchRecentCAD(datasetId?: string): Promise<CADArtifactSum
     items: CADArtifactSummary[];
   };
   return payload.items;
+}
+
+export async function fetchCADHistory(): Promise<CADHistorySummary[]> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts?view=summary`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const payload = (await response.json()) as { items: CADHistorySummary[] };
+  return payload.items;
+}
+
+export async function fetchCADArtifactDetail(id: string): Promise<CADArtifactSummary> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return await response.json();
 }

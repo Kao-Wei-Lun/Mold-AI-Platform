@@ -329,6 +329,53 @@ class PartListCreateView(APIView):
         return Response(part_payload(part), status=201)
 
 
+class PartDetailView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, part_id: str) -> Response:
+        if denied := _require(request, "registry:read"):
+            return denied
+        part = (
+            ProductPart.objects.select_related("project")
+            .prefetch_related("molds__revisions")
+            .filter(id=part_id)
+            .first()
+        )
+        if part is None:
+            return _error(request, "NOT_FOUND", "Product part not found.", 404)
+        payload = part_payload(part)
+        payload["molds"] = [mold_payload(item, include_revisions=True) for item in part.molds.all()]
+        return Response(payload)
+
+    def patch(self, request: Request, part_id: str) -> Response:
+        if denied := _require(request, "registry:manage"):
+            return denied
+        part = ProductPart.objects.select_related("project").filter(id=part_id).first()
+        if part is None:
+            return _error(request, "NOT_FOUND", "Product part not found.", 404)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        if "part_number" in request.data and request.data["part_number"] != part.part_number:
+            return _error(request, "CANONICAL_CODE_IMMUTABLE", "Part number is immutable.", 409)
+        if int(request.data.get("row_version", 0)) != part.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "Product part changed.", 409)
+        for field in ("name", "product_type", "material_code", "status"):
+            if field in request.data:
+                setattr(part, field, str(request.data[field]).strip())
+        part.row_version += 1
+        part.updated_by = _actor(request)
+        part.save()
+        audit_identity_event(
+            "registry.part.updated.v1",
+            actor_id=_actor(request),
+            target_refs=[f"part:{part.id}"],
+            detail={"reason": reason, "status": part.status},
+        )
+        return Response(part_payload(part))
+
+
 class MoldListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []

@@ -6,6 +6,7 @@ import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
+import RegistryCadHistoryWorkspace from "./RegistryCadHistoryWorkspace.vue";
 import RecordHeader from "./RecordHeader.vue";
 
 type HistoryDomain = {
@@ -78,6 +79,13 @@ function openDomain(domain: HistoryDomain): void {
 
     <EngineeringHistoryWorkspace
       v-else-if="currentSlug === 'trials' || currentSlug === 'cae' || currentSlug === 'hmi'"
+      :domain="currentSlug"
+      :path="path"
+      @navigate="emit('navigate', $event)"
+    />
+
+    <RegistryCadHistoryWorkspace
+      v-else-if="currentSlug === 'molds' || currentSlug === 'cad-artifacts'"
       :domain="currentSlug"
       :path="path"
       @navigate="emit('navigate', $event)"

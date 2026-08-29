@@ -60,6 +60,12 @@ class CADProcessingTaskTests(TestCase):
         self.assertEqual(status_response.status_code, 200)
         self.assertEqual(status_response.json()["result"]["face_count"], 4)
 
+        artifact_detail = self.client.get(f"/api/v1/cad-artifacts/{records.artifact.id}")
+        self.assertEqual(artifact_detail.status_code, 200)
+        self.assertEqual(len(artifact_detail.json()["versions"]), 1)
+        self.assertEqual(len(artifact_detail.json()["lineage"]), 1)
+        self.assertEqual(artifact_detail.json()["lineage"][0]["relationship"], "derived_from")
+
         preview_url = status_response.json()["result"]["preview"]["download_url"]
         preview_response = self.client.get(preview_url)
         self.assertEqual(preview_response.status_code, 200)

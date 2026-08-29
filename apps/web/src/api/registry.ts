@@ -11,6 +11,8 @@ export type RegistryProject = {
   row_version: number;
   part_count: number;
   mold_count: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type RegistryPart = {
@@ -23,6 +25,10 @@ export type RegistryPart = {
   material_code: string;
   status: "active" | "archived";
   row_version: number;
+  mold_count?: number;
+  molds?: RegistryMold[];
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type RegistryMold = {
@@ -38,6 +44,9 @@ export type RegistryMold = {
   status: "active" | "retired" | "archived";
   row_version: number;
   revision_count: number;
+  revisions?: RegistryRevision[];
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type RegistryRevision = {
@@ -52,6 +61,22 @@ export type RegistryRevision = {
   row_version: number;
   released_at: string | null;
   artifact_count: number;
+  artifacts?: RegistryArtifactGovernance[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RegistryArtifactGovernance = {
+  artifact_id: string;
+  name: string;
+  mold_revision_id: string | null;
+  mold_revision: string | null;
+  lifecycle_status: string;
+  quality_status: string;
+  archive_reason: string | null;
+  archived_at: string | null;
+  references: { versions: number; jobs: number; feature_sets: number; design_reviews: number };
+  hard_delete_allowed: boolean;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
@@ -87,6 +112,22 @@ export async function fetchRegistry(): Promise<{
     molds: moldPayload.items,
     revisions: revisionPayload.items,
   };
+}
+
+export function fetchRegistryProjectDetail(id: string): Promise<RegistryProject> {
+  return request(`/api/v1/registry/projects/${id}`);
+}
+
+export function fetchRegistryPartDetail(id: string): Promise<RegistryPart> {
+  return request(`/api/v1/registry/parts/${id}`);
+}
+
+export function fetchRegistryMoldDetail(id: string): Promise<RegistryMold> {
+  return request(`/api/v1/registry/molds/${id}`);
+}
+
+export function fetchRegistryRevisionDetail(id: string): Promise<RegistryRevision> {
+  return request(`/api/v1/registry/revisions/${id}`);
 }
 
 export function createProject(input: {

@@ -95,3 +95,11 @@ class CuratedCADSeedTests(TestCase):
             "/api/v1/cad-artifacts", {"dataset_id": AUTOMATED_CAD_SMOKE_DATASET}
         )
         self.assertEqual(len(smoke.json()["items"]), 1)
+
+        summary = self.client.get("/api/v1/cad-artifacts", {"view": "summary"})
+        summary_item = summary.json()["items"][0]
+        self.assertEqual(summary_item["artifact_id"], str(curated.id))
+        self.assertEqual(summary_item["version_count"], 0)
+        self.assertEqual(summary_item["job_count"], 0)
+        self.assertNotIn("versions", summary_item)
+        self.assertNotIn("jobs", summary_item)

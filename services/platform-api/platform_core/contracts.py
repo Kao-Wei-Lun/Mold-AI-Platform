@@ -25,6 +25,8 @@ def artifact_version_payload(version: ArtifactVersion) -> dict[str, object]:
         "sha256": version.sha256,
         "classification": version.classification,
         "malware_status": version.malware_status,
+        "source_system": version.source_system,
+        "supersedes_id": str(version.supersedes_id) if version.supersedes_id else None,
         "created_at": version.created_at.isoformat(),
         "download_url": f"/api/v1/artifact-versions/{version.id}/download",
     }
@@ -34,7 +36,8 @@ def cad_model_payload(cad_model: CADModel) -> dict[str, object]:
     preview = None
     if cad_model.preview_artifact_version_id:
         preview = artifact_version_payload(cad_model.preview_artifact_version)
-    feature_set = cad_model.feature_sets.order_by("-created_at").first()
+    feature_sets = list(cad_model.feature_sets.order_by("-created_at"))
+    feature_set = feature_sets[0] if feature_sets else None
     similarity_index = None
     if feature_set:
         similarity_index = {
@@ -64,6 +67,19 @@ def cad_model_payload(cad_model: CADModel) -> dict[str, object]:
         "quality_flags": cad_model.quality_flags,
         "preview": preview,
         "similarity_index": similarity_index,
+        "feature_sets": [
+            {
+                "feature_set_id": str(item.id),
+                "schema_version": item.schema_version,
+                "extractor_version": item.extractor_version,
+                "index_collection": item.index_collection,
+                "index_version": item.index_version,
+                "status": item.index_status,
+                "error_code": item.index_error_code or None,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in feature_sets
+        ],
     }
 
 
@@ -134,6 +150,27 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
                 candidate = job.input_snapshot.get("source")
                 if isinstance(candidate, dict):
                     source = candidate
+    lineage = []
+    version_ids = {version.id for version in versions}
+    seen_edges = set()
+    for version in versions:
+        for edge in [*version.lineage_out.all(), *version.lineage_in.all()]:
+            if edge.id in seen_edges:
+                continue
+            seen_edges.add(edge.id)
+            lineage.append(
+                {
+                    "edge_id": str(edge.id),
+                    "from_artifact_version_id": str(edge.from_artifact_version_id),
+                    "to_artifact_version_id": str(edge.to_artifact_version_id),
+                    "relationship": edge.relationship,
+                    "job_id": str(edge.job_id),
+                    "direction": (
+                        "outbound" if edge.from_artifact_version_id in version_ids else "inbound"
+                    ),
+                    "created_at": edge.created_at.isoformat(),
+                }
+            )
     return {
         "artifact_id": str(artifact.id),
         "name": artifact.name,
@@ -158,6 +195,37 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "source": source,
         "versions": [artifact_version_payload(version) for version in versions],
         "jobs": jobs,
+        "lineage": lineage,
+    }
+
+
+def artifact_summary_payload(artifact: Artifact) -> dict[str, object]:
+    versions = list(artifact.versions.all())
+    jobs = [job for version in versions for job in version.input_jobs.all()]
+    latest_version = versions[0] if versions else None
+    latest_job = jobs[0] if jobs else None
+    return {
+        "artifact_id": str(artifact.id),
+        "name": artifact.name,
+        "kind": artifact.kind,
+        "classification": artifact.classification,
+        "dataset_id": artifact.dataset_id,
+        "product_type": artifact.product_type,
+        "material_code": artifact.material_code,
+        "mold_revision_id": str(artifact.mold_revision_id) if artifact.mold_revision_id else None,
+        "mold_revision": (
+            f"{artifact.mold_revision.mold.mold_code}@{artifact.mold_revision.revision_code}"
+            if artifact.mold_revision_id
+            else None
+        ),
+        "lifecycle_status": artifact.lifecycle_status,
+        "quality_status": artifact.quality_status,
+        "version_count": len(versions),
+        "job_count": len(jobs),
+        "latest_version_id": str(latest_version.id) if latest_version else None,
+        "latest_format": latest_version.format if latest_version else None,
+        "latest_job_state": latest_job.state if latest_job else None,
+        "created_at": artifact.created_at.isoformat(),
     }
 
 

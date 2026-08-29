@@ -144,6 +144,35 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(renamed.status_code, 409)
 
+    def test_part_detail_supports_read_and_controlled_update(self):
+        _, part, _, _ = self.create_hierarchy()
+        detail = self.client.get(f"/api/v1/registry/parts/{part['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["part_number"], "PART-001")
+        self.assertEqual(len(detail.json()["molds"]), 1)
+
+        updated = self.client.patch(
+            f"/api/v1/registry/parts/{part['id']}",
+            {
+                "name": "Updated housing",
+                "row_version": 1,
+                "reason": "Correct governed display name",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["name"], "Updated housing")
+        immutable = self.client.patch(
+            f"/api/v1/registry/parts/{part['id']}",
+            {
+                "part_number": "RENAMED",
+                "row_version": 2,
+                "reason": "Must fail",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(immutable.status_code, 409)
+
     def test_artifact_can_be_linked_and_archived_without_hard_delete(self):
         _, _, _, revision = self.create_hierarchy()
         artifact = Artifact.objects.create(
