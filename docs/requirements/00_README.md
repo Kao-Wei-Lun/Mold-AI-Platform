@@ -31,6 +31,7 @@
 12. [帳號、身分與存取管理 SRS](12_Identity_Access_Account_Management_SRS.md)：本機帳號、Enterprise SSO、RBAC + ABAC、職責分離、Session、服務帳號及 MCP delegated identity。
 13. [資料管理與 IAM 實作、測試及驗收計畫](13_Data_Management_Implementation_Test_Acceptance.md)：分階段交付、Migration、測試矩陣、UAT、Git Gate、Release 與 Definition of Done。
 14. [外網 Sites、個人帳號、MCP 與 ChatGPT Plugin UI SRS](14_External_Sites_Identity_MCP_Plugin_UI_SRS.md)：定義外網個人 session、MCP 服務身分、穩定 deep link、Plugin UI `openExternal` 第二種體驗、威脅模型與 UAT。
+15. [模具規定與工程資料新增／匯入強化 SRS](15_Rule_and_Data_Ingestion_Enhancement_SRS.md)：將「主資料」改為使用者可理解的「工程基礎資料」，並定義模具類型、規則適用性、結構化規則編輯器、統一新增資料與批次匯入中心、權限、測試及分階段實作 Gate。
 
 目前 Stage 12 之後的可執行開發順序、工作拆解、Gate、風險與 Web UI 改良計畫，另見
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。Planning 文件將本 SRS 的 MUST
