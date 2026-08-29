@@ -4278,6 +4278,30 @@ button:not(:disabled):active { transform: translateY(0); }
 .history-list-heading p { margin: 0; }
 .history-list-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .history-stack { display: grid; gap: 0.9rem; }
+.operational-history-workspace { display: grid; gap: 1rem; }
+.history-filter-strip,
+.history-lineage-query,
+.history-inline-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 0.65rem; }
+.history-filter-strip { padding: 0.8rem; border: 1px solid #d8e3ef; border-radius: 13px; background: #f8fbff; }
+.history-filter-strip label,
+.history-lineage-query label { display: grid; min-width: 13rem; gap: 0.3rem; }
+.history-filter-strip label > span,
+.history-lineage-query label > span { color: #526981; font-size: 0.7rem; font-weight: 800; }
+.history-json { overflow: auto; max-height: 34rem; margin: 0; border: 1px solid #d9e2ec; border-radius: 13px; padding: 1rem; background: #132238; color: #d9e9ff; font: 0.76rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+.history-event-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.history-event-timeline li { position: relative; display: grid; grid-template-columns: minmax(10rem, 0.45fr) 1fr minmax(9rem, 0.35fr); gap: 0.7rem; border-left: 3px solid #72a0e6; padding: 0.7rem 0.8rem 0.7rem 1rem; background: #f8fbff; }
+.history-event-timeline li + li { border-top: 1px solid #e2eaf3; }
+.history-event-timeline span,
+.history-event-timeline small { color: #657b93; }
+.history-lineage-query { border: 1px solid #cddced; border-radius: 13px; padding: 1rem; background: linear-gradient(135deg, #f8fbff, #f1f6fd); }
+.history-lineage-query label:nth-child(2) { flex: 1; }
+.history-lineage-summary { display: grid; grid-template-columns: auto auto auto auto 1fr; align-items: baseline; gap: 0.35rem; border-radius: 13px; padding: 0.9rem 1rem; background: #eaf2ff; color: #244e87; }
+.history-lineage-summary strong { font-size: 1.35rem; }
+.history-lineage-handoff { border: 1px dashed #a9bdd6; border-radius: 13px; padding: 1rem; color: #526981; }
+.history-compare-panel { display: grid; gap: 0.8rem; }
+.history-compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
+.history-compare-grid article { display: grid; min-width: 0; gap: 0.45rem; }
+.history-compare-grid article > strong { overflow: hidden; color: #526981; font-size: 0.72rem; text-overflow: ellipsis; }
 .history-detail-card { display: grid; gap: 0.75rem; border: 1px solid #d9e3ec; border-radius: 15px; padding: 1rem; background: #fff; }
 .history-detail-card h3,
 .history-detail-card h4 { margin: 0; }

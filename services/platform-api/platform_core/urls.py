@@ -18,6 +18,16 @@ from .governance_views import (
     RuleProfileGovernanceListView,
     RuleProfileWorkflowView,
 )
+from .history_views import (
+    AnalysisDetailView,
+    AnalysisHistoryView,
+    AuditDetailView,
+    AuditExportView,
+    AuditHistoryView,
+    JobHistoryDetailView,
+    JobHistoryView,
+    LineageHistoryView,
+)
 from .identity_views import (
     AccountDetailView,
     AccountListCreateView,
@@ -228,6 +238,30 @@ urlpatterns = [
         name="cad-artifact-detail",
     ),
     path("jobs/<uuid:job_id>", JobDetailView.as_view(), name="job-detail"),
+    path("history/analyses", AnalysisHistoryView.as_view(), name="history-analysis-list"),
+    path(
+        "history/analyses/<str:record_type>/<uuid:record_id>",
+        AnalysisDetailView.as_view(),
+        name="history-analysis-detail",
+    ),
+    path("history/jobs", JobHistoryView.as_view(), name="history-job-list"),
+    path(
+        "history/jobs/<uuid:job_id>",
+        JobHistoryDetailView.as_view(),
+        name="history-job-detail",
+    ),
+    path("history/audit-events", AuditHistoryView.as_view(), name="history-audit-list"),
+    path(
+        "history/audit-events/export",
+        AuditExportView.as_view(),
+        name="history-audit-export",
+    ),
+    path(
+        "history/audit-events/<uuid:event_id>",
+        AuditDetailView.as_view(),
+        name="history-audit-detail",
+    ),
+    path("history/lineage", LineageHistoryView.as_view(), name="history-lineage"),
     path(
         "knowledge-documents",
         KnowledgeDocumentListCreateView.as_view(),

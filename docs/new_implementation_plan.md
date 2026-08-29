@@ -1,6 +1,6 @@
 # Mold AI Platform — 歷史資料管理功能詳細修改規劃
 
-> 文件狀態：已授權實作；Phase H5 Rule 與 Knowledge 版本管理完成
+> 文件狀態：已授權實作；Phase H6 分析、Job、Audit 與 Lineage 中心完成
 > 適用範圍：目前 Demo 與未來 Enterprise 資料管理體驗
 > 核心目標：讓使用者不只看見資料標題或摘要，而能完整查閱、追溯、受控修改、比較版本及確認資料來源，同時維持工程歷史與 AI 結果的可重現性。
 
@@ -476,6 +476,19 @@ GET    /api/v1/{resources}/{id}/audit
 
 建議 commit：`feat(history): add analysis jobs audit and lineage center`
 
+完成內容（2026-08-29）：
+
+- 建立統一 Analysis History API／UI，聚合 Similarity、Design Review、Knowledge Search、Process Search 與 CAE Comparison；提供完整 Inputs、Result、相關 Job、生命週期與同類結果並排比較。
+- Derived result 保持不可變；管理者只能建立 Rerun、Archive 或 Restore。Rerun 建立新結果／新 Job，Archive 使用獨立 `HistoryRecordState` 與 `row_version`，不覆寫歷史結果。
+- 建立 Job History API／UI，提供 capability／state 篩選、輸入快照、結果／錯誤與 append-only JobEvent 時間軸；支援合法狀態下的取消要求與以新 Job 重試。
+- `JobEvent` 與 `AuditEvent` 增加 application-level append-only 保護；既有事件無法經 model instance 修改或刪除。
+- 建立唯讀 Audit API／UI、事件類型／Actor／Target／日期篩選、敏感欄位遞迴遮蔽及具 `audit:export` 權限的 CSV 匯出；匯出行為本身也建立 AuditEvent。
+- 建立 normalized Lineage API／UI，以 ArtifactVersion 或 Job 為 root，回傳可供圖形與表格共同使用的 nodes／edges；目前 UI 先提供可存取的表格與關係 JSON 檢視。
+- 新增 `analysis:read/manage`、`job:read/cancel/retry`、`audit:read/export`、`lineage:read` 權限並映射既有 Demo roles；所有後端操作仍執行 permission check，前端依權限顯示動作。
+- WebGL 無法初始化時 3D Viewer 改為受控錯誤狀態，避免歷史頁或語言切換測試因無 GPU／Canvas 環境崩潰。
+
+驗證結果：Web `30` test files／`97` tests、API `171` passed／`1` skipped／`9` subtests；production build、Ruff、migration drift 與 Docker runtime smoke 全數通過。
+
 ### Phase H7 — 效能、批次與 Enterprise 準備
 
 - 所有清單 server-side pagination/filter/sort 與索引。
@@ -592,7 +605,7 @@ GET    /api/v1/{resources}/{id}/audit
 - [ ] 確認各 entity lifecycle 與可修改欄位。
 - [ ] 確認 Demo role mapping 與 Enterprise permissions。
 - [ ] 確認 deep link 不包含敏感資訊。
-- [ ] 確認 Audit redaction 與不可變策略。
+- [x] 確認 Audit redaction 與不可變策略。
 - [ ] 確認每個 Phase 的測試、文件與 Git commit 邊界。
 
 完成以上檢查後，建議從 **Phase H0 → H1 → H2** 開始，先讓所有使用者能穩定找到並查看完整歷史資料，再逐步開放受治理的修改能力。
@@ -605,5 +618,5 @@ GET    /api/v1/{resources}/{id}/audit
 - [x] H3：Project／Part／Mold／Revision 詳細資料、CAD 版本／3D／FeatureSet／Job／Lineage。
 - [x] H4：受控編輯、Correction、Process／CAE append、HMI review／Profile Draft、Registry／Artifact governance 與 409 UI。
 - [x] H5：Rule Draft／validation／workflow／version diff 與 Knowledge chunks／versions／citations／superseding upload。
-- [ ] H6：分析、Job、Audit 與 Lineage 中心。
+- [x] H6：分析、Job、Audit 與 Lineage 中心。
 - [ ] H7：效能、批次與 Enterprise 強化。

@@ -132,10 +132,17 @@ async function loadModel(source: string): Promise<void> {
 
 onMounted(() => {
   if (!canvas.value) return;
-  scene = new Scene();
-  scene.background = new Color(0xf4f7fb);
-  camera = new PerspectiveCamera(42, 1, 0.01, 100000);
-  renderer = new WebGLRenderer({ canvas: canvas.value, antialias: true });
+  try {
+    scene = new Scene();
+    scene.background = new Color(0xf4f7fb);
+    camera = new PerspectiveCamera(42, 1, 0.01, 100000);
+    renderer = new WebGLRenderer({ canvas: canvas.value, antialias: true });
+  } catch (caught) {
+    error.value = t("3D preview is unavailable because WebGL could not be initialized.");
+    errorDetail.value = caught instanceof Error ? caught.message : null;
+    loading.value = false;
+    return;
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   controls = new OrbitControls(camera, canvas.value);
   controls.enableDamping = true;

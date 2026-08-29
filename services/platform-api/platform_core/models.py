@@ -300,6 +300,14 @@ class JobEvent(models.Model):
     def __str__(self) -> str:
         return f"{self.job_id}: {self.from_state or 'created'} -> {self.to_state}"
 
+    def save(self, *args, **kwargs) -> None:
+        if self.pk and JobEvent.objects.filter(pk=self.pk).exists():
+            raise ValidationError({"job_event": "Job events are append-only."})
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError({"job_event": "Job events cannot be deleted."})
+
 
 class CADModel(models.Model):
     class GeometryStatus(models.TextChoices):
@@ -651,6 +659,42 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_type}:{self.id}"
+
+    def save(self, *args, **kwargs) -> None:
+        if self.pk and AuditEvent.objects.filter(pk=self.pk).exists():
+            raise ValidationError({"audit_event": "Audit events are append-only."})
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError({"audit_event": "Audit events cannot be deleted."})
+
+
+class HistoryRecordState(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    record_type = models.CharField(max_length=64)
+    record_id = models.UUIDField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    row_version = models.PositiveIntegerField(default=1)
+    archive_reason = models.CharField(max_length=512, blank=True)
+    archived_by = models.CharField(max_length=128, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["record_type", "record_id"], name="unique_history_record_state"
+            )
+        ]
+        indexes = [models.Index(fields=["record_type", "status"], name="history_type_status_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.record_type}:{self.record_id}:{self.status}"
 
 
 class AccountProfile(models.Model):

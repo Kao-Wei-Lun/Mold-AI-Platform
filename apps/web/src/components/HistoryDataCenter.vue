@@ -7,6 +7,7 @@ import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
 import GovernanceHistoryWorkspace from "./GovernanceHistoryWorkspace.vue";
+import OperationalHistoryWorkspace from "./OperationalHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RegistryCadHistoryWorkspace from "./RegistryCadHistoryWorkspace.vue";
 import RecordHeader from "./RecordHeader.vue";
@@ -97,6 +98,14 @@ function openDomain(domain: HistoryDomain): void {
 
     <GovernanceHistoryWorkspace
       v-else-if="currentSlug === 'rules' || currentSlug === 'knowledge'"
+      :domain="currentSlug"
+      :path="path"
+      :current-account="currentAccount"
+      @navigate="emit('navigate', $event)"
+    />
+
+    <OperationalHistoryWorkspace
+      v-else-if="currentSlug === 'analysis-results' || currentSlug === 'jobs' || currentSlug === 'audit-lineage'"
       :domain="currentSlug"
       :path="path"
       :current-account="currentAccount"

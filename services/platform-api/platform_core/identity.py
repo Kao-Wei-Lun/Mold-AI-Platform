@@ -31,6 +31,14 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "knowledge:approve",
     "engineering-data:read",
     "engineering-data:manage",
+    "job:read",
+    "job:cancel",
+    "job:retry",
+    "audit:read",
+    "audit:export",
+    "lineage:read",
+    "analysis:read",
+    "analysis:manage",
 }
 
 
