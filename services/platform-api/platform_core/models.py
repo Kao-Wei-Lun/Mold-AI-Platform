@@ -6,6 +6,131 @@ from django.db import models
 from django.db.models.functions import Lower
 
 
+class Project(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.ForeignKey("DataScope", related_name="projects", on_delete=models.PROTECT)
+    code = models.CharField(max_length=128)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    classification = models.CharField(max_length=32, default="public_demo")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    row_version = models.PositiveIntegerField(default=1)
+    created_by = models.CharField(max_length=128, default="system")
+    updated_by = models.CharField(max_length=128, default="system")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["code"]
+        constraints = [
+            models.UniqueConstraint(fields=["scope", "code"], name="unique_project_scope_code")
+        ]
+
+    def __str__(self) -> str:
+        return self.code
+
+
+class ProductPart(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, related_name="parts", on_delete=models.PROTECT)
+    part_number = models.CharField(max_length=128)
+    name = models.CharField(max_length=255)
+    product_type = models.CharField(max_length=128, blank=True)
+    material_code = models.CharField(max_length=128, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    row_version = models.PositiveIntegerField(default=1)
+    created_by = models.CharField(max_length=128, default="system")
+    updated_by = models.CharField(max_length=128, default="system")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["project__code", "part_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "part_number"], name="unique_project_part_number"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.part_number
+
+
+class Mold(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        RETIRED = "retired", "Retired"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, related_name="molds", on_delete=models.PROTECT)
+    product_part = models.ForeignKey(
+        ProductPart, related_name="molds", null=True, blank=True, on_delete=models.PROTECT
+    )
+    mold_code = models.CharField(max_length=128)
+    name = models.CharField(max_length=255)
+    mold_type = models.CharField(max_length=64, default="injection")
+    cavity_count = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    row_version = models.PositiveIntegerField(default=1)
+    created_by = models.CharField(max_length=128, default="system")
+    updated_by = models.CharField(max_length=128, default="system")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["project__code", "mold_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "mold_code"], name="unique_project_mold_code"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.mold_code
+
+
+class MoldRevision(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        RELEASED = "released", "Released"
+        SUPERSEDED = "superseded", "Superseded"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    mold = models.ForeignKey(Mold, related_name="revisions", on_delete=models.PROTECT)
+    revision_code = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    change_summary = models.TextField(blank=True)
+    source_system = models.CharField(max_length=64, default="platform_demo")
+    source_revision_id = models.CharField(max_length=128, blank=True)
+    row_version = models.PositiveIntegerField(default=1)
+    released_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.CharField(max_length=128, default="system")
+    updated_by = models.CharField(max_length=128, default="system")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["mold__mold_code", "revision_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["mold", "revision_code"], name="unique_mold_revision_code"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.mold.mold_code}@{self.revision_code}"
+
+
 class Artifact(models.Model):
     class Kind(models.TextChoices):
         CAD_SOURCE = "cad_source", "CAD source"
@@ -21,6 +146,17 @@ class Artifact(models.Model):
     dataset_id = models.CharField(max_length=128, default="public-demo-v1")
     product_type = models.CharField(max_length=128, blank=True)
     material_code = models.CharField(max_length=128, blank=True)
+    mold_revision = models.ForeignKey(
+        MoldRevision,
+        related_name="artifacts",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    lifecycle_status = models.CharField(max_length=24, default="active")
+    quality_status = models.CharField(max_length=24, default="pending")
+    archive_reason = models.CharField(max_length=512, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_by = models.CharField(max_length=128, default="demo-user")
     created_at = models.DateTimeField(auto_now_add=True)
 

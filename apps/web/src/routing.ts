@@ -11,6 +11,7 @@ export type WorkspaceRouteId =
   | "hmi"
   | "rules"
   | "master_data"
+  | "mold_registry"
   | "identity"
   | "status"
   | "not_found";
@@ -107,6 +108,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     eyebrow: "Governance / Mold rules",
     title: "Understand the rules that govern design review",
     description: "Browse the approved profile, versioned thresholds, ownership and source references.",
+  },
+  {
+    id: "mold_registry",
+    path: "/governance/mold-registry",
+    label: "Mold registry",
+    group: "Governance",
+    eyebrow: "Governance / Mold registry",
+    title: "Govern molds, revisions and CAD relationships",
+    description: "Keep project, part, mold, revision and artifact lineage in one controlled hierarchy.",
   },
   {
     id: "identity",

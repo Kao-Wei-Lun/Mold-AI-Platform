@@ -8,7 +8,7 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 
-from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent
+from .models import Artifact, ArtifactVersion, CADModel, Job, JobEvent, MoldRevision
 
 SUPPORTED_EXTENSIONS = {".step": "step", ".stp": "step", ".stl": "stl"}
 MEDIA_TYPES = {"step": "model/step", "stl": "model/stl"}
@@ -113,6 +113,7 @@ def create_upload_records(
     idempotency_key: str | None = None,
     source_system: str = "upload",
     source_context: dict[str, object] | None = None,
+    mold_revision_id: str | None = None,
 ) -> UploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
@@ -126,6 +127,13 @@ def create_upload_records(
             return UploadRecords(version.artifact, version, existing_job, created=False)
 
     filename, cad_format, sha256 = validate_upload(upload)
+    mold_revision = None
+    if mold_revision_id:
+        mold_revision = MoldRevision.objects.filter(id=mold_revision_id).first()
+        if mold_revision is None:
+            raise UploadValidationError(
+                "VALIDATION_MOLD_REVISION", "The selected mold revision does not exist."
+            )
     artifact_id = uuid.uuid4()
     version_id = uuid.uuid4()
     storage_key = f"source/{artifact_id}/{version_id}/source.{cad_format}"
@@ -141,6 +149,8 @@ def create_upload_records(
                 dataset_id=(dataset_id.strip() or "public-demo-v1")[:128],
                 product_type=product_type.strip()[:128],
                 material_code=material_code.strip()[:128],
+                mold_revision=mold_revision,
+                quality_status="validated",
             )
             version = ArtifactVersion.objects.create(
                 id=version_id,

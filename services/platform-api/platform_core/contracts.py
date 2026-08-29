@@ -142,6 +142,18 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "dataset_id": artifact.dataset_id,
         "product_type": artifact.product_type,
         "material_code": artifact.material_code,
+        "mold_revision_id": (str(artifact.mold_revision_id) if artifact.mold_revision_id else None),
+        "mold_revision": (
+            {
+                "revision_code": artifact.mold_revision.revision_code,
+                "mold_id": str(artifact.mold_revision.mold_id),
+                "mold_code": artifact.mold_revision.mold.mold_code,
+            }
+            if artifact.mold_revision_id
+            else None
+        ),
+        "lifecycle_status": artifact.lifecycle_status,
+        "quality_status": artifact.quality_status,
         "created_at": artifact.created_at.isoformat(),
         "source": source,
         "versions": [artifact_version_payload(version) for version in versions],

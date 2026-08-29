@@ -16,6 +16,7 @@ import HMIWorkspace from "./components/HMIWorkspace.vue";
 import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
+import MoldRegistryWorkspace from "./components/MoldRegistryWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
 import RuleManagementWorkspace from "./components/RuleManagementWorkspace.vue";
@@ -65,7 +66,8 @@ const navigationGroups = computed(() =>
       (route) =>
         route.group === group &&
         (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")) &&
-        (route.id !== "master_data" || currentAccount.value?.permissions.includes("master-data:read")),
+        (route.id !== "master_data" || currentAccount.value?.permissions.includes("master-data:read")) &&
+        (route.id !== "mold_registry" || currentAccount.value?.permissions.includes("registry:read")),
     ),
   })),
 );
@@ -351,6 +353,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           v-else-if="currentRoute.id === 'master_data' && accessReady"
           :current-account="currentAccount"
           @changed="refreshMasterData"
+        />
+        <MoldRegistryWorkspace
+          v-else-if="currentRoute.id === 'mold_registry' && accessReady"
+          :current-account="currentAccount"
+          :master-data-options="masterDataOptions"
         />
         <IdentityManagementWorkspace
           v-else-if="currentRoute.id === 'identity' && accessReady"

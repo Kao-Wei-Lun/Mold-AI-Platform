@@ -4001,7 +4001,8 @@ button:not(:disabled):active { transform: translateY(0); }
   padding: 0.72rem 0.85rem;
 }
 
-.master-data-workspace {
+.master-data-workspace,
+.mold-registry-workspace {
   display: grid;
   gap: 1rem;
   border: 1px solid #d8e2ec;
@@ -4010,6 +4011,67 @@ button:not(:disabled):active { transform: translateY(0); }
   background: linear-gradient(155deg, #ffffff 0%, #f5f8fb 100%);
   box-shadow: 0 12px 28px rgb(24 43 68 / 6%);
 }
+
+.registry-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.registry-summary > div {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+}
+
+.registry-summary span { color: #6a7b90; font-size: 0.7rem; font-weight: 800; }
+.registry-summary strong { color: #213b5b; font-size: 1.35rem; }
+
+.registry-tabs { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.registry-tabs button { color: #4f6682; background: #edf2f7; box-shadow: none; }
+.registry-tabs button.active { color: #fff; background: #315fca; }
+
+.registry-layout {
+  display: grid;
+  grid-template-columns: minmax(22rem, 1.2fr) minmax(20rem, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.registry-catalog,
+.registry-editor {
+  border: 1px solid #d8e2ec;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.registry-catalog article {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.8rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e5ebf2;
+}
+
+.registry-catalog article div { display: grid; gap: 0.12rem; }
+.registry-catalog article span,
+.registry-catalog article small { color: #6b7d92; }
+.registry-catalog article small { grid-column: 1 / -1; }
+.registry-catalog article em { align-self: start; border-radius: 999px; padding: 0.2rem 0.48rem; font-size: 0.66rem; font-style: normal; font-weight: 800; }
+.registry-catalog article > button { justify-self: start; padding-inline: 0; }
+.status-draft { color: #735515; background: #fff0c7; }
+.status-released { color: #126346; background: #ddf5ea; }
+.status-superseded, .status-retired { color: #5f6875; background: #e8edf2; }
+
+.registry-editor { display: grid; gap: 0.8rem; padding: 1rem; }
+.registry-editor h3,
+.registry-editor p { margin: 0; }
+.registry-editor.read-only { color: #66768c; }
 
 .master-data-summary {
   display: grid;
@@ -4146,6 +4208,8 @@ button:not(:disabled):active { transform: translateY(0); }
   .identity-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .master-data-layout { grid-template-columns: 1fr; }
   .master-data-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .registry-layout { grid-template-columns: 1fr; }
+  .registry-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -4160,6 +4224,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .hmi-workspace,
   .rule-management-workspace,
   .master-data-workspace,
+  .mold-registry-workspace,
   .status-card { padding: 1.05rem; }
   .identity-management-workspace { padding: 1.05rem; }
   .identity-heading { align-items: stretch; flex-direction: column; }

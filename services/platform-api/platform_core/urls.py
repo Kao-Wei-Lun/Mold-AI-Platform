@@ -12,6 +12,16 @@ from .identity_views import (
     RoleAssignmentCreateRevokeView,
 )
 from .master_data_views import MasterDataDetailView, MasterDataListCreateView, MasterDataOptionsView
+from .registry_views import (
+    ArtifactGovernanceView,
+    MoldDetailView,
+    MoldListCreateView,
+    PartListCreateView,
+    ProjectDetailView,
+    ProjectListCreateView,
+    RevisionDetailView,
+    RevisionListCreateView,
+)
 from .views import (
     ArtifactVersionDownloadView,
     AssistantCapabilitiesView,
@@ -70,6 +80,26 @@ urlpatterns = [
     path("master-data/options", MasterDataOptionsView.as_view(), name="master-data-options"),
     path("master-data", MasterDataListCreateView.as_view(), name="master-data-list-create"),
     path("master-data/<uuid:item_id>", MasterDataDetailView.as_view(), name="master-data-detail"),
+    path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
+    path(
+        "registry/projects/<uuid:project_id>",
+        ProjectDetailView.as_view(),
+        name="registry-project-detail",
+    ),
+    path("registry/parts", PartListCreateView.as_view(), name="registry-part-list"),
+    path("registry/molds", MoldListCreateView.as_view(), name="registry-mold-list"),
+    path("registry/molds/<uuid:mold_id>", MoldDetailView.as_view(), name="registry-mold-detail"),
+    path("registry/revisions", RevisionListCreateView.as_view(), name="registry-revision-list"),
+    path(
+        "registry/revisions/<uuid:revision_id>",
+        RevisionDetailView.as_view(),
+        name="registry-revision-detail",
+    ),
+    path(
+        "registry/artifacts/<uuid:artifact_id>",
+        ArtifactGovernanceView.as_view(),
+        name="registry-artifact-detail",
+    ),
     path(
         "admin/role-assignments",
         RoleAssignmentCreateRevokeView.as_view(),

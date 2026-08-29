@@ -78,6 +78,10 @@ export type CADArtifactSummary = {
   dataset_id: string;
   product_type: string;
   material_code: string;
+  mold_revision_id: string | null;
+  mold_revision: { revision_code: string; mold_id: string; mold_code: string } | null;
+  lifecycle_status: string;
+  quality_status: string;
   created_at: string;
   source: {
     type: string;
@@ -105,7 +109,7 @@ export async function uploadCAD(
   file: File,
   artifactName: string,
   idempotencyKey: string,
-  metadata: { datasetId: string; productType: string; materialCode: string },
+  metadata: { datasetId: string; productType: string; materialCode: string; moldRevisionId?: string },
 ): Promise<CADUploadAccepted> {
   const body = new FormData();
   body.append("file", file);
@@ -114,6 +118,7 @@ export async function uploadCAD(
   body.append("dataset_id", metadata.datasetId);
   if (metadata.productType.trim()) body.append("product_type", metadata.productType.trim());
   if (metadata.materialCode.trim()) body.append("material_code", metadata.materialCode.trim());
+  if (metadata.moldRevisionId) body.append("mold_revision_id", metadata.moldRevisionId);
 
   const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
     method: "POST",

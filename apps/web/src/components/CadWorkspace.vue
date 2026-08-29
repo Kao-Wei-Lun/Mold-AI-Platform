@@ -11,6 +11,7 @@ import {
 import { useI18n } from "../i18n";
 import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import { pushToast } from "../toast";
+import { fetchRegistry, type RegistryRevision } from "../api/registry";
 import FormField from "./FormField.vue";
 
 const { locale, t } = useI18n();
@@ -38,6 +39,8 @@ const artifactName = ref("");
 const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
+const moldRevisionId = ref("");
+const revisions = ref<RegistryRevision[]>([]);
 const uploading = ref(false);
 const error = ref<string | null>(null);
 const warning = ref<string | null>(null);
@@ -61,7 +64,7 @@ const dimensions = computed(() => {
   return `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
 });
 const missingUploadFields = computed(
-  () => Number(!selectedFile.value) + Number(!datasetId.value),
+  () => Number(!selectedFile.value) + Number(!datasetId.value) + Number(!moldRevisionId.value),
 );
 
 function optionLabel(option: MasterDataOption): string {
@@ -76,6 +79,18 @@ watch(
   },
   { immediate: true },
 );
+
+async function loadRevisions(): Promise<void> {
+  try {
+    const registry = await fetchRegistry();
+    revisions.value = registry.revisions.filter((revision) => revision.status !== "archived");
+    if (!moldRevisionId.value) {
+      moldRevisionId.value = revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
+    }
+  } catch {
+    revisions.value = [];
+  }
+}
 
 function chooseFile(event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -119,6 +134,7 @@ async function submit(): Promise<void> {
       datasetId: datasetId.value,
       productType: productType.value,
       materialCode: materialCode.value,
+      moldRevisionId: moldRevisionId.value,
     });
     warning.value = accepted.warnings[0] || null;
     job.value = await fetchCADJob(accepted.job_id);
@@ -173,6 +189,8 @@ function activateRecent(): void {
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 });
+
+loadRevisions();
 </script>
 
 <template>
@@ -234,6 +252,12 @@ onBeforeUnmount(() => {
         <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
           <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
+        </select>
+      </FormField>
+      <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Mold revision')" required :helper="t('Every new CAD artifact must belong to a governed mold revision.')">
+        <select :id="fieldId" v-model="moldRevisionId" required :aria-describedby="describedBy" :aria-invalid="invalid">
+          <option value="" disabled>{{ t("Select a mold revision") }}</option>
+          <option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }} · {{ t(revision.status) }}</option>
         </select>
       </FormField>
       <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">

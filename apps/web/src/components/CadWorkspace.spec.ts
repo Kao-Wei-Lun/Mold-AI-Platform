@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
 import type { CADModelResult } from "../api/cad";
+import * as registryApi from "../api/registry";
 import CadWorkspace from "./CadWorkspace.vue";
 
 const stlFile = new File(["solid test\nfacet normal 0 0 1\nendsolid test"], "part.stl", {
@@ -16,6 +17,29 @@ function jsonResponse(payload: object, ok = true, status = 200): Response {
 }
 
 describe("CadWorkspace", () => {
+  beforeEach(() => {
+    vi.spyOn(registryApi, "fetchRegistry").mockResolvedValue({
+      projects: [],
+      parts: [],
+      molds: [],
+      revisions: [
+        {
+          id: "revision-1",
+          mold_id: "mold-1",
+          mold_code: "MOLD-001",
+          revision_code: "A",
+          status: "released",
+          change_summary: "Demo",
+          source_system: "test",
+          source_revision_id: null,
+          row_version: 1,
+          released_at: "2026-08-29T00:00:00Z",
+          artifact_count: 0,
+        },
+      ],
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

@@ -409,6 +409,11 @@ class CADArtifactListCreateView(APIView):
                 product_type=str(request.data.get("product_type", "")),
                 material_code=str(request.data.get("material_code", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
+                mold_revision_id=(
+                    str(request.data.get("mold_revision_id"))
+                    if request.data.get("mold_revision_id")
+                    else None
+                ),
             )
         except UploadValidationError as exc:
             http_status = (
@@ -433,6 +438,18 @@ class CADArtifactListCreateView(APIView):
                     status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
 
+        duplicate_count = (
+            ArtifactVersion.objects.filter(sha256=records.version.sha256)
+            .exclude(id=records.version.id)
+            .count()
+        )
+        warnings = [
+            "Basic signature screening passed; a full malware scanner is not configured yet."
+        ]
+        if duplicate_count:
+            warnings.append(
+                f"Duplicate content detected in {duplicate_count} existing artifact version(s)."
+            )
         response_status = status.HTTP_202_ACCEPTED
         return Response(
             {
@@ -442,14 +459,11 @@ class CADArtifactListCreateView(APIView):
                 "artifact_version_id": str(records.version.id),
                 "job_id": str(records.job.id),
                 "idempotent_replay": not records.created,
-                "warnings": [
-                    "Basic signature screening passed; "
-                    "a full malware scanner is not configured yet."
-                ],
+                "warnings": warnings,
                 "links": {
                     "artifact": f"/api/v1/cad-artifacts/{records.artifact.id}",
                     "status": f"/api/v1/jobs/{records.job.id}",
-                    "ui": f"/cad/jobs/{records.job.id}",
+                    "ui": f"/engineering/cad?artifact_id={records.artifact.id}",
                 },
             },
             status=response_status,

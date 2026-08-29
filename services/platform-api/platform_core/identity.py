@@ -21,6 +21,8 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "identity:audit",
     "master-data:read",
     "master-data:manage",
+    "registry:read",
+    "registry:manage",
 }
 
 
