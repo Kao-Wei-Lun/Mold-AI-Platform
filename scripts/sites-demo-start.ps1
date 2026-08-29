@@ -118,8 +118,8 @@ try {
     $deadline = (Get-Date).AddMinutes(2)
     while ((Get-Date) -lt $deadline -and -not $tunnelUrl) {
         $logs = & docker @composeArgs logs --no-color web-tunnel 2>&1 | Out-String
-        $match = [regex]::Match($logs, "https://[a-z0-9-]+\.trycloudflare\.com")
-        if ($match.Success) { $tunnelUrl = $match.Value; break }
+        $matches = [regex]::Matches($logs, "https://[a-z0-9-]+\.trycloudflare\.com")
+        if ($matches.Count -gt 0) { $tunnelUrl = $matches[$matches.Count - 1].Value; break }
         Start-Sleep -Seconds 2
     }
     if (-not $tunnelUrl) { throw "Quick Tunnel did not publish a URL within two minutes. Check web-tunnel logs." }
