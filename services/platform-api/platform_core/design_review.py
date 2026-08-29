@@ -252,18 +252,26 @@ def get_demo_rule_profile() -> RuleProfile:
     specs = _rule_specs()
     checksum = _ruleset_checksum(specs)
     with transaction.atomic():
-        profile, _ = RuleProfile.objects.get_or_create(
-            profile_key=PROFILE_KEY,
-            defaults={
-                "version": "1.0",
-                "status": "approved_demo",
-                "product_scope": ["public-demo"],
-                "material_scope": ["synthetic"],
-                "owner": "demo-rule-owner",
-                "approved_by": "demo-technical-review",
-                "ruleset_checksum": checksum,
-            },
+        profile = (
+            RuleProfile.objects.filter(
+                profile_key=PROFILE_KEY,
+                workflow_status=RuleProfile.WorkflowStatus.PUBLISHED,
+            )
+            .order_by("-published_at", "-created_at")
+            .first()
         )
+        if profile is None:
+            profile = RuleProfile.objects.create(
+                profile_key=PROFILE_KEY,
+                version="1.0",
+                status="approved_demo",
+                product_scope=["public-demo"],
+                material_scope=["synthetic"],
+                owner="demo-rule-owner",
+                approved_by="demo-technical-review",
+                ruleset_checksum=checksum,
+                workflow_status=RuleProfile.WorkflowStatus.PUBLISHED,
+            )
         if profile.ruleset_checksum != checksum:
             raise DesignReviewValidationError(
                 "RULE_PROFILE_CHECKSUM_MISMATCH",

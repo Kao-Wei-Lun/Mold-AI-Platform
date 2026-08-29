@@ -568,6 +568,17 @@ class KnowledgeDocumentListCreateView(APIView):
                 effective_to=optional_date("effective_to"),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
                 dataset_id=str(request.data.get("dataset_id", PUBLIC_KNOWLEDGE_DATASET)),
+                publication_status="draft",
+                document_key=(
+                    str(request.data.get("document_key"))
+                    if request.data.get("document_key")
+                    else None
+                ),
+                supersedes_document_id=(
+                    str(request.data.get("supersedes_document_id"))
+                    if request.data.get("supersedes_document_id")
+                    else None
+                ),
             )
         except KnowledgeValidationError as exc:
             conflict = exc.code.startswith("CONFLICT_")

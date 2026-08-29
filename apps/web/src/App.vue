@@ -335,6 +335,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <KnowledgeWorkspace
           v-else-if="currentRoute.id === 'knowledge' && accessReady"
           :deep-link="activeDeepLink"
+          :current-account="currentAccount"
           @context-change="assistantContext = $event"
         />
         <ProcessTrialWorkspace
@@ -348,7 +349,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         />
         <CAEWorkspace v-else-if="currentRoute.id === 'cae' && accessReady" @context-change="assistantContext = $event" />
         <HMIWorkspace v-else-if="currentRoute.id === 'hmi' && accessReady" />
-        <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" />
+        <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" :current-account="currentAccount" />
         <MasterDataWorkspace
           v-else-if="currentRoute.id === 'master_data' && accessReady"
           :current-account="currentAccount"

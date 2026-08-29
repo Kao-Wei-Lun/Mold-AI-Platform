@@ -4073,6 +4073,21 @@ button:not(:disabled):active { transform: translateY(0); }
 .registry-editor p { margin: 0; }
 .registry-editor.read-only { color: #66768c; }
 
+.rule-workflow-panel {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid #cbdaf0;
+  border-radius: 12px;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f7faff, #edf4ff);
+}
+
+.rule-workflow-panel h3,
+.rule-workflow-panel p { margin: 0; }
+.rule-workflow-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; }
+.document-workflow-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; grid-column: 1 / -1; }
+.document-workflow-actions button { padding: 0.2rem 0.35rem; }
+
 .master-data-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4210,6 +4225,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .master-data-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .registry-layout { grid-template-columns: 1fr; }
   .registry-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rule-workflow-form { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 620px) {

@@ -445,8 +445,16 @@ class SimilaritySearch(models.Model):
 
 
 class RuleProfile(models.Model):
+    class WorkflowStatus(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        VALIDATED = "validated", "Validated"
+        IN_REVIEW = "in_review", "In review"
+        APPROVED = "approved", "Approved"
+        PUBLISHED = "published", "Published"
+        RETIRED = "retired", "Retired"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    profile_key = models.CharField(max_length=128, unique=True)
+    profile_key = models.CharField(max_length=128)
     version = models.CharField(max_length=32)
     status = models.CharField(max_length=32, default="approved_demo")
     product_scope = models.JSONField(default=list)
@@ -454,13 +462,47 @@ class RuleProfile(models.Model):
     owner = models.CharField(max_length=128)
     approved_by = models.CharField(max_length=128)
     ruleset_checksum = models.CharField(max_length=64)
+    workflow_status = models.CharField(
+        max_length=16, choices=WorkflowStatus.choices, default=WorkflowStatus.PUBLISHED
+    )
+    change_summary = models.TextField(blank=True)
+    row_version = models.PositiveIntegerField(default=1)
+    submitted_by = models.CharField(max_length=128, blank=True)
+    reviewed_by = models.CharField(max_length=128, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile_key", "version"], name="unique_rule_profile_key_version"
+            )
+        ]
 
     def __str__(self) -> str:
         return self.profile_key
 
 
 class RuleVersion(models.Model):
+    IMMUTABLE_FIELDS = (
+        "profile_id",
+        "rule_id",
+        "rule_version",
+        "title",
+        "description",
+        "evaluator",
+        "applicability",
+        "parameters",
+        "operator",
+        "limit_value",
+        "unit",
+        "tolerance",
+        "severity",
+        "risk_type",
+        "recommendation",
+        "reference",
+    )
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile = models.ForeignKey(RuleProfile, related_name="rules", on_delete=models.PROTECT)
     rule_id = models.CharField(max_length=64)
@@ -493,6 +535,20 @@ class RuleVersion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.rule_id}@{self.rule_version}"
+
+    def save(self, *args, **kwargs) -> None:
+        if self.pk and RuleVersion.objects.filter(pk=self.pk).exists():
+            persisted = RuleVersion.objects.only(*self.IMMUTABLE_FIELDS).get(pk=self.pk)
+            changed = [
+                field
+                for field in self.IMMUTABLE_FIELDS
+                if getattr(persisted, field) != getattr(self, field)
+            ]
+            if changed:
+                raise ValidationError(
+                    {"rule_version": f"Immutable fields cannot change: {', '.join(changed)}"}
+                )
+        super().save(*args, **kwargs)
 
 
 class ReviewRun(models.Model):
@@ -772,6 +828,15 @@ class KnowledgeDocument(models.Model):
         OBSOLETE = "obsolete", "Obsolete"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document_key = models.CharField(max_length=128, default=uuid.uuid4)
+    version_number = models.PositiveIntegerField(default=1)
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+        on_delete=models.PROTECT,
+    )
     artifact_version = models.OneToOneField(
         ArtifactVersion, related_name="knowledge_document", on_delete=models.PROTECT
     )
@@ -795,11 +860,24 @@ class KnowledgeDocument(models.Model):
     chunk_count = models.PositiveIntegerField(default=0)
     indexed_at = models.DateTimeField(null=True, blank=True)
     error_code = models.CharField(max_length=128, blank=True)
+    publication_status = models.CharField(max_length=24, default="published")
+    row_version = models.PositiveIntegerField(default=1)
+    submitted_by = models.CharField(max_length=128, blank=True)
+    reviewed_by = models.CharField(max_length=128, blank=True)
+    approved_by = models.CharField(max_length=128, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document_key", "version_number"],
+                name="unique_knowledge_document_version",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"Knowledge {self.artifact_version_id} [{self.ingestion_status}]"

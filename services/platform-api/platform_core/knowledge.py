@@ -138,6 +138,9 @@ def create_knowledge_upload_records(
     effective_to: date | None,
     idempotency_key: str | None,
     dataset_id: str = PUBLIC_KNOWLEDGE_DATASET,
+    publication_status: str = "published",
+    document_key: str | None = None,
+    supersedes_document_id: str | None = None,
 ) -> KnowledgeUploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
@@ -175,6 +178,17 @@ def create_knowledge_upload_records(
             "VALIDATION_EFFECTIVE_DATE", "effective_from cannot be later than effective_to."
         )
     filename, document_format, media_type, sha256 = validate_knowledge_upload(upload)
+    if publication_status not in {"draft", "published"}:
+        raise KnowledgeValidationError(
+            "VALIDATION_PUBLICATION_STATUS", "publication_status must be draft or published."
+        )
+    supersedes = None
+    if supersedes_document_id:
+        supersedes = KnowledgeDocument.objects.filter(id=supersedes_document_id).first()
+        if supersedes is None:
+            raise KnowledgeValidationError(
+                "VALIDATION_SUPERSEDES", "The superseded knowledge document does not exist."
+            )
     if ArtifactVersion.objects.filter(
         sha256=sha256, artifact__kind=Artifact.Kind.KNOWLEDGE_SOURCE
     ).exists():
@@ -216,6 +230,13 @@ def create_knowledge_upload_records(
             )
             document = KnowledgeDocument.objects.create(
                 artifact_version=version,
+                document_key=(
+                    supersedes.document_key
+                    if supersedes
+                    else (document_key or str(uuid.uuid4()))[:128]
+                ),
+                version_number=supersedes.version_number + 1 if supersedes else 1,
+                supersedes=supersedes,
                 document_type=document_type,
                 authority_level=authority_level,
                 effective_from=effective_from,
@@ -226,6 +247,7 @@ def create_knowledge_upload_records(
                 language=language,
                 parser_version=PARSER_VERSION,
                 chunker_version=CHUNKER_VERSION,
+                publication_status=publication_status,
             )
             job = Job.objects.create(
                 capability_id=KNOWLEDGE_CAPABILITY_ID,
@@ -476,6 +498,7 @@ def search_knowledge(
         filters["authority_level"] = authority_levels
     if not KnowledgeDocument.objects.filter(
         ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
+        publication_status="published",
         classification="public_demo",
         artifact_version__artifact__dataset_id__in=selected_datasets,
     ).exists():
@@ -491,6 +514,7 @@ def search_knowledge(
     chunks = KnowledgeChunk.objects.select_related("document__artifact_version__artifact").filter(
         id__in=coarse,
         document__ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
+        document__publication_status="published",
         document__artifact_version__artifact__dataset_id__in=selected_datasets,
     )
     ranked: list[tuple[float, KnowledgeChunk, dict[str, float]]] = []
@@ -614,6 +638,9 @@ def knowledge_document_payload(document: KnowledgeDocument) -> dict[str, object]
     version = document.artifact_version
     return {
         "document_id": str(document.id),
+        "document_key": document.document_key,
+        "version_number": document.version_number,
+        "supersedes_document_id": str(document.supersedes_id) if document.supersedes_id else None,
         "artifact_id": str(version.artifact_id),
         "artifact_version_id": str(version.id),
         "dataset_id": version.artifact.dataset_id,
@@ -637,6 +664,13 @@ def knowledge_document_payload(document: KnowledgeDocument) -> dict[str, object]
         "chunk_count": document.chunk_count,
         "indexed_at": document.indexed_at.isoformat() if document.indexed_at else None,
         "error_code": document.error_code or None,
+        "publication_status": document.publication_status,
+        "row_version": document.row_version,
+        "submitted_by": document.submitted_by or None,
+        "reviewed_by": document.reviewed_by or None,
+        "approved_by": document.approved_by or None,
+        "published_at": document.published_at.isoformat() if document.published_at else None,
+        "retired_at": document.retired_at.isoformat() if document.retired_at else None,
         "download_url": f"/api/v1/artifact-versions/{version.id}/download",
         "created_at": document.created_at.isoformat(),
     }

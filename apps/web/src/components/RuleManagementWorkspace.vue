@@ -1,18 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
-import { fetchRuleProfiles, type RuleProfile } from "../api/rules";
+import { cloneRuleProfile, fetchRuleProfiles, transitionRuleProfile, type RuleProfile } from "../api/rules";
+import type { LocalAccount } from "../api/identity";
 import { useI18n } from "../i18n";
+import { pushToast } from "../toast";
+import FormField from "./FormField.vue";
 
 const { t } = useI18n();
+const props = defineProps<{ currentAccount?: LocalAccount | null }>();
 
 const profiles = ref<RuleProfile[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const query = ref("");
 const severity = ref("all");
+const busy = ref(false);
+const nextVersion = ref("2.0");
+const changeSummary = ref("");
+const reason = ref("Controlled rule lifecycle change");
 
 const profile = computed(() => profiles.value[0] || null);
+const canAuthor = computed(() => props.currentAccount?.permissions.includes("rules:author") || false);
+const canApprove = computed(() => props.currentAccount?.permissions.includes("rules:approve") || false);
+const workflowStatus = computed(() => profile.value?.workflow_status || "published");
 const severities = computed(() => [
   "all",
   ...new Set((profile.value?.rules || []).map((rule) => rule.severity)),
@@ -50,6 +61,42 @@ async function loadProfiles(): Promise<void> {
   }
 }
 
+async function cloneProfile(): Promise<void> {
+  if (!profile.value || !reason.value.trim()) return;
+  busy.value = true;
+  error.value = null;
+  try {
+    await cloneRuleProfile(profile.value, {
+      version: nextVersion.value,
+      changeSummary: changeSummary.value,
+      reason: reason.value,
+    });
+    await loadProfiles();
+    pushToast(t("Draft rule profile created."), "success");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Rule workflow failed.");
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function transition(action: "test" | "submit" | "approve" | "publish" | "retire"): Promise<void> {
+  if (!profile.value || !reason.value.trim()) return;
+  if (!window.confirm(t("Confirm {action} for profile {version}?", { action: t(action), version: profile.value.version }))) return;
+  busy.value = true;
+  error.value = null;
+  try {
+    await transitionRuleProfile(profile.value, action, reason.value);
+    await loadProfiles();
+    pushToast(t("Rule lifecycle updated."), "success");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Rule workflow failed.");
+    pushToast(error.value, "error");
+  } finally {
+    busy.value = false;
+  }
+}
+
 onMounted(loadProfiles);
 </script>
 
@@ -70,7 +117,7 @@ onMounted(loadProfiles);
             {{ t("{count} enabled rules · owned by {owner} · approved by {approver}", { count: profile.rule_count, owner: profile.owner, approver: profile.approved_by }) }}
           </p>
         </div>
-        <span class="governance-state">{{ t(profile.status.replaceAll("_", " ")) }}</span>
+        <span class="governance-state">{{ t(workflowStatus.replaceAll("_", " ")) }}</span>
       </div>
 
       <div class="governance-summary" :aria-label="t('Rule governance summary')">
@@ -87,8 +134,25 @@ onMounted(loadProfiles);
             {{ t("The catalog is managed here for discovery and audit. Safe editing requires a separate draft, validation, approval and activation workflow—never an in-place threshold change.") }}
           </p>
         </div>
-        <span>{{ t("Read-only governance") }}</span>
+        <span>{{ canAuthor || canApprove ? t("Controlled workflow") : t("Read-only governance") }}</span>
       </aside>
+
+      <section v-if="canAuthor || canApprove" class="rule-workflow-panel" aria-labelledby="rule-workflow-title">
+        <div><p class="eyebrow">{{ t("Publishing lifecycle") }}</p><h3 id="rule-workflow-title">{{ t("Validate and publish without editing history") }}</h3></div>
+        <div class="rule-workflow-form">
+          <FormField v-if="canAuthor && ['published', 'retired'].includes(workflowStatus)" v-slot="{ fieldId }" :label="t('Next version')" required><input :id="fieldId" v-model="nextVersion" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" /></FormField>
+          <FormField v-if="canAuthor && ['published', 'retired'].includes(workflowStatus)" v-slot="{ fieldId }" :label="t('Change summary')"><input :id="fieldId" v-model="changeSummary" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Change reason')" required><input :id="fieldId" v-model="reason" required /></FormField>
+        </div>
+        <div class="master-data-actions">
+          <button v-if="canAuthor && ['published', 'retired'].includes(workflowStatus)" type="button" :disabled="busy" @click="cloneProfile">{{ t("Create draft version") }}</button>
+          <button v-if="canAuthor && workflowStatus === 'draft'" type="button" :disabled="busy" @click="transition('test')">{{ t("Run deterministic validation") }}</button>
+          <button v-if="canAuthor && workflowStatus === 'validated'" type="button" :disabled="busy" @click="transition('submit')">{{ t("Submit for review") }}</button>
+          <button v-if="canApprove && workflowStatus === 'in_review'" type="button" :disabled="busy" @click="transition('approve')">{{ t("Approve version") }}</button>
+          <button v-if="canApprove && workflowStatus === 'approved'" type="button" :disabled="busy" @click="transition('publish')">{{ t("Publish version") }}</button>
+          <button v-if="canApprove && workflowStatus === 'published'" type="button" class="danger-button" :disabled="busy" @click="transition('retire')">{{ t("Retire version") }}</button>
+        </div>
+      </section>
 
       <div class="rule-filter-bar">
         <label>

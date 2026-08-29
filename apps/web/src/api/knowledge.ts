@@ -3,6 +3,9 @@ import { apiFetch } from "./client";
 
 export type KnowledgeDocument = {
   document_id: string;
+  document_key: string;
+  version_number: number;
+  supersedes_document_id: string | null;
   artifact_id: string;
   artifact_version_id: string;
   title: string;
@@ -25,6 +28,13 @@ export type KnowledgeDocument = {
   chunk_count: number;
   indexed_at: string | null;
   error_code: string | null;
+  publication_status: "draft" | "in_review" | "approved" | "published" | "retired";
+  row_version: number;
+  submitted_by: string | null;
+  reviewed_by: string | null;
+  approved_by: string | null;
+  published_at: string | null;
+  retired_at: string | null;
   download_url: string;
   created_at: string;
 };
@@ -125,6 +135,23 @@ export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
   if (!response.ok) throw new Error(await errorMessage(response));
   const payload = (await response.json()) as { items: KnowledgeDocument[] };
   return Array.isArray(payload.items) ? payload.items : [];
+}
+
+export async function transitionKnowledgeDocument(
+  document: KnowledgeDocument,
+  action: "submit" | "approve" | "publish" | "retire",
+  reason: string,
+): Promise<KnowledgeDocument> {
+  const response = await apiFetch(
+    `${apiBaseUrl}/api/v1/knowledge-documents/${document.document_id}/actions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ action, reason, row_version: document.row_version }),
+    },
+  );
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as KnowledgeDocument;
 }
 
 export async function searchKnowledge(

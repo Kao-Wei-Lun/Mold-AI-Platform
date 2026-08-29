@@ -1,5 +1,10 @@
 from django.urls import path
 
+from .governance_views import (
+    KnowledgeDocumentWorkflowView,
+    RuleProfileGovernanceListView,
+    RuleProfileWorkflowView,
+)
 from .identity_views import (
     AccountDetailView,
     AccountListCreateView,
@@ -53,7 +58,6 @@ from .views import (
     ProcessTrialDemoFixtureView,
     ReadyView,
     ReviewFindingDecisionCreateView,
-    RuleProfileListView,
     SecurityPreflightView,
     SimilaritySearchDetailView,
     SimilaritySearchListCreateView,
@@ -203,6 +207,11 @@ urlpatterns = [
         name="knowledge-document-detail",
     ),
     path(
+        "knowledge-documents/<uuid:document_id>/actions",
+        KnowledgeDocumentWorkflowView.as_view(),
+        name="knowledge-document-actions",
+    ),
+    path(
         "knowledge-searches",
         KnowledgeSearchListCreateView.as_view(),
         name="knowledge-search-list-create",
@@ -212,7 +221,12 @@ urlpatterns = [
         KnowledgeSearchDetailView.as_view(),
         name="knowledge-search-detail",
     ),
-    path("rule-profiles", RuleProfileListView.as_view(), name="rule-profile-list"),
+    path("rule-profiles", RuleProfileGovernanceListView.as_view(), name="rule-profile-list"),
+    path(
+        "rule-profiles/<uuid:profile_id>/actions",
+        RuleProfileWorkflowView.as_view(),
+        name="rule-profile-actions",
+    ),
     path(
         "design-reviews",
         DesignReviewListCreateView.as_view(),

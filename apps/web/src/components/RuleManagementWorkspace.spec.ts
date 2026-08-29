@@ -7,8 +7,15 @@ const profile = {
   profile_key: "demo-general-design",
   version: "1.0",
   status: "approved_demo",
+  workflow_status: "published",
+  change_summary: "",
+  row_version: 1,
   owner: "mold-engineering-demo",
+  submitted_by: null,
+  reviewed_by: null,
   approved_by: "demo-governance",
+  published_at: "2026-08-29T00:00:00Z",
+  retired_at: null,
   ruleset_checksum: "a".repeat(64),
   rule_count: 2,
   rules: [
@@ -73,5 +80,32 @@ describe("RuleManagementWorkspace", () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain("rule service unavailable");
     expect(wrapper.get("button").text()).toContain("Try again");
+  });
+
+  it("offers controlled version cloning to authorized rule authors", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [profile] }) })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ ...profile, version: "2.0", workflow_status: "draft" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [{ ...profile, version: "2.0", workflow_status: "draft" }] }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(RuleManagementWorkspace, {
+      props: {
+        currentAccount: {
+          id: "owner-1", username: "owner", email: "owner@example.test", display_name: "Owner",
+          status: "active", locale: "en", timezone: "Asia/Taipei", row_version: 1,
+          roles: ["rule_owner"], permissions: ["rules:read", "rules:author"], data_scopes: ["public-demo"],
+          role_assignments: [], last_login_at: null, created_at: "2026-08-29T00:00:00Z",
+        },
+      },
+    });
+    await flushPromises();
+    await wrapper.get(".rule-workflow-panel button").trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/rule-profiles"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

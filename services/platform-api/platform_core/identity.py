@@ -23,6 +23,12 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "master-data:manage",
     "registry:read",
     "registry:manage",
+    "rules:read",
+    "rules:author",
+    "rules:approve",
+    "knowledge:read",
+    "knowledge:author",
+    "knowledge:approve",
 }
 
 

@@ -6,6 +6,7 @@ import {
   fetchKnowledgeJob,
   fetchKnowledgeSearch,
   searchKnowledge,
+  transitionKnowledgeDocument,
   uploadKnowledge,
   type KnowledgeDocument,
   type KnowledgeJob,
@@ -18,10 +19,11 @@ import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
+import type { LocalAccount } from "../api/identity";
 
 const { locale, t } = useI18n();
 
-const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
+const props = defineProps<{ deepLink?: DeepLinkContext | null; currentAccount?: LocalAccount | null }>();
 const emit = defineEmits<{ contextChange: [context: AssistantContext] }>();
 
 const file = ref<File | null>(null);
@@ -43,14 +45,18 @@ const selectedResult = ref<KnowledgeResultItem | null>(null);
 const error = ref<string | null>(null);
 const uploadAttempted = ref(false);
 const searchAttempted = ref(false);
+const workflowReason = ref("Controlled knowledge lifecycle change");
+const workflowBusyId = ref("");
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
   ["succeeded", "failed", "cancelled", "expired"].includes(job.value?.state || ""),
 );
 const indexedCount = computed(
-  () => documents.value.filter((document) => document.ingestion_status === "indexed").length,
+  () => documents.value.filter((document) => document.ingestion_status === "indexed" && (document.publication_status || "published") === "published").length,
 );
+const canAuthor = computed(() => props.currentAccount?.permissions.includes("knowledge:author") || false);
+const canApprove = computed(() => props.currentAccount?.permissions.includes("knowledge:approve") || false);
 const missingUploadFields = computed(
   () => Number(!file.value) + Number(title.value.trim().length < 3),
 );
@@ -145,6 +151,29 @@ async function submitSearch(): Promise<void> {
     pushToast(error.value, "error");
   } finally {
     searching.value = false;
+  }
+}
+
+async function transitionDocument(
+  document: KnowledgeDocument,
+  action: "submit" | "approve" | "publish" | "retire",
+): Promise<void> {
+  if (!workflowReason.value.trim()) {
+    error.value = t("A change reason is required.");
+    return;
+  }
+  if (!window.confirm(t("Confirm {action} for {title}?", { action: t(action), title: document.title }))) return;
+  workflowBusyId.value = document.document_id;
+  error.value = null;
+  try {
+    await transitionKnowledgeDocument(document, action, workflowReason.value);
+    await loadDocuments();
+    pushToast(t("Knowledge lifecycle updated."), "success");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Knowledge workflow failed.");
+    pushToast(error.value, "error");
+  } finally {
+    workflowBusyId.value = "";
   }
 }
 
@@ -284,11 +313,16 @@ onBeforeUnmount(() => {
               <strong>{{ document.title }}</strong>
               <span>{{ t(document.document_type.replaceAll("_", " ")) }} · {{ t("{count} chunks", { count: document.chunk_count }) }}</span>
             </div>
-            <span class="document-status" :class="document.ingestion_status">
-              {{ t(document.ingestion_status) }}
-            </span>
+            <span class="document-status" :class="document.ingestion_status">{{ t(document.ingestion_status) }} · {{ t(document.publication_status || 'published') }}</span>
+            <div v-if="canAuthor || canApprove" class="document-workflow-actions">
+              <button v-if="canAuthor && document.publication_status === 'draft'" type="button" class="text-button" :disabled="workflowBusyId === document.document_id" @click="transitionDocument(document, 'submit')">{{ t("Submit") }}</button>
+              <button v-if="canApprove && document.publication_status === 'in_review'" type="button" class="text-button" :disabled="workflowBusyId === document.document_id" @click="transitionDocument(document, 'approve')">{{ t("Approve") }}</button>
+              <button v-if="canApprove && document.publication_status === 'approved'" type="button" class="text-button" :disabled="workflowBusyId === document.document_id" @click="transitionDocument(document, 'publish')">{{ t("Publish") }}</button>
+              <button v-if="canApprove && document.publication_status === 'published'" type="button" class="text-button" :disabled="workflowBusyId === document.document_id" @click="transitionDocument(document, 'retire')">{{ t("Retire") }}</button>
+            </div>
           </li>
         </ul>
+        <FormField v-if="canAuthor || canApprove" v-slot="{ fieldId }" :label="t('Workflow reason')" required><input :id="fieldId" v-model="workflowReason" required maxlength="512" /></FormField>
       </article>
 
       <article class="knowledge-search">
