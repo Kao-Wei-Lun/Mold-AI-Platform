@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 
 from django.db import IntegrityError, transaction
@@ -232,6 +234,198 @@ class RuleProfileWorkflowView(APIView):
                 detail={"reason": reason, "workflow_status": next_status},
             )
         return Response(rule_profile_payload(profile))
+
+
+def _rule_checksum(profile: RuleProfile) -> str:
+    content = [
+        {
+            "rule_id": item.rule_id,
+            "rule_version": item.rule_version,
+            "title": item.title,
+            "description": item.description,
+            "evaluator": item.evaluator,
+            "applicability": item.applicability,
+            "parameters": item.parameters,
+            "operator": item.operator,
+            "limit_value": item.limit_value,
+            "unit": item.unit,
+            "tolerance": item.tolerance,
+            "severity": item.severity,
+            "risk_type": item.risk_type,
+            "recommendation": item.recommendation,
+            "reference": item.reference,
+            "enabled": item.enabled,
+        }
+        for item in profile.rules.order_by("sort_order", "rule_id")
+    ]
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+class RuleProfileDetailView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, profile_id: str) -> Response:
+        profile = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        if profile is None:
+            return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
+        return Response(rule_profile_payload(profile))
+
+    def patch(self, request: Request, profile_id: str) -> Response:
+        if denied := _require(request, "rules:author"):
+            return denied
+        profile = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        if profile is None:
+            return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        if profile.workflow_status != RuleProfile.WorkflowStatus.DRAFT:
+            return _error(
+                request,
+                "PUBLISHED_CONTENT_IMMUTABLE",
+                "Clone a governed profile before editing rule content.",
+                409,
+            )
+        if int(request.data.get("row_version", 0)) != profile.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "Rule profile changed.", 409)
+        rules = request.data.get("rules")
+        if not isinstance(rules, list) or not 1 <= len(rules) <= 100:
+            return _error(request, "VALIDATION_RULES", "rules must contain 1-100 items.", 400)
+        normalized: list[dict[str, object]] = []
+        seen: set[str] = set()
+        try:
+            for index, item in enumerate(rules):
+                if not isinstance(item, dict):
+                    raise ValueError("Each rule must be an object.")
+                rule_id = str(item.get("rule_id", "")).strip()
+                evaluator = str(item.get("evaluator", "")).strip()
+                condition = item.get("condition", {})
+                if not VERSION_RE.fullmatch(rule_id) or evaluator not in EVALUATORS:
+                    raise ValueError("Rule ID or evaluator is invalid.")
+                if rule_id in seen or not isinstance(condition, dict):
+                    raise ValueError("Rule IDs must be unique and condition must be an object.")
+                operator = str(condition.get("operator", ""))
+                if operator not in {"lte", "gte", "eq"}:
+                    raise ValueError("Rule operator is unsupported.")
+                seen.add(rule_id)
+                normalized.append(
+                    {
+                        "rule_id": rule_id,
+                        "title": str(item.get("title", "")).strip(),
+                        "description": str(item.get("description", "")).strip(),
+                        "evaluator": evaluator,
+                        "applicability": item.get("applicability", {}),
+                        "parameters": item.get("measurement_definition", {}),
+                        "operator": operator,
+                        "limit_value": condition.get("limit"),
+                        "unit": str(condition.get("unit", ""))[:32],
+                        "tolerance": float(condition.get("tolerance", 0)),
+                        "severity": str(item.get("severity", "medium"))[:16],
+                        "risk_type": str(item.get("risk_type", ""))[:64],
+                        "recommendation": str(item.get("recommendation", "")),
+                        "reference": item.get("reference", {}),
+                        "enabled": bool(item.get("enabled", True)),
+                        "sort_order": index,
+                    }
+                )
+        except (TypeError, ValueError) as exc:
+            return _error(request, "VALIDATION_RULES", str(exc), 400)
+        with transaction.atomic():
+            existing = {item.rule_id: item for item in profile.rules.all()}
+            for values in normalized:
+                rule_id = str(values["rule_id"])
+                rule = existing.pop(rule_id, None)
+                if rule is None:
+                    rule = RuleVersion(
+                        profile=profile, rule_id=rule_id, rule_version=profile.version
+                    )
+                for field, value in values.items():
+                    setattr(rule, field, value)
+                rule.rule_version = profile.version
+                rule.save()
+            for removed in existing.values():
+                removed.enabled = False
+                removed.save(update_fields=["enabled"])
+            profile.change_summary = str(
+                request.data.get("change_summary", profile.change_summary)
+            ).strip()
+            if isinstance(request.data.get("product_scope"), list):
+                profile.product_scope = request.data["product_scope"]
+            if isinstance(request.data.get("material_scope"), list):
+                profile.material_scope = request.data["material_scope"]
+            profile.ruleset_checksum = _rule_checksum(profile)
+            profile.row_version += 1
+            profile.save()
+            audit_identity_event(
+                "rule_profile.updated.v1",
+                actor_id=_actor(request),
+                target_refs=[f"rule-profile:{profile.id}"],
+                detail={"reason": reason, "rule_count": len(normalized)},
+            )
+        return Response(rule_profile_payload(profile))
+
+
+class RuleProfileDiffView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, profile_id: str) -> Response:
+        current = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        baseline = (
+            RuleProfile.objects.prefetch_related("rules")
+            .filter(id=request.query_params.get("against"))
+            .first()
+        )
+        if current is None or baseline is None:
+            return _error(request, "NOT_FOUND", "Rule profile comparison target not found.", 404)
+        fields = (
+            "title",
+            "description",
+            "evaluator",
+            "applicability",
+            "parameters",
+            "operator",
+            "limit_value",
+            "unit",
+            "tolerance",
+            "severity",
+            "risk_type",
+            "recommendation",
+            "reference",
+            "enabled",
+        )
+        left = {item.rule_id: item for item in baseline.rules.all()}
+        right = {item.rule_id: item for item in current.rules.all()}
+        changes = []
+        for rule_id in sorted(set(left) | set(right)):
+            before, after = left.get(rule_id), right.get(rule_id)
+            changed_fields = [
+                field
+                for field in fields
+                if getattr(before, field, None) != getattr(after, field, None)
+            ]
+            if before is None or after is None or changed_fields:
+                change = (
+                    "added" if before is None else "removed" if after is None else "modified"
+                )
+                changes.append(
+                    {
+                        "rule_id": rule_id,
+                        "change": change,
+                        "changed_fields": changed_fields,
+                    }
+                )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "baseline_profile_id": str(baseline.id),
+                "profile_id": str(current.id),
+                "changes": changes,
+            }
+        )
 
 
 class KnowledgeDocumentWorkflowView(APIView):

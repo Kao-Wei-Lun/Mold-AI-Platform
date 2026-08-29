@@ -1,6 +1,6 @@
 # Mold AI Platform — 歷史資料管理功能詳細修改規劃
 
-> 文件狀態：已授權實作；Phase H4 受控編輯、Correction 與生命週期完成
+> 文件狀態：已授權實作；Phase H5 Rule 與 Knowledge 版本管理完成
 > 適用範圍：目前 Demo 與未來 Enterprise 資料管理體驗
 > 核心目標：讓使用者不只看見資料標題或摘要，而能完整查閱、追溯、受控修改、比較版本及確認資料來源，同時維持工程歷史與 AI 結果的可重現性。
 
@@ -454,6 +454,17 @@ GET    /api/v1/{resources}/{id}/audit
 
 建議 commit：`feat(governance): add rule and knowledge version management`
 
+完成內容（2026-08-29）：
+
+- Rules 歷史中心列出所有 Profile Version，提供完整 Rule 內容、治理人員、checksum 與 workflow 狀態。
+- Draft Rule Profile 可受控修改 Rule JSON；後端驗證 evaluator／operator／唯一 ID，重算 ruleset checksum、增加 row_version 並建立 AuditEvent。
+- Published／Retired Rule 不可原地修改，只能 Clone 成獨立 Draft；提供任兩個 Profile 的 added／removed／modified 欄位差異。
+- Knowledge 清單加入分頁 metadata 與 publication status filter；Detail 按需載入完整 chunks、版本鏈、citation references、ingestion／scan／治理資訊與來源下載。
+- 新 Knowledge 檔案可使用相同 document_key 與 supersedes 關聯建立下一版，舊 ArtifactVersion、Chunk、Citation 保持不變。
+- Rules／Knowledge 歷史頁使用穩定 deep link 與 tab query；管理動作依 author／approve 權限顯示，發布流程延續職責分離與 row_version 控制。
+
+驗證結果：Web `29` test files／`94` tests、API `165` passed／`1` skipped／`9` subtests；production build、Ruff 與 migration drift 全數通過。
+
 ### Phase H6 — 分析、Job、Audit 與 Lineage 中心
 
 - 所有 derived analysis 歷史、Detail、Rerun、Compare、Archive。
@@ -593,6 +604,6 @@ GET    /api/v1/{resources}/{id}/audit
 - [x] H2：Trial、CAE、HMI 摘要清單、按需載入詳細資料、修正／決策／匯出歷史。
 - [x] H3：Project／Part／Mold／Revision 詳細資料、CAD 版本／3D／FeatureSet／Job／Lineage。
 - [x] H4：受控編輯、Correction、Process／CAE append、HMI review／Profile Draft、Registry／Artifact governance 與 409 UI。
-- [ ] H5：Rule 與 Knowledge 版本管理。
+- [x] H5：Rule Draft／validation／workflow／version diff 與 Knowledge chunks／versions／citations／superseding upload。
 - [ ] H6：分析、Job、Audit 與 Lineage 中心。
 - [ ] H7：效能、批次與 Enterprise 強化。

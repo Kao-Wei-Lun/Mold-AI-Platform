@@ -540,13 +540,15 @@ class RuleVersion(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if self.pk and RuleVersion.objects.filter(pk=self.pk).exists():
-            persisted = RuleVersion.objects.only(*self.IMMUTABLE_FIELDS).get(pk=self.pk)
+            persisted = RuleVersion.objects.select_related("profile").only(
+                *self.IMMUTABLE_FIELDS, "profile__workflow_status"
+            ).get(pk=self.pk)
             changed = [
                 field
                 for field in self.IMMUTABLE_FIELDS
                 if getattr(persisted, field) != getattr(self, field)
             ]
-            if changed:
+            if changed and persisted.profile.workflow_status != RuleProfile.WorkflowStatus.DRAFT:
                 raise ValidationError(
                     {"rule_version": f"Immutable fields cannot change: {', '.join(changed)}"}
                 )

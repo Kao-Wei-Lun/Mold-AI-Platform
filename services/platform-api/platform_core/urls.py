@@ -13,6 +13,8 @@ from .engineering_data_views import (
 )
 from .governance_views import (
     KnowledgeDocumentWorkflowView,
+    RuleProfileDetailView,
+    RuleProfileDiffView,
     RuleProfileGovernanceListView,
     RuleProfileWorkflowView,
 )
@@ -252,6 +254,16 @@ urlpatterns = [
         name="knowledge-search-detail",
     ),
     path("rule-profiles", RuleProfileGovernanceListView.as_view(), name="rule-profile-list"),
+    path(
+        "rule-profiles/<uuid:profile_id>",
+        RuleProfileDetailView.as_view(),
+        name="rule-profile-detail",
+    ),
+    path(
+        "rule-profiles/<uuid:profile_id>/diff",
+        RuleProfileDiffView.as_view(),
+        name="rule-profile-diff",
+    ),
     path(
         "rule-profiles/<uuid:profile_id>/actions",
         RuleProfileWorkflowView.as_view(),

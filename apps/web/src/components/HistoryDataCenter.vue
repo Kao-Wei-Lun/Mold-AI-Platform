@@ -6,6 +6,7 @@ import type { LocalAccount } from "../api/identity";
 import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
+import GovernanceHistoryWorkspace from "./GovernanceHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RegistryCadHistoryWorkspace from "./RegistryCadHistoryWorkspace.vue";
 import RecordHeader from "./RecordHeader.vue";
@@ -91,6 +92,14 @@ function openDomain(domain: HistoryDomain): void {
       :domain="currentSlug"
       :path="path"
       :can-manage="currentAccount?.permissions.includes('registry:manage') || false"
+      @navigate="emit('navigate', $event)"
+    />
+
+    <GovernanceHistoryWorkspace
+      v-else-if="currentSlug === 'rules' || currentSlug === 'knowledge'"
+      :domain="currentSlug"
+      :path="path"
+      :current-account="currentAccount"
       @navigate="emit('navigate', $event)"
     />
 

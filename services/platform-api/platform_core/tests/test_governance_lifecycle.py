@@ -126,6 +126,42 @@ class GovernanceLifecycleTests(TestCase):
         self.assertEqual(denied.status_code, 409)
         self.assertEqual(denied.json()["error"]["code"], "SEGREGATION_OF_DUTIES")
 
+    def test_rule_draft_edit_recalculates_checksum_and_exposes_diff(self):
+        source = get_demo_rule_profile()
+        self.client.force_login(self.rule_owner)
+        cloned = self.client.post(
+            "/api/v1/rule-profiles",
+            {
+                "action": "clone",
+                "source_profile_id": str(source.id),
+                "version": "2.2",
+                "change_summary": "Editable draft",
+                "reason": "Prepare changed threshold",
+            },
+            content_type="application/json",
+        ).json()
+        original_checksum = cloned["ruleset_checksum"]
+        rules = cloned["rules"]
+        rules[0]["condition"]["limit"] = float(rules[0]["condition"]["limit"] or 0) + 0.25
+        updated = self.client.patch(
+            f"/api/v1/rule-profiles/{cloned['profile_id']}",
+            {
+                "rules": rules,
+                "change_summary": "Threshold reviewed",
+                "row_version": 1,
+                "reason": "Engineering review requested this threshold",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertNotEqual(updated.json()["ruleset_checksum"], original_checksum)
+        self.assertEqual(updated.json()["row_version"], 2)
+        difference = self.client.get(
+            f"/api/v1/rule-profiles/{cloned['profile_id']}/diff?against={source.id}"
+        )
+        self.assertEqual(difference.status_code, 200)
+        self.assertEqual(difference.json()["changes"][0]["change"], "modified")
+
     def test_published_rule_content_is_immutable(self):
         profile = get_demo_rule_profile()
         rule = profile.rules.first()
@@ -155,8 +191,31 @@ class GovernanceLifecycleTests(TestCase):
         process_knowledge_job.run(str(records.job.id))
         records.document.refresh_from_db()
         self.assertEqual(records.document.ingestion_status, "indexed")
-
+        next_version = create_knowledge_upload_records(
+            SimpleUploadedFile(
+                "controlled-v2.md",
+                b"# Controlled source v2\n\nUpdated governed rib guidance.",
+                content_type="text/markdown",
+            ),
+            title="Controlled source",
+            document_type="design_guideline",
+            authority_level="reviewed_demo",
+            owner=str(self.curator_profile.id),
+            language="en",
+            effective_from=None,
+            effective_to=None,
+            idempotency_key=None,
+            publication_status="draft",
+            document_key=records.document.document_key,
+            supersedes_document_id=str(records.document.id),
+        )
+        process_knowledge_job.run(str(next_version.job.id))
         self.client.force_login(self.curator)
+        detail = self.client.get(f"/api/v1/knowledge-documents/{records.document.id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(len(detail.json()["versions"]), 2)
+        self.assertGreater(len(detail.json()["chunks"]), 0)
+
         submitted = self.client.post(
             f"/api/v1/knowledge-documents/{records.document.id}/actions",
             {"action": "submit", "row_version": 1, "reason": "Ready for review"},

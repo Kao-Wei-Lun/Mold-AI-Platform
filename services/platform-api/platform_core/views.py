@@ -549,12 +549,30 @@ class KnowledgeDocumentListCreateView(APIView):
         documents = (
             KnowledgeDocument.objects.select_related("artifact_version__artifact")
             .order_by("-created_at")
-            .filter(artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET)[:50]
+            .filter(artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET)
         )
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+            page_size = min(100, max(1, int(request.query_params.get("page_size", 25))))
+        except ValueError:
+            return _error_response(
+                "VALIDATION_PAGINATION",
+                "page and page_size must be integers.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if publication_status := request.query_params.get("publication_status"):
+            documents = documents.filter(publication_status=publication_status)
+        total = documents.count()
+        start = (page - 1) * page_size
+        items = [
+            knowledge_document_payload(document)
+            for document in documents[start : start + page_size]
+        ]
         return Response(
             {
                 "schema_version": "1.0",
-                "items": [knowledge_document_payload(document) for document in documents],
+                "items": items,
+                "page": {"number": page, "size": page_size, "total": total},
             }
         )
 
@@ -664,9 +682,42 @@ class KnowledgeDocumentDetailView(APIView):
 
     def get(self, request: Request, document_id: str) -> Response:
         document = get_object_or_404(
-            KnowledgeDocument.objects.select_related("artifact_version__artifact"), pk=document_id
+            KnowledgeDocument.objects.select_related("artifact_version__artifact").prefetch_related(
+                "chunks"
+            ),
+            pk=document_id,
         )
-        return Response(knowledge_document_payload(document))
+        payload = knowledge_document_payload(document)
+        versions = KnowledgeDocument.objects.select_related("artifact_version__artifact").filter(
+            document_key=document.document_key
+        )
+        payload["versions"] = [knowledge_document_payload(item) for item in versions]
+        payload["chunks"] = [
+            {
+                "chunk_id": str(chunk.id),
+                "ordinal": chunk.ordinal,
+                "text": chunk.text,
+                "text_hash": chunk.text_hash,
+                "locator": chunk.locator,
+                "language": chunk.language,
+                "embedding_model": chunk.embedding_model,
+                "index_status": chunk.index_status,
+                "injection_scan_status": chunk.injection_scan_status,
+            }
+            for chunk in document.chunks.all()
+        ]
+        citations: dict[str, dict[str, object]] = {}
+        for search in KnowledgeSearch.objects.order_by("-created_at")[:200]:
+            for citation in search.result.get("citations", []):
+                if str(citation.get("document_id", "")) == str(document.id):
+                    citation_id = str(citation.get("citation_id", ""))
+                    citations[citation_id] = {
+                        **citation,
+                        "search_id": str(search.id),
+                        "search_created_at": search.created_at.isoformat(),
+                    }
+        payload["citations"] = list(citations.values())
+        return Response(payload)
 
 
 class KnowledgeSearchListCreateView(APIView):

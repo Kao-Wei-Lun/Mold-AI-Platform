@@ -39,6 +39,24 @@ export type KnowledgeDocument = {
   created_at: string;
 };
 
+export type KnowledgeChunk = {
+  chunk_id: string;
+  ordinal: number;
+  text: string;
+  text_hash: string;
+  locator: Record<string, unknown>;
+  language: string;
+  embedding_model: string;
+  index_status: string;
+  injection_scan_status: string;
+};
+
+export type KnowledgeDocumentDetail = KnowledgeDocument & {
+  versions: KnowledgeDocument[];
+  chunks: KnowledgeChunk[];
+  citations: Array<KnowledgeCitation & { search_id: string; search_created_at: string }>;
+};
+
 export type KnowledgeJob = Omit<CADJob, "result"> & { result: KnowledgeDocument | null };
 
 export type KnowledgeUploadAccepted = {
@@ -135,6 +153,33 @@ export async function fetchKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
   if (!response.ok) throw new Error(await errorMessage(response));
   const payload = (await response.json()) as { items: KnowledgeDocument[] };
   return Array.isArray(payload.items) ? payload.items : [];
+}
+
+export async function fetchKnowledgeDocument(id: string): Promise<KnowledgeDocumentDetail> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-documents/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return await response.json();
+}
+
+export async function uploadKnowledgeVersion(
+  source: KnowledgeDocument,
+  file: File,
+  metadata: { title: string; documentType: string; authorityLevel: string; language: string },
+): Promise<KnowledgeUploadAccepted> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("title", metadata.title.trim());
+  body.append("document_type", metadata.documentType);
+  body.append("authority_level", metadata.authorityLevel);
+  body.append("language", metadata.language);
+  body.append("document_key", source.document_key);
+  body.append("supersedes_document_id", source.document_id);
+  body.append("idempotency_key", `web-knowledge-version-${Date.now()}-${file.name}-${file.size}`);
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/knowledge-documents`, { method: "POST", body });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return await response.json();
 }
 
 export async function transitionKnowledgeDocument(

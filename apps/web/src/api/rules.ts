@@ -20,6 +20,13 @@ export type RuleProfile = {
   rules: Array<ReviewRule & { enabled: boolean }>;
 };
 
+export type RuleProfileDiff = {
+  schema_version: "1.0";
+  baseline_profile_id: string;
+  profile_id: string;
+  changes: Array<{ rule_id: string; change: "added" | "removed" | "modified"; changed_fields: string[] }>;
+};
+
 type RuleProfileList = {
   schema_version: "1.0";
   items: RuleProfile[];
@@ -44,6 +51,36 @@ async function ruleRequest<T>(path: string, body: Record<string, unknown>): Prom
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error?.message || `Rule workflow returned HTTP ${response.status}`);
   return payload as T;
+}
+
+export async function fetchRuleProfile(id: string): Promise<RuleProfile> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/rule-profiles/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`Rule profile endpoint returned HTTP ${response.status}`);
+  return await response.json();
+}
+
+export async function fetchRuleProfileDiff(id: string, against: string): Promise<RuleProfileDiff> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/rule-profiles/${id}/diff?against=${encodeURIComponent(against)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`Rule diff endpoint returned HTTP ${response.status}`);
+  return await response.json();
+}
+
+export async function updateRuleProfile(
+  profile: RuleProfile,
+  input: { change_summary: string; rules: RuleProfile["rules"]; reason: string },
+): Promise<RuleProfile> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/rule-profiles/${profile.profile_id}`, {
+    method: "PATCH",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, row_version: profile.row_version }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload?.error?.message || `Rule update returned HTTP ${response.status}`);
+  return payload;
 }
 
 export function cloneRuleProfile(

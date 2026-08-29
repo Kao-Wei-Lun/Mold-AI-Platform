@@ -4315,6 +4315,15 @@ button:not(:disabled):active { transform: translateY(0); }
 .history-mutation-grid .form-wide { grid-column: 1 / -1; }
 .history-mutation-grid textarea { resize: vertical; }
 .history-json-editor { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.72rem; }
+.governance-history-workspace { display: grid; gap: 0.9rem; }
+.history-governance-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; border: 1px solid #d8e3ee; border-radius: 12px; padding: 0.7rem; background: #f7f9fc; }
+.history-governance-actions input { flex: 1 1 16rem; }
+.history-baseline-select,
+.history-json-field { display: grid; gap: 0.35rem; }
+.history-baseline-select { max-width: 28rem; }
+.history-baseline-select span,
+.history-json-field span { color: #526981; font-size: 0.7rem; font-weight: 800; }
+.history-json-field textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.7rem; }
 
 @media (prefers-reduced-motion: no-preference) {
   .page-header,
