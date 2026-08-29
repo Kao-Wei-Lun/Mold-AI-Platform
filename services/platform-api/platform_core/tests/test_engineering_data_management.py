@@ -123,6 +123,20 @@ class EngineeringDataManagementTests(TestCase):
         self.assertEqual(reopened.status_code, 200)
         self.assertEqual(reopened.json()["lifecycle_status"], "reopened")
 
+    def test_trial_history_summary_does_not_serialize_nested_evidence(self) -> None:
+        created = self.create_trial()
+        self.assertEqual(created.status_code, 201)
+
+        summary = self.client.get("/api/v1/trial-cases?view=summary")
+
+        self.assertEqual(summary.status_code, 200)
+        item = summary.json()["items"][0]
+        self.assertEqual(item["case_code"], "TRIAL-MANAGED-001")
+        self.assertEqual(item["run_count"], 0)
+        self.assertEqual(item["correction_count"], 0)
+        self.assertNotIn("runs", item)
+        self.assertNotIn("corrections", item)
+
     def test_structured_cae_run_import_and_archive_lifecycle(self) -> None:
         created = self.client.post(
             "/api/v1/cae-studies",
@@ -174,6 +188,13 @@ class EngineeringDataManagementTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(blocked.status_code, 404)
+
+        summary = self.client.get("/api/v1/cae-studies?view=summary")
+        self.assertEqual(summary.status_code, 200)
+        item = summary.json()["items"][0]
+        self.assertEqual(item["run_count"], 1)
+        self.assertEqual(item["result_count"], 2)
+        self.assertNotIn("runs", item)
 
     def test_hmi_profile_version_and_human_correction_are_traceable(self) -> None:
         profiles = self.client.get("/api/v1/hmi-profiles")

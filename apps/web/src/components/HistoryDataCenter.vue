@@ -4,6 +4,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "../i18n";
 import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
+import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RecordHeader from "./RecordHeader.vue";
 
@@ -34,7 +35,8 @@ const domains: HistoryDomain[] = [
 ];
 
 const currentSlug = computed(() => {
-  const segments = props.path.replace(/^\/+|\/+$/g, "").split("/");
+  const pathname = new URL(props.path, window.location.origin).pathname;
+  const segments = pathname.replace(/^\/+|\/+$/g, "").split("/");
   return segments[0] === "data" && segments[1] ? segments[1] : "overview";
 });
 const currentDomain = computed(() => domains.find((domain) => domain.slug === currentSlug.value) || null);
@@ -73,6 +75,13 @@ function openDomain(domain: HistoryDomain): void {
         </article>
       </div>
     </template>
+
+    <EngineeringHistoryWorkspace
+      v-else-if="currentSlug === 'trials' || currentSlug === 'cae' || currentSlug === 'hmi'"
+      :domain="currentSlug"
+      :path="path"
+      @navigate="emit('navigate', $event)"
+    />
 
     <template v-else-if="currentDomain">
       <RecordHeader :title="t(currentDomain.title)" :identifier="`/data/${currentDomain.slug}`" status="Foundation ready" :version="currentDomain.stage">

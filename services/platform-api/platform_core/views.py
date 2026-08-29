@@ -191,6 +191,24 @@ def _hmi_extraction_queryset():
     ).prefetch_related("fields__correction_decisions", "exports__artifact_version")
 
 
+def _hmi_extraction_summary(extraction: HMIExtraction) -> dict[str, object]:
+    fields = list(extraction.fields.all())
+    return {
+        "schema_version": "1.0",
+        "extraction_id": str(extraction.id),
+        "profile": f"{extraction.profile_key}@{extraction.profile_version}",
+        "profile_definition_id": (
+            str(extraction.profile_definition_id) if extraction.profile_definition_id else None
+        ),
+        "status": extraction.status,
+        "review_status": extraction.review_status,
+        "field_count": len(fields),
+        "needs_review_count": sum(item.review_status == "needs_review" for item in fields),
+        "export_count": len(extraction.exports.all()),
+        "created_at": extraction.created_at.isoformat(),
+    }
+
+
 class HMIDemoFixtureView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -221,10 +239,15 @@ class HMIExtractionListCreateView(APIView):
         extractions = _hmi_extraction_queryset().filter(
             image_artifact_version__classification="public_demo"
         )[:25]
+        serializer = (
+            _hmi_extraction_summary
+            if request.query_params.get("view") == "summary"
+            else extraction_payload
+        )
         return Response(
             {
                 "schema_version": "1.0",
-                "items": [extraction_payload(extraction) for extraction in extractions],
+                "items": [serializer(extraction) for extraction in extractions],
             }
         )
 

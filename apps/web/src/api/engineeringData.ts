@@ -9,6 +9,40 @@ export type TrialCorrection = {
   created_at: string;
 };
 
+export type TrialProcessRun = {
+  process_run_id: string;
+  run_number: number;
+  cycle_range: { start: number | null; end: number | null };
+  parameters: Record<string, { value: number; unit: string; value_kind: string; sampling_method: string }>;
+  environment: Record<string, unknown>;
+  result: Record<string, unknown>;
+  data_quality: Record<string, unknown>;
+  defects: Array<{
+    defect_id: string;
+    defect_code: string;
+    severity: string;
+    location: string;
+    quantity_rate: number | null;
+    quantity_unit: string;
+    inspection_method: string;
+    evidence_refs: string[];
+  }>;
+  corrective_actions: Array<{
+    action_id: string;
+    action_code: string;
+    description: string;
+    before_values: Record<string, unknown>;
+    after_values: Record<string, unknown>;
+    rationale_source: string;
+    approved_by: string;
+    executed: boolean;
+    observed_outcome: string;
+    expected_effect: string;
+    stop_condition: string;
+    evidence_refs: string[];
+  }>;
+};
+
 export type ManagedTrial = {
   trial_case_id: string;
   case_code: string;
@@ -19,10 +53,62 @@ export type ManagedTrial = {
   purpose: string;
   outcome: string;
   started_at: string;
+  material_lot?: string;
+  part_revision_ref?: string;
+  classification?: string;
+  acl_scopes?: string[];
+  data_quality?: Record<string, unknown>;
+  closed_at?: string | null;
+  archive_reason?: string | null;
   lifecycle_status: "draft" | "closed" | "reopened" | "archived";
   row_version: number;
   corrections: TrialCorrection[];
+  runs?: TrialProcessRun[];
   provenance: Record<string, unknown>;
+};
+
+export type ManagedTrialSummary = {
+  trial_case_id: string;
+  case_code: string;
+  mold_revision_ref: string;
+  machine_code: string;
+  material_code: string;
+  product_type: string;
+  outcome: string;
+  started_at: string;
+  lifecycle_status: ManagedTrial["lifecycle_status"];
+  row_version: number;
+  run_count: number;
+  correction_count: number;
+};
+
+export type CAEResult = {
+  result_id: string;
+  metric_code: string;
+  result_type: string;
+  value: number;
+  unit: string;
+  location: Record<string, unknown>;
+  field_summary: Record<string, unknown>;
+  quality_flags: string[];
+  parser: { name: string; version: string };
+  source_locator: Record<string, unknown>;
+  evidence_refs: string[];
+};
+
+export type CAERun = {
+  run_id: string;
+  run_code: string;
+  solver: { name: string; version: string };
+  mesh: { artifact_ref: string; checksum: string; family: string };
+  material_model_code: string;
+  boundary_settings: Record<string, unknown>;
+  process_settings: Record<string, unknown>;
+  unit_system: string;
+  status: string;
+  input_hash: string;
+  data_quality: Record<string, unknown>;
+  results: CAEResult[];
 };
 
 export type ManagedCAEStudy = {
@@ -36,8 +122,28 @@ export type ManagedCAEStudy = {
   lifecycle_status: "active" | "archived";
   row_version: number;
   archive_reason: string | null;
+  archived_at?: string | null;
+  owner?: string;
+  product_ref?: string;
+  classification?: string;
+  acl_scopes?: string[];
+  data_quality?: Record<string, unknown>;
   provenance: Record<string, unknown>;
-  runs: Array<{ run_id: string; run_code: string; results: Array<Record<string, unknown>> }>;
+  runs: CAERun[];
+};
+
+export type ManagedCAESummary = {
+  study_id: string;
+  study_code: string;
+  solver_name: string;
+  mold_revision_ref: string;
+  material_model_code: string;
+  mesh_family: string;
+  objective: string;
+  lifecycle_status: ManagedCAEStudy["lifecycle_status"];
+  row_version: number;
+  run_count: number;
+  result_count: number;
 };
 
 export type HMIProfile = {
@@ -76,6 +182,24 @@ export async function fetchEngineeringData(): Promise<{
     request<{ items: HMIProfile[] }>("/api/v1/hmi-profiles"),
   ]);
   return { trials: trials.items, studies: studies.items, profiles: profiles.items };
+}
+
+export async function fetchTrialHistory(): Promise<ManagedTrialSummary[]> {
+  const payload = await request<{ items: ManagedTrialSummary[] }>("/api/v1/trial-cases?view=summary");
+  return payload.items;
+}
+
+export function fetchTrialCaseDetail(id: string): Promise<ManagedTrial> {
+  return request(`/api/v1/trial-cases/${id}`);
+}
+
+export async function fetchCAEHistory(): Promise<ManagedCAESummary[]> {
+  const payload = await request<{ items: ManagedCAESummary[] }>("/api/v1/cae-studies?view=summary");
+  return payload.items;
+}
+
+export function fetchCAEStudyDetail(id: string): Promise<ManagedCAEStudy> {
+  return request(`/api/v1/cae-studies/${id}`);
 }
 
 export function createManagedTrial(input: Record<string, unknown>): Promise<ManagedTrial> {

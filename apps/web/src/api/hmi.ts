@@ -14,6 +14,15 @@ export type HMIField = {
   reviewer_correction: { value: number | null; unit: string; reviewed_by: string } | null;
   effective_value: number | null;
   effective_unit: string;
+  correction_decisions?: Array<{
+    decision_id: string;
+    action: string;
+    before_value: Record<string, unknown>;
+    after_value: Record<string, unknown>;
+    reason: string;
+    decided_by: string;
+    created_at: string;
+  }>;
 };
 
 export type HMIExtraction = {
@@ -23,6 +32,7 @@ export type HMIExtraction = {
   image_sha256: string;
   image_download_url: string;
   profile: string;
+  profile_definition_id?: string | null;
   extractor_version: string;
   status: string;
   image_dimensions: { width: number; height: number };
@@ -34,6 +44,19 @@ export type HMIExtraction = {
   lineage_ref: string;
   created_at: string;
   limitations: string[];
+};
+
+export type HMIExtractionSummary = {
+  schema_version: "1.0";
+  extraction_id: string;
+  profile: string;
+  profile_definition_id: string | null;
+  status: string;
+  review_status: string;
+  field_count: number;
+  needs_review_count: number;
+  export_count: number;
+  created_at: string;
 };
 
 export type HMIExport = {
@@ -70,6 +93,23 @@ export async function fetchDemoHMI(): Promise<File> {
   const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi/demo-fixture?variant=low-confidence`);
   if (!response.ok) throw new Error(await errorMessage(response));
   return new File([await response.blob()], "demo-hmi-low-confidence.png", { type: "image/png" });
+}
+
+export async function fetchHMIExtractionHistory(): Promise<HMIExtractionSummary[]> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi-extractions?view=summary`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const payload = (await response.json()) as { items: HMIExtractionSummary[] };
+  return payload.items;
+}
+
+export async function fetchHMIExtractionDetail(id: string): Promise<HMIExtraction> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/hmi-extractions/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return await response.json();
 }
 
 export async function uploadHMI(file: File): Promise<HMIExtraction> {

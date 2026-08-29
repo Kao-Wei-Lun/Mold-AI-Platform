@@ -59,6 +59,14 @@ class HMIExtractionEndpointTests(TestCase):
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.json()["items"]), 1)
 
+        summary = self.client.get("/api/v1/hmi-extractions?view=summary")
+        self.assertEqual(summary.status_code, 200)
+        summary_item = summary.json()["items"][0]
+        self.assertEqual(summary_item["field_count"], len(FIELD_SPECS))
+        self.assertEqual(summary_item["needs_review_count"], 0)
+        self.assertEqual(summary_item["export_count"], 0)
+        self.assertNotIn("fields", summary_item)
+
     def test_low_confidence_field_is_exact_but_blocks_export_until_reviewed(self) -> None:
         response = self.create_extraction()
         self.assertEqual(response.status_code, 201)

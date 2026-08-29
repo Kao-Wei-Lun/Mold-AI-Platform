@@ -31,6 +31,40 @@ from .process_trial import trial_case_payload, trial_case_queryset
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 
 
+def trial_case_summary(trial: TrialCase) -> dict[str, object]:
+    return {
+        "trial_case_id": str(trial.id),
+        "case_code": trial.case_code,
+        "mold_revision_ref": trial.mold_revision_ref,
+        "machine_code": trial.machine_code,
+        "material_code": trial.material_code,
+        "product_type": trial.product_type,
+        "outcome": trial.outcome,
+        "started_at": trial.started_at.isoformat(),
+        "lifecycle_status": trial.lifecycle_status,
+        "row_version": trial.row_version,
+        "run_count": len(trial.runs.all()),
+        "correction_count": len(trial.corrections.all()),
+    }
+
+
+def cae_study_summary(study: CAEStudy) -> dict[str, object]:
+    runs = list(study.runs.all())
+    return {
+        "study_id": str(study.id),
+        "study_code": study.study_code,
+        "solver_name": study.solver_name,
+        "mold_revision_ref": study.mold_revision_ref,
+        "material_model_code": study.material_model_code,
+        "mesh_family": study.mesh_family,
+        "objective": study.objective,
+        "lifecycle_status": study.lifecycle_status,
+        "row_version": study.row_version,
+        "run_count": len(runs),
+        "result_count": sum(len(run.results.all()) for run in runs),
+    }
+
+
 def _error(request: Request, code: str, message: str, http_status: int, **detail) -> Response:
     return Response(
         {
@@ -99,7 +133,12 @@ class GovernedTrialCaseListView(APIView):
 
     def get(self, request: Request) -> Response:
         trials = trial_case_queryset().order_by("case_code")[:100]
-        items = [trial_case_payload(item) for item in trials if "public-demo" in item.acl_scopes]
+        serializer = (
+            trial_case_summary
+            if request.query_params.get("view") == "summary"
+            else trial_case_payload
+        )
+        items = [serializer(item) for item in trials if "public-demo" in item.acl_scopes]
         return Response({"schema_version": "1.0", "items": items})
 
     def post(self, request: Request) -> Response:
@@ -280,8 +319,13 @@ class GovernedCAEStudyListView(APIView):
 
     def get(self, request: Request) -> Response:
         studies = cae_study_queryset().order_by("study_code")[:100]
+        serializer = (
+            cae_study_summary
+            if request.query_params.get("view") == "summary"
+            else cae_study_payload
+        )
         return Response(
-            {"schema_version": "1.0", "items": [cae_study_payload(item) for item in studies]}
+            {"schema_version": "1.0", "items": [serializer(item) for item in studies]}
         )
 
     def post(self, request: Request) -> Response:

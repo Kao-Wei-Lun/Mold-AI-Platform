@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 
 import { setLocale } from "../i18n";
 import DetailDrawer from "./DetailDrawer.vue";
@@ -6,6 +6,7 @@ import HistoryDataCenter from "./HistoryDataCenter.vue";
 
 describe("HistoryDataCenter", () => {
   beforeEach(() => setLocale("en"));
+  afterEach(() => vi.unstubAllGlobals());
 
   it("shows all governed history domains and emits stable routes", async () => {
     const wrapper = mount(HistoryDataCenter, { props: { path: "/data/overview" } });
@@ -18,12 +19,18 @@ describe("HistoryDataCenter", () => {
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/data/molds"]);
   });
 
-  it("keeps a domain route selected and renders the standard empty table", () => {
+  it("keeps a domain route selected and renders its history list", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    } as Response)));
     const wrapper = mount(HistoryDataCenter, { props: { path: "/data/trials" } });
+    await flushPromises();
 
-    expect(wrapper.find(".record-header").text()).toContain("Trial & process");
+    expect(wrapper.find(".history-list-heading").text()).toContain("Trial & process");
     expect(wrapper.find(".history-domain-nav button.active").text()).toBe("Trial & process");
-    expect(wrapper.find(".data-table-empty").text()).toContain("planned phase");
+    expect(wrapper.find(".data-table-empty").text()).toContain("No trial history");
   });
 
   it("opens and closes the accessible quick detail drawer", async () => {

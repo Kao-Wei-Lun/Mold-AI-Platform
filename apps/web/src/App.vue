@@ -55,7 +55,7 @@ const initialRoute = deepLinkState.context
   ? routeForDeepLink(deepLinkState.context.target)
   : resolveWorkspaceRoute(window.location.pathname);
 const currentRoute = ref<WorkspaceRoute>(initialRoute);
-const currentPath = ref(window.location.pathname);
+const currentPath = ref(`${window.location.pathname}${window.location.search}`);
 const assistantContext = ref<AssistantContext>({
   context_version: "1.0",
   page: "engineering_workspace",
@@ -113,10 +113,11 @@ function navigate(routeId: WorkspaceRouteId): void {
 }
 
 function navigatePath(path: string): void {
-  const route = resolveWorkspaceRoute(path);
+  const target = new URL(path, window.location.origin);
+  const route = resolveWorkspaceRoute(target.pathname);
   window.history.pushState(null, "", path);
   currentRoute.value = route;
-  currentPath.value = path;
+  currentPath.value = `${target.pathname}${target.search}`;
   deepLinkVisible.value = false;
   navigationOpen.value = false;
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -124,7 +125,7 @@ function navigatePath(path: string): void {
 
 function onPopState(): void {
   currentRoute.value = resolveWorkspaceRoute(window.location.pathname);
-  currentPath.value = window.location.pathname;
+  currentPath.value = `${window.location.pathname}${window.location.search}`;
   deepLinkVisible.value = Boolean(window.location.search);
 }
 
