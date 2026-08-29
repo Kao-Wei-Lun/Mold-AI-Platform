@@ -4,9 +4,11 @@ from .engineering_data_views import (
     GovernedCAERunCreateView,
     GovernedCAEStudyDetailView,
     GovernedCAEStudyListView,
+    GovernedProcessRunCreateView,
     GovernedTrialCaseDetailView,
     GovernedTrialCaseListView,
     HMIProfileActionView,
+    HMIProfileDetailView,
     HMIProfileListCreateView,
 )
 from .governance_views import (
@@ -191,7 +193,17 @@ urlpatterns = [
         GovernedTrialCaseDetailView.as_view(),
         name="trial-case-detail",
     ),
+    path(
+        "trial-cases/<uuid:trial_case_id>/runs",
+        GovernedProcessRunCreateView.as_view(),
+        name="trial-process-run-create",
+    ),
     path("hmi-profiles", HMIProfileListCreateView.as_view(), name="hmi-profile-list-create"),
+    path(
+        "hmi-profiles/<uuid:profile_id>",
+        HMIProfileDetailView.as_view(),
+        name="hmi-profile-detail",
+    ),
     path(
         "hmi-profiles/<uuid:profile_id>/actions",
         HMIProfileActionView.as_view(),

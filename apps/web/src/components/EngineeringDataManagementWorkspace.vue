@@ -9,6 +9,7 @@ import {
   transitionCAEStudy,
   transitionHMIProfile,
   transitionTrial,
+  updateHMIProfile,
   type HMIProfile,
   type ManagedCAEStudy,
   type ManagedTrial,
@@ -58,6 +59,8 @@ const caeForm = reactive({
   objective: "",
 });
 const profileForm = reactive({ source_profile_id: "", version: "", change_summary: "" });
+const editingProfile = ref<HMIProfile | null>(null);
+const profileEditForm = reactive({ change_summary: "", field_specs_json: "[]" });
 
 function optionLabel(option: { name_en: string; name_zh_tw: string }): string {
   return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
@@ -124,6 +127,31 @@ function submitProfile(): Promise<void> {
   );
 }
 
+function beginProfileEdit(profile: HMIProfile): void {
+  editingProfile.value = profile;
+  profileEditForm.change_summary = profile.change_summary;
+  profileEditForm.field_specs_json = JSON.stringify(profile.field_specs, null, 2);
+}
+
+async function submitProfileEdit(): Promise<void> {
+  if (!editingProfile.value) return;
+  let fieldSpecs: Array<Record<string, unknown>>;
+  try {
+    const parsed = JSON.parse(profileEditForm.field_specs_json);
+    if (!Array.isArray(parsed)) throw new Error();
+    fieldSpecs = parsed;
+  } catch {
+    error.value = t("Field specifications must be a valid JSON array.");
+    return;
+  }
+  const profile = editingProfile.value;
+  await run(
+    () => updateHMIProfile(profile, { field_specs: fieldSpecs, change_summary: profileEditForm.change_summary, reason: reason.value }),
+    "HMI profile draft saved.",
+  );
+  editingProfile.value = null;
+}
+
 onMounted(load);
 </script>
 
@@ -182,12 +210,13 @@ onMounted(load);
             <div><strong>{{ profile.profile_key }}@{{ profile.version }}</strong><span>{{ profile.change_summary }}</span></div>
             <small>{{ profile.field_specs.length }} {{ t("fields") }} · {{ profile.extraction_count }} {{ t("extractions") }}</small><em>{{ t(profile.status) }}</em>
             <button v-if="canManage && profile.status === 'draft'" type="button" class="text-button" @click="run(() => transitionHMIProfile(profile, 'publish', reason), 'HMI profile published.')">{{ t("Publish") }}</button>
+            <button v-if="canManage && profile.status === 'draft'" type="button" class="text-button" @click="beginProfileEdit(profile)">{{ t("Edit draft") }}</button>
           </article>
         </template>
       </section>
 
-      <form v-if="canManage" class="registry-editor" @submit.prevent="tab === 'trials' ? submitTrial() : tab === 'cae' ? submitCAE() : submitProfile()">
-        <div><p class="eyebrow">{{ t("Create controlled record") }}</p><h3>{{ t(tab === 'trials' ? 'New trial case' : tab === 'cae' ? 'New CAE study' : 'New HMI profile version') }}</h3></div>
+      <form v-if="canManage" class="registry-editor" @submit.prevent="tab === 'trials' ? submitTrial() : tab === 'cae' ? submitCAE() : editingProfile ? submitProfileEdit() : submitProfile()">
+        <div><p class="eyebrow">{{ t(editingProfile ? "Edit controlled draft" : "Create controlled record") }}</p><h3>{{ t(tab === 'trials' ? 'New trial case' : tab === 'cae' ? 'New CAE study' : editingProfile ? 'Edit HMI profile draft' : 'New HMI profile version') }}</h3></div>
         <template v-if="tab === 'trials'">
           <FormField v-slot="{ fieldId }" :label="t('Trial code')" required><input :id="fieldId" v-model="trialForm.case_code" required /></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Mold revision')" required><select :id="fieldId" v-model="trialForm.mold_revision_id" required><option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }}</option></select></FormField>
@@ -205,13 +234,18 @@ onMounted(load);
           <FormField v-slot="{ fieldId }" :label="t('Mesh family')" required><select :id="fieldId" v-model="caeForm.mesh_family" required><option value="3d-tetra">3D tetra</option><option value="dual-domain">Dual domain</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Objective')"><textarea :id="fieldId" v-model="caeForm.objective" rows="3"></textarea></FormField>
         </template>
-        <template v-else>
+        <template v-else-if="!editingProfile">
           <FormField v-slot="{ fieldId }" :label="t('Source profile')" required><select :id="fieldId" v-model="profileForm.source_profile_id" required><option v-for="profile in profiles" :key="profile.profile_id" :value="profile.profile_id">{{ profile.profile_key }}@{{ profile.version }}</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('New version')" required><input :id="fieldId" v-model="profileForm.version" required /></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Change summary')" required><textarea :id="fieldId" v-model="profileForm.change_summary" rows="3" required></textarea></FormField>
         </template>
+        <template v-else>
+          <FormField v-slot="{ fieldId }" :label="t('Change summary')" required><textarea :id="fieldId" v-model="profileEditForm.change_summary" rows="3" required></textarea></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Field specifications (JSON)')" required><textarea :id="fieldId" v-model="profileEditForm.field_specs_json" class="history-json-editor" rows="14" required></textarea></FormField>
+          <button type="button" class="text-button" @click="editingProfile = null">{{ t("Cancel editing") }}</button>
+        </template>
         <FormField v-slot="{ fieldId }" :label="t('Change reason')" required><input :id="fieldId" v-model="reason" required /></FormField>
-        <button type="submit" :disabled="busy">{{ busy ? t("Saving...") : t("Create record") }}</button>
+        <button type="submit" :disabled="busy">{{ busy ? t("Saving...") : t(editingProfile ? "Save controlled change" : "Create record") }}</button>
       </form>
       <aside v-else class="registry-editor read-only"><strong>{{ t("Read-only engineering data") }}</strong><p>{{ t("Your account can inspect lineage and lifecycle but cannot change records.") }}</p></aside>
     </div>

@@ -184,6 +184,8 @@ def artifact_governance_payload(artifact: Artifact) -> dict[str, object]:
         "quality_status": artifact.quality_status,
         "archive_reason": artifact.archive_reason or None,
         "archived_at": artifact.archived_at.isoformat() if artifact.archived_at else None,
+        "row_version": artifact.row_version,
+        "updated_at": artifact.updated_at.isoformat(),
         "references": references,
         "hard_delete_allowed": sum(references.values()) == 0,
     }
@@ -263,6 +265,8 @@ class ProjectDetailView(APIView):
             return _error(request, "CANONICAL_CODE_IMMUTABLE", "Project code is immutable.", 409)
         if int(request.data.get("row_version", 0)) != project.row_version:
             return _error(request, "CONCURRENT_MODIFICATION", "Project changed after loading.", 409)
+        if "status" in request.data and request.data["status"] not in Project.Status.values:
+            return _error(request, "VALIDATION_STATUS", "Project status is invalid.", 400)
         for field in ("name", "description", "status"):
             if field in request.data:
                 setattr(project, field, str(request.data[field]).strip())
@@ -361,6 +365,8 @@ class PartDetailView(APIView):
             return _error(request, "CANONICAL_CODE_IMMUTABLE", "Part number is immutable.", 409)
         if int(request.data.get("row_version", 0)) != part.row_version:
             return _error(request, "CONCURRENT_MODIFICATION", "Product part changed.", 409)
+        if "status" in request.data and request.data["status"] not in ProductPart.Status.values:
+            return _error(request, "VALIDATION_STATUS", "Product part status is invalid.", 400)
         for field in ("name", "product_type", "material_code", "status"):
             if field in request.data:
                 setattr(part, field, str(request.data[field]).strip())
@@ -471,11 +477,21 @@ class MoldDetailView(APIView):
             return _error(request, "CANONICAL_CODE_IMMUTABLE", "Mold code is immutable.", 409)
         if int(request.data.get("row_version", 0)) != mold.row_version:
             return _error(request, "CONCURRENT_MODIFICATION", "Mold changed after loading.", 409)
+        if "status" in request.data and request.data["status"] not in Mold.Status.values:
+            return _error(request, "VALIDATION_STATUS", "Mold status is invalid.", 400)
         for field in ("name", "mold_type", "status"):
             if field in request.data:
                 setattr(mold, field, str(request.data[field]).strip())
         if "cavity_count" in request.data:
-            mold.cavity_count = int(request.data["cavity_count"])
+            try:
+                cavity_count = int(request.data["cavity_count"])
+                if not 1 <= cavity_count <= 128:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return _error(
+                    request, "VALIDATION_CAVITY_COUNT", "cavity_count must be 1-128.", 400
+                )
+            mold.cavity_count = cavity_count
         mold.row_version += 1
         mold.updated_by = _actor(request)
         mold.save()
@@ -642,6 +658,8 @@ class ArtifactGovernanceView(APIView):
         reason, invalid = _reason(request)
         if invalid:
             return invalid
+        if int(request.data.get("row_version", 0)) != artifact.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "CAD artifact changed.", 409)
         lifecycle = str(request.data.get("lifecycle_status", artifact.lifecycle_status))
         if lifecycle not in {"active", "quarantined", "archived"}:
             return _error(request, "VALIDATION_STATUS", "Invalid artifact lifecycle status.", 400)
@@ -663,6 +681,13 @@ class ArtifactGovernanceView(APIView):
             if quality not in {"pending", "validated", "rejected"}:
                 return _error(request, "VALIDATION_QUALITY", "Invalid quality status.", 400)
             artifact.quality_status = quality
+        for field in ("name", "product_type", "material_code"):
+            if field in request.data:
+                value = str(request.data[field]).strip()
+                if field == "name" and not value:
+                    return _error(request, "VALIDATION_NAME", "Artifact name is required.", 400)
+                setattr(artifact, field, value)
+        artifact.row_version += 1
         artifact.save()
         audit_identity_event(
             "registry.artifact.updated.v1",
@@ -672,6 +697,7 @@ class ArtifactGovernanceView(APIView):
                 "reason": reason,
                 "lifecycle_status": lifecycle,
                 "mold_revision_id": str(artifact.mold_revision_id or ""),
+                "row_version": artifact.row_version,
             },
         )
         return Response(artifact_governance_payload(artifact))

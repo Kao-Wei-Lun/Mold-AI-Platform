@@ -19,10 +19,14 @@ from .models import (
     CAEResult,
     CAERun,
     CAEStudy,
+    CorrectiveAction,
+    DefectObservation,
     HMIProfileVersion,
     MasterDataItem,
     MasterDataMappingBacklog,
     MoldRevision,
+    ProcessParameter,
+    ProcessRun,
     TrialCase,
     TrialCorrectionRecord,
 )
@@ -313,6 +317,99 @@ class GovernedTrialCaseDetailView(APIView):
         return Response(trial_case_payload(trial_case_queryset().get(id=trial.id)))
 
 
+class GovernedProcessRunCreateView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, trial_case_id: str) -> Response:
+        if denied := _require(request, "engineering-data:manage"):
+            return denied
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        trial = TrialCase.objects.filter(id=trial_case_id).first()
+        if trial is None:
+            return _error(request, "NOT_FOUND", "Trial case not found.", 404)
+        if trial.lifecycle_status not in {
+            TrialCase.LifecycleStatus.DRAFT,
+            TrialCase.LifecycleStatus.REOPENED,
+        }:
+            return _error(
+                request,
+                "TRIAL_IMMUTABLE_AFTER_CLOSE",
+                "Process runs can only be appended to a draft or reopened trial.",
+                409,
+            )
+        if int(request.data.get("row_version", 0)) != trial.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "Trial case changed.", 409)
+        parameters = request.data.get("parameters", [])
+        defects = request.data.get("defects", [])
+        actions = request.data.get("corrective_actions", [])
+        if not all(isinstance(items, list) for items in (parameters, defects, actions)):
+            return _error(request, "VALIDATION_PROCESS_RUN", "Child records must be arrays.", 400)
+        try:
+            run_number = int(request.data.get("run_number"))
+            if run_number < 1:
+                raise ValueError("run_number must be positive.")
+            with transaction.atomic():
+                run = ProcessRun.objects.create(
+                    trial=trial,
+                    run_number=run_number,
+                    cycle_start=request.data.get("cycle_start"),
+                    cycle_end=request.data.get("cycle_end"),
+                    environment=request.data.get("environment", {}),
+                    result=str(request.data.get("result", "pending"))[:64],
+                    data_quality={"source": "manual_platform_entry"},
+                )
+                for item in parameters:
+                    ProcessParameter.objects.create(
+                        process_run=run,
+                        canonical_code=str(item["canonical_code"])[:64],
+                        raw_name=str(item.get("raw_name", item["canonical_code"]))[:128],
+                        value=float(item["value"]),
+                        unit=str(item["unit"])[:32],
+                        value_kind=str(item.get("value_kind", "setpoint")),
+                        sampling_method=str(item.get("sampling_method", "manual"))[:64],
+                    )
+                for item in defects:
+                    DefectObservation.objects.create(
+                        process_run=run,
+                        defect_code=str(item["defect_code"])[:64],
+                        severity=str(item.get("severity", "observation"))[:32],
+                        location=str(item.get("location", ""))[:128],
+                        quantity_rate=item.get("quantity_rate"),
+                        quantity_unit=str(item.get("quantity_unit", ""))[:32],
+                        inspection_method=str(item.get("inspection_method", "manual"))[:128],
+                        evidence_refs=item.get("evidence_refs", []),
+                    )
+                for item in actions:
+                    CorrectiveAction.objects.create(
+                        process_run=run,
+                        action_code=str(item["action_code"])[:64],
+                        description=str(item.get("description", "")),
+                        before_values=item.get("before_values", {}),
+                        after_values=item.get("after_values", {}),
+                        rationale_source=item.get("rationale_source", {}),
+                        approved_by=str(item.get("approved_by", ""))[:128],
+                        executed=bool(item.get("executed", False)),
+                        observed_outcome=item.get("observed_outcome", {}),
+                        expected_effect=str(item.get("expected_effect", "")),
+                        stop_condition=str(item.get("stop_condition", "")),
+                        evidence_refs=item.get("evidence_refs", []),
+                    )
+                trial.row_version += 1
+                trial.save(update_fields=["row_version", "updated_at"])
+        except (IntegrityError, KeyError, TypeError, ValueError) as exc:
+            return _error(request, "VALIDATION_PROCESS_RUN", str(exc), 400)
+        audit_identity_event(
+            "trial_case.process_run_appended.v1",
+            actor_id=_actor(request),
+            target_refs=[f"trial-case:{trial.id}", f"process-run:{run.id}"],
+            detail={"reason": reason, "run_number": run.run_number},
+        )
+        return Response(trial_case_payload(trial_case_queryset().get(id=trial.id)), status=201)
+
+
 class GovernedCAEStudyListView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []
@@ -524,6 +621,8 @@ def hmi_profile_payload(profile: HMIProfileVersion) -> dict[str, object]:
         "created_by": profile.created_by,
         "published_by": profile.published_by or None,
         "published_at": profile.published_at.isoformat() if profile.published_at else None,
+        "row_version": profile.row_version,
+        "updated_at": profile.updated_at.isoformat(),
         "extraction_count": profile.extractions.count(),
     }
 
@@ -585,6 +684,8 @@ class HMIProfileActionView(APIView):
         reason, invalid = _reason(request)
         if invalid:
             return invalid
+        if int(request.data.get("row_version", 0)) != profile.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "HMI profile changed.", 409)
         action = str(request.data.get("action", ""))
         if action == "publish" and profile.status == HMIProfileVersion.Status.DRAFT:
             HMIProfileVersion.objects.filter(
@@ -597,11 +698,71 @@ class HMIProfileActionView(APIView):
             profile.status = HMIProfileVersion.Status.RETIRED
         else:
             return _error(request, "INVALID_STATE_TRANSITION", "HMI transition is invalid.", 409)
+        profile.row_version += 1
         profile.save()
         audit_identity_event(
             f"hmi_profile.{action}.v1",
             actor_id=_actor(request),
             target_refs=[f"hmi-profile:{profile.id}"],
             detail={"reason": reason},
+        )
+        return Response(hmi_profile_payload(profile))
+
+
+class HMIProfileDetailView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, profile_id: str) -> Response:
+        profile = (
+            HMIProfileVersion.objects.prefetch_related("extractions")
+            .filter(id=profile_id)
+            .first()
+        )
+        if profile is None:
+            return _error(request, "NOT_FOUND", "HMI profile not found.", 404)
+        return Response(hmi_profile_payload(profile))
+
+    def patch(self, request: Request, profile_id: str) -> Response:
+        if denied := _require(request, "engineering-data:manage"):
+            return denied
+        profile = HMIProfileVersion.objects.filter(id=profile_id).first()
+        if profile is None:
+            return _error(request, "NOT_FOUND", "HMI profile not found.", 404)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        if profile.status != HMIProfileVersion.Status.DRAFT:
+            return _error(
+                request,
+                "PUBLISHED_CONTENT_IMMUTABLE",
+                "Clone a published profile before editing.",
+                409,
+            )
+        if int(request.data.get("row_version", 0)) != profile.row_version:
+            return _error(request, "CONCURRENT_MODIFICATION", "HMI profile changed.", 409)
+        field_specs = request.data.get("field_specs", profile.field_specs)
+        if not isinstance(field_specs, list) or not all(
+            isinstance(item, dict) for item in field_specs
+        ):
+            return _error(
+                request,
+                "VALIDATION_FIELD_SPECS",
+                "field_specs must be an array of objects.",
+                400,
+            )
+        profile.field_specs = field_specs
+        if "change_summary" in request.data:
+            profile.change_summary = str(request.data["change_summary"])
+        profile.profile_checksum = hashlib.sha256(
+            json.dumps(field_specs, sort_keys=True).encode()
+        ).hexdigest()
+        profile.row_version += 1
+        profile.save()
+        audit_identity_event(
+            "hmi_profile.updated.v1",
+            actor_id=_actor(request),
+            target_refs=[f"hmi-profile:{profile.id}"],
+            detail={"reason": reason, "field_count": len(field_specs)},
         )
         return Response(hmi_profile_payload(profile))

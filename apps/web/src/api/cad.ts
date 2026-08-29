@@ -99,6 +99,8 @@ export type CADArtifactSummary = {
   lifecycle_status: string;
   quality_status: string;
   created_at: string;
+  updated_at: string;
+  row_version: number;
   source: {
     type: string;
     fixture_id?: string;

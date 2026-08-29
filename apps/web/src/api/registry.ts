@@ -75,11 +75,20 @@ export type RegistryArtifactGovernance = {
   quality_status: string;
   archive_reason: string | null;
   archived_at: string | null;
+  row_version: number;
+  updated_at: string;
   references: { versions: number; jobs: number; feature_sets: number; design_reviews: number };
   hard_delete_allowed: boolean;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+
+export class RegistryError extends Error {
+  constructor(message: string, public status: number, public code: string) {
+    super(message);
+    this.name = "RegistryError";
+  }
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -89,7 +98,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = await response.json();
   if (!response.ok) {
     const message = payload?.error?.message || `Registry returned HTTP ${response.status}`;
-    throw new Error(message);
+    throw new RegistryError(message, response.status, payload?.error?.code || "REGISTRY_ERROR");
   }
   return payload as T;
 }
@@ -178,5 +187,45 @@ export function updateRevision(
   return request(`/api/v1/registry/revisions/${revision.id}`, {
     method: "PATCH",
     body: JSON.stringify({ ...input, row_version: revision.row_version }),
+  });
+}
+
+export function updateProject(
+  project: RegistryProject,
+  input: { name: string; description: string; status: RegistryProject["status"]; reason: string },
+): Promise<RegistryProject> {
+  return request(`/api/v1/registry/projects/${project.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, row_version: project.row_version }),
+  });
+}
+
+export function updatePart(
+  part: RegistryPart,
+  input: { name: string; product_type: string; material_code: string; status: RegistryPart["status"]; reason: string },
+): Promise<RegistryPart> {
+  return request(`/api/v1/registry/parts/${part.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, row_version: part.row_version }),
+  });
+}
+
+export function updateMold(
+  mold: RegistryMold,
+  input: { name: string; mold_type: string; cavity_count: number; status: RegistryMold["status"]; reason: string },
+): Promise<RegistryMold> {
+  return request(`/api/v1/registry/molds/${mold.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, row_version: mold.row_version }),
+  });
+}
+
+export function updateArtifactGovernance(
+  artifact: { artifact_id: string; row_version: number },
+  input: { name: string; product_type: string; material_code: string; lifecycle_status: string; quality_status: string; reason: string },
+): Promise<RegistryArtifactGovernance> {
+  return request(`/api/v1/registry/artifacts/${artifact.artifact_id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, row_version: artifact.row_version }),
   });
 }

@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 
 import { useI18n } from "../i18n";
+import type { LocalAccount } from "../api/identity";
 import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
@@ -17,7 +18,7 @@ type HistoryDomain = {
   permission: string;
 };
 
-const props = defineProps<{ path: string }>();
+const props = defineProps<{ path: string; currentAccount?: LocalAccount | null }>();
 const emit = defineEmits<{ navigate: [path: string] }>();
 const { t } = useI18n();
 const drawerDomain = ref<HistoryDomain | null>(null);
@@ -81,6 +82,7 @@ function openDomain(domain: HistoryDomain): void {
       v-else-if="currentSlug === 'trials' || currentSlug === 'cae' || currentSlug === 'hmi'"
       :domain="currentSlug"
       :path="path"
+      :can-manage="currentAccount?.permissions.includes('engineering-data:manage') || false"
       @navigate="emit('navigate', $event)"
     />
 
@@ -88,6 +90,7 @@ function openDomain(domain: HistoryDomain): void {
       v-else-if="currentSlug === 'molds' || currentSlug === 'cad-artifacts'"
       :domain="currentSlug"
       :path="path"
+      :can-manage="currentAccount?.permissions.includes('registry:manage') || false"
       @navigate="emit('navigate', $event)"
     />
 

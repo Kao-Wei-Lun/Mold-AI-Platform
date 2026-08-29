@@ -72,6 +72,7 @@ export type HMIReviewDecision = {
   action: "confirm" | "correct" | "reject";
   value?: number;
   unit?: string;
+  reason?: string;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";

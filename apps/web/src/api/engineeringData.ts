@@ -154,8 +154,17 @@ export type HMIProfile = {
   field_specs: Array<Record<string, unknown>>;
   profile_checksum: string;
   change_summary: string;
+  row_version: number;
+  updated_at: string;
   extraction_count: number;
 };
+
+export class EngineeringDataError extends Error {
+  constructor(message: string, public status: number, public code: string) {
+    super(message);
+    this.name = "EngineeringDataError";
+  }
+}
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
@@ -166,7 +175,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await apiFetch(`${apiBaseUrl}${path}`, { ...init, headers });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload?.error?.message || `Engineering data returned HTTP ${response.status}`);
+    throw new EngineeringDataError(
+      payload?.error?.message || `Engineering data returned HTTP ${response.status}`,
+      response.status,
+      payload?.error?.code || "ENGINEERING_DATA_ERROR",
+    );
   }
   return payload as T;
 }
@@ -217,6 +230,38 @@ export function transitionTrial(
   });
 }
 
+export function updateManagedTrial(
+  trial: ManagedTrial,
+  changes: Pick<ManagedTrial, "purpose" | "outcome" | "material_lot">,
+  reason: string,
+): Promise<ManagedTrial> {
+  return request(`/api/v1/trial-cases/${trial.trial_case_id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action: "update", ...changes, reason, row_version: trial.row_version }),
+  });
+}
+
+export function correctManagedTrial(
+  trial: ManagedTrial,
+  changes: Partial<Pick<ManagedTrial, "purpose" | "outcome" | "material_lot">>,
+  reason: string,
+): Promise<ManagedTrial> {
+  return request(`/api/v1/trial-cases/${trial.trial_case_id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action: "correct", changes, reason, row_version: trial.row_version }),
+  });
+}
+
+export function appendManagedProcessRun(
+  trial: ManagedTrial,
+  input: Record<string, unknown>,
+): Promise<ManagedTrial> {
+  return request(`/api/v1/trial-cases/${trial.trial_case_id}/runs`, {
+    method: "POST",
+    body: JSON.stringify({ ...input, row_version: trial.row_version }),
+  });
+}
+
 export function createManagedCAEStudy(input: Record<string, unknown>): Promise<ManagedCAEStudy> {
   return request("/api/v1/cae-studies", { method: "POST", body: JSON.stringify(input) });
 }
@@ -229,6 +274,31 @@ export function transitionCAEStudy(
   return request(`/api/v1/cae-studies/${study.study_id}`, {
     method: "PATCH",
     body: JSON.stringify({ action, reason, row_version: study.row_version }),
+  });
+}
+
+export function appendManagedCAERun(
+  study: ManagedCAEStudy,
+  input: Record<string, unknown>,
+): Promise<ManagedCAEStudy> {
+  return request(`/api/v1/cae-studies/${study.study_id}/runs`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchHMIProfiles(): Promise<HMIProfile[]> {
+  const payload = await request<{ items: HMIProfile[] }>("/api/v1/hmi-profiles");
+  return payload.items;
+}
+
+export function updateHMIProfile(
+  profile: HMIProfile,
+  input: { field_specs: Array<Record<string, unknown>>; change_summary: string; reason: string },
+): Promise<HMIProfile> {
+  return request(`/api/v1/hmi-profiles/${profile.profile_id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, row_version: profile.row_version }),
   });
 }
 
@@ -256,6 +326,6 @@ export function transitionHMIProfile(
 ): Promise<HMIProfile> {
   return request(`/api/v1/hmi-profiles/${profile.profile_id}/actions`, {
     method: "POST",
-    body: JSON.stringify({ action, reason }),
+    body: JSON.stringify({ action, reason, row_version: profile.row_version }),
   });
 }

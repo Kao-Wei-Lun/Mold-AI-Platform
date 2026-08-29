@@ -23,7 +23,7 @@ describe("EngineeringHistoryWorkspace", () => {
         corrections: [{ correction_id: "correction-1", before_values: { outcome: "pending" }, after_values: { outcome: "accepted" }, reason: "Signed sheet", corrected_by: "engineer", created_at: "2026-08-29T01:00:00Z" }], provenance: { connector_key: "fixture" },
       });
     }));
-    const wrapper = mount(EngineeringHistoryWorkspace, { props: { domain: "trials", path: "/data/trials" } });
+    const wrapper = mount(EngineeringHistoryWorkspace, { props: { domain: "trials", path: "/data/trials", canManage: true } });
     await flushPromises();
 
     expect(wrapper.text()).toContain("TRIAL-001");
@@ -34,6 +34,7 @@ describe("EngineeringHistoryWorkspace", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("injection_pressure_mpa");
     expect(wrapper.text()).toContain("88 MPa");
+    expect(wrapper.text()).toContain("Append correction");
   });
 
   it("renders CAE run settings and typed results", async () => {

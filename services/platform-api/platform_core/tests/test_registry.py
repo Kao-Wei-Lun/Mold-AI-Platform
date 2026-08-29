@@ -185,6 +185,7 @@ class MoldRegistryApiTests(TestCase):
             {
                 "mold_revision_id": revision["id"],
                 "quality_status": "validated",
+                "row_version": 1,
                 "reason": "Attach to revision",
             },
             content_type="application/json",
@@ -193,11 +194,19 @@ class MoldRegistryApiTests(TestCase):
         self.assertEqual(linked.json()["mold_revision_id"], revision["id"])
         archived = self.client.patch(
             f"/api/v1/registry/artifacts/{artifact.id}",
-            {"lifecycle_status": "archived", "reason": "Retain but hide"},
+            {"lifecycle_status": "archived", "row_version": 2, "reason": "Retain but hide"},
             content_type="application/json",
         )
         self.assertEqual(archived.status_code, 200)
         self.assertTrue(Artifact.objects.filter(id=artifact.id).exists())
+
+        conflict = self.client.patch(
+            f"/api/v1/registry/artifacts/{artifact.id}",
+            {"name": "Stale update", "row_version": 2, "reason": "Verify conflict"},
+            content_type="application/json",
+        )
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(conflict.json()["error"]["code"], "CONCURRENT_MODIFICATION")
 
     def test_viewer_cannot_manage_registry(self):
         viewer = account("registry-viewer", "viewer")

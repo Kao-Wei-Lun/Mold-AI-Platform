@@ -4304,6 +4304,17 @@ button:not(:disabled):active { transform: translateY(0); }
 .registry-history-tabs { display: flex; gap: 0.4rem; border-bottom: 1px solid #dbe4ed; }
 .registry-history-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0.6rem 0.8rem; color: #65778d; background: transparent; box-shadow: none; }
 .registry-history-tabs button.active { border-bottom-color: #2f68c7; color: #2458aa; }
+.history-mutation-message { margin: 0; }
+.history-mutation-panel { display: grid; gap: 0.75rem; border: 1px solid #cddced; border-left: 4px solid #3974cc; border-radius: 13px; padding: 0.85rem 1rem; background: linear-gradient(135deg, #f8fbff, #f1f6fd); }
+.history-mutation-panel[open] summary { margin-bottom: 0.7rem; }
+.history-mutation-panel summary { cursor: pointer; color: #244e87; font-weight: 800; }
+.history-impact { margin: 0 0 0.7rem; border-radius: 9px; padding: 0.62rem 0.75rem; color: #655017; background: #fff7dc; font-size: 0.74rem; line-height: 1.5; }
+.history-mutation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin-bottom: 0.75rem; }
+.history-mutation-grid label { display: grid; gap: 0.3rem; }
+.history-mutation-grid label > span { color: #526981; font-size: 0.7rem; font-weight: 800; }
+.history-mutation-grid .form-wide { grid-column: 1 / -1; }
+.history-mutation-grid textarea { resize: vertical; }
+.history-json-editor { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.72rem; }
 
 @media (prefers-reduced-motion: no-preference) {
   .page-header,
@@ -4372,6 +4383,8 @@ button:not(:disabled):active { transform: translateY(0); }
   .hmi-history-overview,
   .history-diff { grid-template-columns: 1fr; }
   .history-export-list article { grid-template-columns: 1fr; }
+  .history-mutation-grid { grid-template-columns: 1fr; }
+  .history-mutation-grid .form-wide { grid-column: auto; }
   .history-diff span { transform: rotate(90deg); text-align: center; }
   .detail-drawer { width: 100vw; }
   .property-grid > div { grid-template-columns: 1fr; }

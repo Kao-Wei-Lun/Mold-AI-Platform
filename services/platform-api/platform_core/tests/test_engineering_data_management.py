@@ -137,6 +137,45 @@ class EngineeringDataManagementTests(TestCase):
         self.assertNotIn("runs", item)
         self.assertNotIn("corrections", item)
 
+    def test_draft_trial_accepts_versioned_process_run_append(self) -> None:
+        trial = self.create_trial().json()
+        appended = self.client.post(
+            f"/api/v1/trial-cases/{trial['trial_case_id']}/runs",
+            {
+                "run_number": 1,
+                "cycle_start": 1,
+                "cycle_end": 20,
+                "result": "accepted",
+                "parameters": [
+                    {
+                        "canonical_code": "injection_pressure_mpa",
+                        "value": 82.5,
+                        "unit": "MPa",
+                        "value_kind": "setpoint",
+                    }
+                ],
+                "defects": [
+                    {
+                        "defect_code": "short_shot",
+                        "severity": "minor",
+                        "location": "gate",
+                    }
+                ],
+                "row_version": 1,
+                "reason": "Append observed process run",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(appended.status_code, 201)
+        self.assertEqual(appended.json()["row_version"], 2)
+        self.assertEqual(len(appended.json()["runs"]), 1)
+        stale = self.client.post(
+            f"/api/v1/trial-cases/{trial['trial_case_id']}/runs",
+            {"run_number": 2, "row_version": 1, "reason": "Stale append"},
+            content_type="application/json",
+        )
+        self.assertEqual(stale.status_code, 409)
+
     def test_structured_cae_run_import_and_archive_lifecycle(self) -> None:
         created = self.client.post(
             "/api/v1/cae-studies",
@@ -211,9 +250,25 @@ class EngineeringDataManagementTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(cloned.status_code, 201)
+        edited = self.client.patch(
+            f"/api/v1/hmi-profiles/{cloned.json()['profile_id']}",
+            {
+                "field_specs": cloned.json()["field_specs"],
+                "change_summary": "Validated draft specification",
+                "row_version": 1,
+                "reason": "Review draft fields",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(edited.json()["row_version"], 2)
         promoted = self.client.post(
             f"/api/v1/hmi-profiles/{cloned.json()['profile_id']}/actions",
-            {"action": "publish", "reason": "Approve version for future extraction"},
+            {
+                "action": "publish",
+                "row_version": 2,
+                "reason": "Approve version for future extraction",
+            },
             content_type="application/json",
         )
         self.assertEqual(promoted.status_code, 200)

@@ -192,6 +192,8 @@ def artifact_payload(artifact: Artifact) -> dict[str, object]:
         "lifecycle_status": artifact.lifecycle_status,
         "quality_status": artifact.quality_status,
         "created_at": artifact.created_at.isoformat(),
+        "updated_at": artifact.updated_at.isoformat(),
+        "row_version": artifact.row_version,
         "source": source,
         "versions": [artifact_version_payload(version) for version in versions],
         "jobs": jobs,

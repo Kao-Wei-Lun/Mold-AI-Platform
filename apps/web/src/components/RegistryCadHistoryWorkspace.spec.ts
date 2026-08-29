@@ -16,11 +16,12 @@ describe("RegistryCadHistoryWorkspace", () => {
       id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: "part-1", part_number: "PART-001", mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "active", row_version: 1, revision_count: 1,
       revisions: [{ id: "revision-1", mold_id: "mold-1", mold_code: "MOLD-001", revision_code: "A", status: "released", change_summary: "Initial release", source_system: "platform_demo", source_revision_id: null, row_version: 1, released_at: "2026-08-29T00:00:00Z", artifact_count: 2 }],
     })));
-    const wrapper = mount(RegistryCadHistoryWorkspace, { props: { domain: "molds", path: "/data/molds/mold-1" } });
+    const wrapper = mount(RegistryCadHistoryWorkspace, { props: { domain: "molds", path: "/data/molds/mold-1", canManage: true } });
     await flushPromises();
 
     expect(wrapper.text()).toContain("Housing mold");
     expect(wrapper.text()).toContain("Initial release");
+    expect(wrapper.text()).toContain("Edit controlled metadata");
     await wrapper.find("tbody tr").trigger("click");
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/data/molds/revisions/revision-1"]);
   });

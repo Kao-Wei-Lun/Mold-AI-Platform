@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 import {
+  appendManagedCAERun,
+  appendManagedProcessRun,
+  correctManagedTrial,
+  EngineeringDataError,
   fetchCAEHistory,
   fetchCAEStudyDetail,
   fetchTrialCaseDetail,
   fetchTrialHistory,
+  transitionCAEStudy,
+  transitionTrial,
+  updateManagedTrial,
   type ManagedCAEStudy,
   type ManagedCAESummary,
   type ManagedTrial,
@@ -15,6 +22,7 @@ import {
   fetchHMIExtractionDetail,
   fetchHMIExtractionHistory,
   hmiResourceUrl,
+  reviewHMI,
   type HMIExtraction,
   type HMIExtractionSummary,
 } from "../api/hmi";
@@ -26,7 +34,7 @@ import RecordHeader from "./RecordHeader.vue";
 
 type Domain = "trials" | "cae" | "hmi";
 
-const props = defineProps<{ domain: Domain; path: string }>();
+const props = defineProps<{ domain: Domain; path: string; canManage?: boolean }>();
 const emit = defineEmits<{ navigate: [path: string] }>();
 const { t } = useI18n();
 const loading = ref(false);
@@ -37,6 +45,14 @@ const extractions = ref<HMIExtractionSummary[]>([]);
 const trial = ref<ManagedTrial | null>(null);
 const study = ref<ManagedCAEStudy | null>(null);
 const extraction = ref<HMIExtraction | null>(null);
+const mutating = ref(false);
+const mutationError = ref<string | null>(null);
+const mutationNotice = ref<string | null>(null);
+const reason = ref("");
+const trialForm = reactive({ purpose: "", outcome: "", material_lot: "" });
+const processRunForm = reactive({ run_number: 1, cycle_start: 1, cycle_end: 20, result: "pending", parameter_code: "", parameter_value: 0, parameter_unit: "" });
+const caeRunForm = reactive({ run_code: "", solver_version: "", metric_code: "", value: 0, unit: "" });
+const hmiReviewForm = reactive({ field_id: "", action: "confirm" as "confirm" | "correct" | "reject", value: 0, unit: "", reason: "" });
 
 const location = computed(() => new URL(props.path, window.location.origin));
 const recordId = computed(() => location.value.pathname.split("/").filter(Boolean)[2] || "");
@@ -55,6 +71,85 @@ function setTab(tab: string): void {
   emit("navigate", `${listPath.value}/${recordId.value}?tab=${tab}`);
 }
 
+function mutationMessage(caught: unknown): string {
+  if (caught instanceof EngineeringDataError && caught.status === 409) {
+    return t("This record changed after loading. Refresh it before saving again.");
+  }
+  return caught instanceof Error ? caught.message : t("Unable to save historical data.");
+}
+
+async function mutate(action: () => Promise<void>, notice: string): Promise<void> {
+  if (!reason.value.trim()) {
+    mutationError.value = t("A change reason is required.");
+    return;
+  }
+  mutating.value = true;
+  mutationError.value = null;
+  mutationNotice.value = null;
+  try {
+    await action();
+    reason.value = "";
+    mutationNotice.value = t(notice);
+  } catch (caught) {
+    mutationError.value = mutationMessage(caught);
+  } finally {
+    mutating.value = false;
+  }
+}
+
+function saveTrial(): Promise<void> {
+  if (!trial.value) return Promise.resolve();
+  return mutate(async () => {
+    trial.value = await updateManagedTrial(trial.value!, { ...trialForm }, reason.value);
+  }, "Trial metadata saved with audit evidence.");
+}
+
+function correctTrial(): Promise<void> {
+  if (!trial.value) return Promise.resolve();
+  const changes = Object.fromEntries(Object.entries(trialForm).filter(([key, value]) => value !== trial.value?.[key as keyof ManagedTrial]));
+  return mutate(async () => {
+    trial.value = await correctManagedTrial(trial.value!, changes, reason.value);
+  }, "Trial correction appended without overwriting the source.");
+}
+
+function changeTrialLifecycle(action: "close" | "reopen" | "archive"): Promise<void> {
+  if (!trial.value) return Promise.resolve();
+  return mutate(async () => { trial.value = await transitionTrial(trial.value!, action, reason.value); }, "Trial lifecycle updated.");
+}
+
+function appendProcessRun(): Promise<void> {
+  if (!trial.value) return Promise.resolve();
+  const parameters = processRunForm.parameter_code ? [{ canonical_code: processRunForm.parameter_code, value: processRunForm.parameter_value, unit: processRunForm.parameter_unit, value_kind: "setpoint" }] : [];
+  return mutate(async () => {
+    trial.value = await appendManagedProcessRun(trial.value!, { ...processRunForm, parameters, reason: reason.value });
+  }, "Process run appended as immutable evidence.");
+}
+
+function changeCAELifecycle(action: "archive" | "restore"): Promise<void> {
+  if (!study.value) return Promise.resolve();
+  return mutate(async () => { study.value = await transitionCAEStudy(study.value!, action, reason.value); }, "CAE lifecycle updated.");
+}
+
+function appendCAERun(): Promise<void> {
+  if (!study.value) return Promise.resolve();
+  return mutate(async () => {
+    study.value = await appendManagedCAERun(study.value!, {
+      run_code: caeRunForm.run_code,
+      solver_version: caeRunForm.solver_version || "unknown",
+      results: caeRunForm.metric_code ? [{ metric_code: caeRunForm.metric_code, value: caeRunForm.value, unit: caeRunForm.unit }] : [],
+      reason: reason.value,
+    });
+  }, "CAE run imported as immutable evidence.");
+}
+
+function reviewExtractionField(): Promise<void> {
+  if (!extraction.value || !hmiReviewForm.field_id) return Promise.resolve();
+  return mutate(async () => {
+    const decision = { field_id: hmiReviewForm.field_id, action: hmiReviewForm.action, reason: reason.value, ...(hmiReviewForm.action === "correct" ? { value: hmiReviewForm.value, unit: hmiReviewForm.unit } : {}) };
+    extraction.value = await reviewHMI(extraction.value!.extraction_id, [decision]);
+  }, "HMI review decision appended.");
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   error.value = null;
@@ -63,13 +158,19 @@ async function load(): Promise<void> {
   extraction.value = null;
   try {
     if (props.domain === "trials") {
-      if (recordId.value) trial.value = await fetchTrialCaseDetail(recordId.value);
+      if (recordId.value) {
+        trial.value = await fetchTrialCaseDetail(recordId.value);
+        trialForm.purpose = trial.value.purpose;
+        trialForm.outcome = trial.value.outcome;
+        trialForm.material_lot = trial.value.material_lot || "";
+      }
       else trials.value = await fetchTrialHistory();
     } else if (props.domain === "cae") {
       if (recordId.value) study.value = await fetchCAEStudyDetail(recordId.value);
       else studies.value = await fetchCAEHistory();
     } else if (recordId.value) {
       extraction.value = await fetchHMIExtractionDetail(recordId.value);
+      hmiReviewForm.field_id = extraction.value.fields.find((field) => field.review_status === "needs_review")?.field_id || "";
     } else {
       extractions.value = await fetchHMIExtractionHistory();
     }
@@ -98,6 +199,8 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
 
     <p v-if="error" class="error-message" role="alert">{{ error }} <button type="button" @click="load">{{ t("Retry") }}</button></p>
     <section v-else-if="loading" class="workspace-state">{{ t("Loading complete historical record…") }}</section>
+    <p v-if="mutationError" class="error-message history-mutation-message" role="alert">{{ mutationError }} <button type="button" @click="load">{{ t("Refresh data") }}</button></p>
+    <p v-if="mutationNotice" class="success-message history-mutation-message" role="status">{{ mutationNotice }}</p>
 
     <template v-else-if="!recordId">
       <DataTable
@@ -136,7 +239,24 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
     </template>
 
     <template v-else-if="trial">
-      <RecordHeader :title="trial.case_code" :identifier="trial.trial_case_id" :status="trial.lifecycle_status" :version="`row ${trial.row_version}`" />
+      <RecordHeader :title="trial.case_code" :identifier="trial.trial_case_id" :status="trial.lifecycle_status" :version="`row ${trial.row_version}`">
+        <template #actions>
+          <button v-if="canManage && ['draft', 'reopened'].includes(trial.lifecycle_status)" type="button" @click="changeTrialLifecycle('close')">{{ t("Close") }}</button>
+          <button v-if="canManage && trial.lifecycle_status === 'closed'" type="button" @click="changeTrialLifecycle('reopen')">{{ t("Reopen") }}</button>
+          <button v-if="canManage && trial.lifecycle_status !== 'archived'" type="button" class="secondary-button" @click="changeTrialLifecycle('archive')">{{ t("Archive") }}</button>
+        </template>
+      </RecordHeader>
+      <details v-if="canManage" class="history-mutation-panel">
+        <summary>{{ t(trial.lifecycle_status === 'closed' ? 'Append correction' : 'Edit controlled trial') }}</summary>
+        <p class="history-impact">{{ t(trial.lifecycle_status === 'closed' ? 'The source record stays unchanged; this creates an append-only correction.' : 'Saving updates safe metadata and increments row_version.') }}</p>
+        <div class="history-mutation-grid">
+          <label><span>{{ t("Purpose") }}</span><input v-model="trialForm.purpose" /></label>
+          <label><span>{{ t("Outcome") }}</span><input v-model="trialForm.outcome" /></label>
+          <label><span>{{ t("Material lot") }}</span><input v-model="trialForm.material_lot" /></label>
+          <label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label>
+        </div>
+        <button type="button" :disabled="mutating" @click="trial.lifecycle_status === 'closed' ? correctTrial() : saveTrial()">{{ mutating ? t("Saving...") : t("Save controlled change") }}</button>
+      </details>
       <DetailTabs :tabs="[
         { id: 'overview', label: t('Overview') }, { id: 'runs', label: t('Process runs'), count: trial.runs?.length || 0 },
         { id: 'corrections', label: t('Corrections'), count: trial.corrections.length }, { id: 'lineage', label: t('Lineage') },
@@ -149,6 +269,21 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
         { label: t('Data quality'), value: pretty(trial.data_quality) },
       ]" />
       <div v-else-if="activeTab === 'runs'" class="history-stack">
+        <details v-if="canManage && ['draft', 'reopened'].includes(trial.lifecycle_status)" class="history-mutation-panel">
+          <summary>{{ t("Append process run") }}</summary>
+          <p class="history-impact">{{ t("The new run and child measurements become immutable historical evidence.") }}</p>
+          <div class="history-mutation-grid">
+            <label><span>{{ t("Run") }}</span><input v-model.number="processRunForm.run_number" type="number" min="1" /></label>
+            <label><span>{{ t("Result") }}</span><input v-model="processRunForm.result" /></label>
+            <label><span>{{ t("Cycle start") }}</span><input v-model.number="processRunForm.cycle_start" type="number" min="0" /></label>
+            <label><span>{{ t("Cycle end") }}</span><input v-model.number="processRunForm.cycle_end" type="number" min="0" /></label>
+            <label><span>{{ t("Parameter") }}</span><input v-model="processRunForm.parameter_code" /></label>
+            <label><span>{{ t("Value") }}</span><input v-model.number="processRunForm.parameter_value" type="number" step="any" /></label>
+            <label><span>{{ t("Unit") }}</span><input v-model="processRunForm.parameter_unit" /></label>
+            <label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label>
+          </div>
+          <button type="button" :disabled="mutating" @click="appendProcessRun">{{ t("Append immutable run") }}</button>
+        </details>
         <article v-for="run in trial.runs || []" :key="run.process_run_id" class="history-detail-card">
           <h3>{{ t("Run") }} {{ run.run_number }}</h3>
           <PropertyGrid :items="[
@@ -175,7 +310,9 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
     </template>
 
     <template v-else-if="study">
-      <RecordHeader :title="study.study_code" :identifier="study.study_id" :status="study.lifecycle_status" :version="`row ${study.row_version}`" />
+      <RecordHeader :title="study.study_code" :identifier="study.study_id" :status="study.lifecycle_status" :version="`row ${study.row_version}`">
+        <template #actions><button v-if="canManage" type="button" @click="changeCAELifecycle(study.lifecycle_status === 'active' ? 'archive' : 'restore')">{{ t(study.lifecycle_status === 'active' ? 'Archive' : 'Restore') }}</button></template>
+      </RecordHeader>
       <DetailTabs :tabs="[
         { id: 'overview', label: t('Overview') }, { id: 'runs', label: t('CAE runs'), count: study.runs.length },
         { id: 'quality', label: t('Quality') }, { id: 'lineage', label: t('Lineage') },
@@ -186,6 +323,19 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
         { label: t('Mesh family'), value: study.mesh_family }, { label: t('Owner'), value: study.owner },
       ]" />
       <div v-else-if="activeTab === 'runs'" class="history-stack">
+        <details v-if="canManage && study.lifecycle_status === 'active'" class="history-mutation-panel">
+          <summary>{{ t("Import new CAE run") }}</summary>
+          <p class="history-impact">{{ t("Existing solver results are immutable; this action appends a new run.") }}</p>
+          <div class="history-mutation-grid">
+            <label><span>{{ t("Run code") }} *</span><input v-model="caeRunForm.run_code" required /></label>
+            <label><span>{{ t("Solver version") }}</span><input v-model="caeRunForm.solver_version" /></label>
+            <label><span>{{ t("Metric") }}</span><input v-model="caeRunForm.metric_code" /></label>
+            <label><span>{{ t("Value") }}</span><input v-model.number="caeRunForm.value" type="number" step="any" /></label>
+            <label><span>{{ t("Unit") }}</span><input v-model="caeRunForm.unit" /></label>
+            <label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label>
+          </div>
+          <button type="button" :disabled="mutating || !caeRunForm.run_code" @click="appendCAERun">{{ t("Import immutable run") }}</button>
+        </details>
         <article v-for="run in study.runs" :key="run.run_id" class="history-detail-card">
           <h3>{{ run.run_code }} <span class="status-chip">{{ run.status }}</span></h3>
           <PropertyGrid :items="[
@@ -222,10 +372,24 @@ watch(() => [props.domain, recordId.value], load, { immediate: true });
           { label: t('Preprocessing'), value: pretty(extraction.preprocessing) },
         ]" />
       </div>
-      <DataTable v-else-if="activeTab === 'fields'" :columns="[
+      <div v-else-if="activeTab === 'fields'" class="history-stack">
+      <DataTable :columns="[
         { key: 'parameter', label: t('Parameter') }, { key: 'raw', label: t('Raw OCR') }, { key: 'effective', label: t('Effective value') },
         { key: 'confidence', label: t('Confidence') }, { key: 'validation', label: t('Validation') }, { key: 'review', label: t('Review status') },
       ]" :items="extraction.fields.map((item) => ({ id: item.field_id, parameter: item.display_label, raw: item.raw_text, effective: `${item.effective_value ?? '—'} ${item.effective_unit}`, confidence: `${Math.round(item.confidence * 100)}%`, validation: item.validation_status, review: item.review_status }))" />
+      <details v-if="canManage && extraction.fields.some((field) => field.review_status === 'needs_review')" class="history-mutation-panel">
+        <summary>{{ t("Review extracted field") }}</summary>
+        <p class="history-impact">{{ t("Raw OCR remains immutable; the human decision is appended and becomes the effective value.") }}</p>
+        <div class="history-mutation-grid">
+          <label><span>{{ t("Field") }}</span><select v-model="hmiReviewForm.field_id"><option v-for="field in extraction.fields.filter((item) => item.review_status === 'needs_review')" :key="field.field_id" :value="field.field_id">{{ field.display_label }}</option></select></label>
+          <label><span>{{ t("Action") }}</span><select v-model="hmiReviewForm.action"><option value="confirm">{{ t("Confirm") }}</option><option value="correct">{{ t("Correct") }}</option><option value="reject">{{ t("Reject") }}</option></select></label>
+          <label v-if="hmiReviewForm.action === 'correct'"><span>{{ t("Value") }}</span><input v-model.number="hmiReviewForm.value" type="number" step="any" /></label>
+          <label v-if="hmiReviewForm.action === 'correct'"><span>{{ t("Unit") }}</span><input v-model="hmiReviewForm.unit" /></label>
+          <label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label>
+        </div>
+        <button type="button" :disabled="mutating || !hmiReviewForm.field_id" @click="reviewExtractionField">{{ t("Append review decision") }}</button>
+      </details>
+      </div>
       <div v-else-if="activeTab === 'decisions'" class="history-timeline">
         <template v-for="field in extraction.fields" :key="field.field_id">
           <article v-for="decision in field.correction_decisions || []" :key="decision.decision_id">

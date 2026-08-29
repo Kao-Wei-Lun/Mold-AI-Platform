@@ -1,6 +1,6 @@
 # Mold AI Platform — 歷史資料管理功能詳細修改規劃
 
-> 文件狀態：已授權實作；Phase H3 Registry／CAD 版本歷史完成
+> 文件狀態：已授權實作；Phase H4 受控編輯、Correction 與生命週期完成
 > 適用範圍：目前 Demo 與未來 Enterprise 資料管理體驗
 > 核心目標：讓使用者不只看見資料標題或摘要，而能完整查閱、追溯、受控修改、比較版本及確認資料來源，同時維持工程歷史與 AI 結果的可重現性。
 
@@ -431,6 +431,19 @@ GET    /api/v1/{resources}/{id}/audit
 
 建議 commit：`feat(governance): add controlled historical data editing`
 
+完成內容（2026-08-29）：
+
+- Trial Draft／Reopened 可修改安全欄位；Closed 僅能追加 Correction，原始值保持不變。
+- Draft／Reopened Trial 可追加 Process Run 與參數、缺陷、改善措施子資料；新增內容作為不可變工程證據。
+- CAE Study 可追加結構化 Run／Result，既有 Result 不提供覆寫；Study 支援 archive／restore。
+- HMI 原始 OCR 保持不變，人工 confirm／correct／reject 以決策歷史追加；Draft Profile 可編輯欄位規格，Published Profile 必須 Clone。
+- Project／Part／Mold／Revision 提供安全欄位與生命週期修改；Canonical code 維持不可變。
+- CAD Artifact 支援名稱、產品、材料、品質與生命週期治理；ArtifactVersion 二進位、checksum 與版本保持不可變。
+- Artifact 與 HMI Profile 新增 `row_version`／`updated_at`；所有上述修改要求 Reason，409 衝突會在 UI 引導重新整理。
+- 每項後端修改皆建立 AuditEvent；UI 在送出前顯示影響範圍，並依權限隱藏管理表單。
+
+驗證結果：Web `28` test files／`92` tests、API `164` passed／`1` skipped／`9` subtests；production build、Ruff、migration drift、Docker migration 與 runtime smoke 全數通過。
+
 ### Phase H5 — Rule 與 Knowledge 版本管理
 
 - Rule selector、Draft editor、validation、workflow、version diff。
@@ -579,7 +592,7 @@ GET    /api/v1/{resources}/{id}/audit
 - [x] H1：歷史資料中心、`/data/*` 穩定路由及共用 Drawer／Header／Tabs／PropertyGrid／DataTable。
 - [x] H2：Trial、CAE、HMI 摘要清單、按需載入詳細資料、修正／決策／匯出歷史。
 - [x] H3：Project／Part／Mold／Revision 詳細資料、CAD 版本／3D／FeatureSet／Job／Lineage。
-- [ ] H4：受控編輯與 Correction。
+- [x] H4：受控編輯、Correction、Process／CAE append、HMI review／Profile Draft、Registry／Artifact governance 與 409 UI。
 - [ ] H5：Rule 與 Knowledge 版本管理。
 - [ ] H6：分析、Job、Audit 與 Lineage 中心。
 - [ ] H7：效能、批次與 Enterprise 強化。
