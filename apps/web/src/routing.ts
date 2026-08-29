@@ -13,6 +13,7 @@ export type WorkspaceRouteId =
   | "master_data"
   | "mold_registry"
   | "engineering_data"
+  | "history_data"
   | "identity"
   | "status"
   | "not_found";
@@ -129,6 +130,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     description: "Manage controlled lifecycles, corrections, versions and lineage without overwriting source evidence.",
   },
   {
+    id: "history_data",
+    path: "/data/overview",
+    label: "Historical data",
+    group: "Governance",
+    eyebrow: "Governance / Historical data",
+    title: "Browse governed engineering history",
+    description: "Open complete records, versions, relationships, lineage and audit evidence without overwriting history.",
+  },
+  {
     id: "identity",
     path: "/governance/identity",
     label: "Accounts & access",
@@ -169,6 +179,9 @@ const notFoundRoute: WorkspaceRoute = {
 
 export function resolveWorkspaceRoute(pathname: string): WorkspaceRoute {
   const normalized = pathname !== "/" ? pathname.replace(/\/+$/, "") : pathname;
+  if (normalized === "/data" || normalized.startsWith("/data/")) {
+    return workspaceRoutes.find((route) => route.id === "history_data") || notFoundRoute;
+  }
   return workspaceRoutes.find((route) => route.path === normalized) || notFoundRoute;
 }
 

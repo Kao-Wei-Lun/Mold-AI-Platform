@@ -1,6 +1,6 @@
 # Mold AI Platform — 歷史資料管理功能詳細修改規劃
 
-> 文件狀態：已授權實作；Phase H0 基線建立中
+> 文件狀態：已授權實作；Phase H1 歷史資料中心基礎完成
 > 適用範圍：目前 Demo 與未來 Enterprise 資料管理體驗
 > 核心目標：讓使用者不只看見資料標題或摘要，而能完整查閱、追溯、受控修改、比較版本及確認資料來源，同時維持工程歷史與 AI 結果的可重現性。
 
@@ -572,3 +572,14 @@ GET    /api/v1/{resources}/{id}/audit
 - [ ] 確認每個 Phase 的測試、文件與 Git commit 邊界。
 
 完成以上檢查後，建議從 **Phase H0 → H1 → H2** 開始，先讓所有使用者能穩定找到並查看完整歷史資料，再逐步開放受治理的修改能力。
+
+### 實作進度
+
+- [x] H0：Coverage、API/UI contract 與測試基線。
+- [x] H1：歷史資料中心、`/data/*` 穩定路由及共用 Drawer／Header／Tabs／PropertyGrid／DataTable。
+- [ ] H2：Trial、CAE、HMI 唯讀詳細檢視。
+- [ ] H3：Registry 與 CAD 版本歷史。
+- [ ] H4：受控編輯與 Correction。
+- [ ] H5：Rule 與 Knowledge 版本管理。
+- [ ] H6：分析、Job、Audit 與 Lineage 中心。
+- [ ] H7：效能、批次與 Enterprise 強化。

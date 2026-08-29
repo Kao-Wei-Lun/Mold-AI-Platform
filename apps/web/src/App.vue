@@ -13,6 +13,7 @@ import CadWorkspace from "./components/CadWorkspace.vue";
 import DeepLinkStatus from "./components/DeepLinkStatus.vue";
 import DesignReviewWorkspace from "./components/DesignReviewWorkspace.vue";
 import HMIWorkspace from "./components/HMIWorkspace.vue";
+import HistoryDataCenter from "./components/HistoryDataCenter.vue";
 import EngineeringDataManagementWorkspace from "./components/EngineeringDataManagementWorkspace.vue";
 import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
@@ -54,6 +55,7 @@ const initialRoute = deepLinkState.context
   ? routeForDeepLink(deepLinkState.context.target)
   : resolveWorkspaceRoute(window.location.pathname);
 const currentRoute = ref<WorkspaceRoute>(initialRoute);
+const currentPath = ref(window.location.pathname);
 const assistantContext = ref<AssistantContext>({
   context_version: "1.0",
   page: "engineering_workspace",
@@ -69,7 +71,8 @@ const navigationGroups = computed(() =>
         (route.id !== "identity" || currentAccount.value?.permissions.includes("identity:manage")) &&
         (route.id !== "master_data" || currentAccount.value?.permissions.includes("master-data:read")) &&
         (route.id !== "mold_registry" || currentAccount.value?.permissions.includes("registry:read")) &&
-        (route.id !== "engineering_data" || currentAccount.value?.permissions.includes("engineering-data:read")),
+        (route.id !== "engineering_data" || currentAccount.value?.permissions.includes("engineering-data:read")) &&
+        (route.id !== "history_data" || currentAccount.value?.permissions.includes("engineering-data:read")),
     ),
   })),
 );
@@ -102,7 +105,18 @@ function navigate(routeId: WorkspaceRouteId): void {
   if (currentRoute.value.id !== route.id || window.location.search) {
     window.history.pushState(null, "", route.path);
     currentRoute.value = route;
+    currentPath.value = route.path;
   }
+  deepLinkVisible.value = false;
+  navigationOpen.value = false;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function navigatePath(path: string): void {
+  const route = resolveWorkspaceRoute(path);
+  window.history.pushState(null, "", path);
+  currentRoute.value = route;
+  currentPath.value = path;
   deepLinkVisible.value = false;
   navigationOpen.value = false;
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -110,6 +124,7 @@ function navigate(routeId: WorkspaceRouteId): void {
 
 function onPopState(): void {
   currentRoute.value = resolveWorkspaceRoute(window.location.pathname);
+  currentPath.value = window.location.pathname;
   deepLinkVisible.value = Boolean(window.location.search);
 }
 
@@ -366,6 +381,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           v-else-if="currentRoute.id === 'engineering_data' && accessReady"
           :current-account="currentAccount"
           :master-data-options="masterDataOptions"
+        />
+        <HistoryDataCenter
+          v-else-if="currentRoute.id === 'history_data' && accessReady"
+          :path="currentPath"
+          @navigate="navigatePath"
         />
         <IdentityManagementWorkspace
           v-else-if="currentRoute.id === 'identity' && accessReady"

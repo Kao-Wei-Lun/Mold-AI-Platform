@@ -37,6 +37,9 @@ defineProps<{ name: string }>();
     <template v-else-if="name === 'master_data'">
       <ellipse cx="12" cy="5" rx="7" ry="3" /><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" /><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
     </template>
+    <template v-else-if="name === 'history_data'">
+      <path d="M4 5h16v14H4z" /><path d="M8 3v4M16 3v4M4 9h16" /><path d="M8 13h3M8 16h6" />
+    </template>
     <template v-else-if="name === 'mold_registry'">
       <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" /><path d="M8 8h8M8 12h8M8 16h5" />
     </template>
