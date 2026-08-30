@@ -27,8 +27,7 @@ class Command(BaseCommand):
             ),
             "trial_page": lambda: list(trial_case_queryset().order_by("case_code")[:25]),
             "job_page": lambda: list(
-                Job.objects.select_related("input_artifact_version")
-                .order_by("-created_at")[:25]
+                Job.objects.select_related("input_artifact_version").order_by("-created_at")[:25]
             ),
             "analysis_index": _analysis_rows,
         }

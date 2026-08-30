@@ -625,9 +625,11 @@ class RuleVersion(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if self.pk and RuleVersion.objects.filter(pk=self.pk).exists():
-            persisted = RuleVersion.objects.select_related("profile").only(
-                *self.IMMUTABLE_FIELDS, "profile__workflow_status"
-            ).get(pk=self.pk)
+            persisted = (
+                RuleVersion.objects.select_related("profile")
+                .only(*self.IMMUTABLE_FIELDS, "profile__workflow_status")
+                .get(pk=self.pk)
+            )
             changed = [
                 field
                 for field in self.IMMUTABLE_FIELDS
@@ -734,9 +736,7 @@ class AuditEvent(models.Model):
 
     class Meta:
         ordering = ["created_at"]
-        indexes = [
-            models.Index(fields=["event_type", "created_at"], name="audit_type_created_idx")
-        ]
+        indexes = [models.Index(fields=["event_type", "created_at"], name="audit_type_created_idx")]
 
     def __str__(self) -> str:
         return f"{self.event_type}:{self.id}"
@@ -832,9 +832,7 @@ class BulkImportBatch(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(
-                fields=["scope", "status", "created_at"], name="bulk_scope_status_idx"
-            )
+            models.Index(fields=["scope", "status", "created_at"], name="bulk_scope_status_idx")
         ]
 
     def __str__(self) -> str:

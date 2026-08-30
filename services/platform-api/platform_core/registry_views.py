@@ -101,12 +101,15 @@ def _governed_mold_type(
     request: Request, project: Project, value: object
 ) -> tuple[str, Response | None]:
     code = str(value or "").strip()
-    if not code or not MasterDataItem.objects.filter(
-        scope=project.scope,
-        kind=MasterDataItem.Kind.MOLD_TYPE,
-        code=code,
-        status=MasterDataItem.Status.ACTIVE,
-    ).exists():
+    if (
+        not code
+        or not MasterDataItem.objects.filter(
+            scope=project.scope,
+            kind=MasterDataItem.Kind.MOLD_TYPE,
+            code=code,
+            status=MasterDataItem.Status.ACTIVE,
+        ).exists()
+    ):
         return "", _error(
             request,
             "VALIDATION_MOLD_TYPE",
@@ -310,9 +313,11 @@ class ProjectDetailView(APIView):
     def get(self, request: Request, project_id: str) -> Response:
         if denied := _require(request, "registry:read"):
             return denied
-        project = Project.objects.select_related("scope").filter(
-            id=project_id, scope__code__in=_allowed_scope_codes(request)
-        ).first()
+        project = (
+            Project.objects.select_related("scope")
+            .filter(id=project_id, scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
         if project is None:
             return _error(request, "NOT_FOUND", "Project not found.", 404)
         return Response(project_payload(project))
@@ -320,9 +325,11 @@ class ProjectDetailView(APIView):
     def patch(self, request: Request, project_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        project = Project.objects.select_related("scope").filter(
-            id=project_id, scope__code__in=_allowed_scope_codes(request)
-        ).first()
+        project = (
+            Project.objects.select_related("scope")
+            .filter(id=project_id, scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
         if project is None:
             return _error(request, "NOT_FOUND", "Project not found.", 404)
         reason, invalid = _reason(request)
@@ -442,9 +449,11 @@ class PartDetailView(APIView):
     def patch(self, request: Request, part_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        part = ProductPart.objects.select_related("project").filter(
-            id=part_id, project__scope__code__in=_allowed_scope_codes(request)
-        ).first()
+        part = (
+            ProductPart.objects.select_related("project")
+            .filter(id=part_id, project__scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
         if part is None:
             return _error(request, "NOT_FOUND", "Product part not found.", 404)
         reason, invalid = _reason(request)
@@ -581,9 +590,11 @@ class MoldDetailView(APIView):
     def patch(self, request: Request, mold_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        mold = Mold.objects.select_related("project", "product_part").filter(
-            id=mold_id, project__scope__code__in=_allowed_scope_codes(request)
-        ).first()
+        mold = (
+            Mold.objects.select_related("project", "product_part")
+            .filter(id=mold_id, project__scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
         if mold is None:
             return _error(request, "NOT_FOUND", "Mold not found.", 404)
         reason, invalid = _reason(request)
@@ -718,10 +729,14 @@ class RevisionDetailView(APIView):
     def patch(self, request: Request, revision_id: str) -> Response:
         if denied := _require(request, "registry:manage"):
             return denied
-        revision = MoldRevision.objects.select_related("mold").filter(
-            id=revision_id,
-            mold__project__scope__code__in=_allowed_scope_codes(request),
-        ).first()
+        revision = (
+            MoldRevision.objects.select_related("mold")
+            .filter(
+                id=revision_id,
+                mold__project__scope__code__in=_allowed_scope_codes(request),
+            )
+            .first()
+        )
         if revision is None:
             return _error(request, "NOT_FOUND", "Mold revision not found.", 404)
         reason, invalid = _reason(request)

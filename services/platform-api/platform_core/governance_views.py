@@ -17,9 +17,14 @@ from .design_review import EVALUATORS, get_demo_rule_profile
 from .identity import audit_identity_event
 from .knowledge import knowledge_document_payload
 from .models import (
+    Artifact,
+    DataScope,
     KnowledgeDocument,
     MasterDataItem,
+    Mold,
+    MoldRevision,
     Project,
+    ReviewRun,
     RuleProfile,
     RuleProfileApplicability,
     RuleVersion,
@@ -28,6 +33,7 @@ from .pagination import PaginationValueError, paginate
 from .rule_resolution import applicability_checksum
 
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+PROFILE_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$")
 KNOWLEDGE_TRANSITIONS = {
     "draft": {"submit": "in_review", "retire": "retired"},
     "in_review": {"approve": "approved", "retire": "retired"},
@@ -69,16 +75,81 @@ def _reason(request: Request) -> tuple[str, Response | None]:
     return reason[:512], None
 
 
+def _rule_validation_issues(profile: RuleProfile) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    enabled_rules = list(profile.rules.filter(enabled=True))
+    if not enabled_rules:
+        issues.append(
+            {"code": "RULESET_EMPTY", "message": "At least one enabled rule is required."}
+        )
+    seen: set[str] = set()
+    for rule in enabled_rules:
+        if rule.rule_id in seen:
+            issues.append(
+                {
+                    "code": "RULE_ID_DUPLICATE",
+                    "rule_id": rule.rule_id,
+                    "message": "Rule ID must be unique.",
+                }
+            )
+        seen.add(rule.rule_id)
+        if rule.evaluator not in EVALUATORS:
+            issues.append(
+                {
+                    "code": "EVALUATOR_UNREGISTERED",
+                    "rule_id": rule.rule_id,
+                    "message": "Evaluator is not registered.",
+                }
+            )
+        if rule.operator not in {"lte", "gte", "eq"}:
+            issues.append(
+                {
+                    "code": "OPERATOR_UNSUPPORTED",
+                    "rule_id": rule.rule_id,
+                    "message": "Operator is not supported.",
+                }
+            )
+        if not rule.title.strip():
+            issues.append(
+                {
+                    "code": "TITLE_REQUIRED",
+                    "rule_id": rule.rule_id,
+                    "message": "Rule title is required.",
+                }
+            )
+        if not rule.unit.strip():
+            issues.append(
+                {
+                    "code": "UNIT_REQUIRED",
+                    "rule_id": rule.rule_id,
+                    "message": "Rule unit is required.",
+                }
+            )
+        reference = rule.reference if isinstance(rule.reference, dict) else {}
+        if (
+            not str(reference.get("document", "")).strip()
+            or not str(reference.get("revision", "")).strip()
+        ):
+            issues.append(
+                {
+                    "code": "REFERENCE_REQUIRED",
+                    "rule_id": rule.rule_id,
+                    "message": "Reference document and revision are required.",
+                }
+            )
+    return issues
+
+
 class RuleProfileGovernanceListView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []
 
     def get(self, request: Request) -> Response:
         get_demo_rule_profile()
-        profiles = RuleProfile.objects.select_related("scope").prefetch_related(
-            "rules", "applicability_entries"
-        ).order_by(
-            "profile_key", "-created_at"
+        profiles = (
+            RuleProfile.objects.select_related("scope")
+            .prefetch_related("rules", "applicability_entries")
+            .order_by("profile_key", "-created_at")
         )
         if workflow_status := request.query_params.get("status"):
             profiles = profiles.filter(workflow_status=workflow_status)
@@ -106,96 +177,132 @@ class RuleProfileGovernanceListView(APIView):
     def post(self, request: Request) -> Response:
         if denied := _require(request, "rules:author"):
             return denied
-        if request.data.get("action") != "clone":
-            return _error(request, "VALIDATION_ACTION", "Only clone is supported.", 400)
+        action = str(request.data.get("action", "clone"))
+        if action not in {"blank", "template", "clone"}:
+            return _error(
+                request,
+                "VALIDATION_ACTION",
+                "action must be blank, template, or clone.",
+                400,
+            )
         reason, invalid = _reason(request)
         if invalid:
             return invalid
-        source = (
-            RuleProfile.objects.select_related("scope").prefetch_related(
-                "rules", "applicability_entries"
+        source = None
+        if action != "blank":
+            source = (
+                RuleProfile.objects.select_related("scope")
+                .prefetch_related("rules", "applicability_entries")
+                .filter(id=request.data.get("source_profile_id"))
+                .first()
             )
-            .filter(id=request.data.get("source_profile_id"))
-            .first()
-        )
-        if source is None:
-            return _error(request, "NOT_FOUND", "Source rule profile not found.", 404)
+            if source is None:
+                return _error(request, "NOT_FOUND", "Source rule profile not found.", 404)
+            if action == "template" and source.workflow_status not in {
+                RuleProfile.WorkflowStatus.PUBLISHED,
+                RuleProfile.WorkflowStatus.RETIRED,
+            }:
+                return _error(
+                    request,
+                    "RULE_TEMPLATE_NOT_GOVERNED",
+                    "A template must come from a published or retired profile.",
+                    409,
+                )
         version = str(request.data.get("version", "")).strip()
         if not VERSION_RE.fullmatch(version):
             return _error(request, "VALIDATION_VERSION", "A valid version is required.", 400)
+        profile_key = str(
+            request.data.get("profile_key", source.profile_key if source else "")
+        ).strip()
+        if not PROFILE_KEY_RE.fullmatch(profile_key):
+            return _error(
+                request, "VALIDATION_PROFILE_KEY", "A valid profile key is required.", 400
+            )
         actor = _actor(request)
         try:
             with transaction.atomic():
                 clone = RuleProfile.objects.create(
-                    profile_key=source.profile_key,
+                    profile_key=profile_key,
                     version=version,
                     status="draft",
                     workflow_status=RuleProfile.WorkflowStatus.DRAFT,
-                    product_scope=source.product_scope,
-                    material_scope=source.material_scope,
-                    priority=source.priority,
+                    product_scope=source.product_scope if source else [],
+                    material_scope=source.material_scope if source else [],
+                    priority=source.priority if source else 0,
                     is_default=False,
-                    effective_from=source.effective_from,
-                    effective_to=source.effective_to,
-                    scope=source.scope,
-                    classification=source.classification,
+                    effective_from=source.effective_from if source else None,
+                    effective_to=source.effective_to if source else None,
+                    scope=(
+                        source.scope
+                        if source
+                        else DataScope.objects.filter(code="public-demo", is_active=True).first()
+                    ),
+                    classification=source.classification if source else "public_demo",
                     resolution_status=RuleProfile.ResolutionStatus.ELIGIBLE,
                     owner=actor,
                     approved_by="",
-                    ruleset_checksum=source.ruleset_checksum,
+                    ruleset_checksum=source.ruleset_checksum
+                    if source
+                    else hashlib.sha256(b"[]").hexdigest(),
                     change_summary=str(request.data.get("change_summary", "")).strip(),
                 )
-                RuleVersion.objects.bulk_create(
-                    [
-                        RuleVersion(
-                            profile=clone,
-                            rule_id=rule.rule_id,
-                            rule_version=version,
-                            title=rule.title,
-                            description=rule.description,
-                            evaluator=rule.evaluator,
-                            applicability=rule.applicability,
-                            parameters=rule.parameters,
-                            operator=rule.operator,
-                            limit_value=rule.limit_value,
-                            unit=rule.unit,
-                            tolerance=rule.tolerance,
-                            severity=rule.severity,
-                            risk_type=rule.risk_type,
-                            recommendation=rule.recommendation,
-                            reference=rule.reference,
-                            sort_order=rule.sort_order,
-                            enabled=rule.enabled,
-                        )
-                        for rule in source.rules.all()
-                    ]
-                )
-                RuleProfileApplicability.objects.bulk_create(
-                    [
-                        RuleProfileApplicability(
-                            profile=clone,
-                            dimension=item.dimension,
-                            value_code=item.value_code,
-                            match_mode=item.match_mode,
-                        )
-                        for item in source.applicability_entries.all()
-                    ]
-                )
+                if source:
+                    RuleVersion.objects.bulk_create(
+                        [
+                            RuleVersion(
+                                profile=clone,
+                                rule_id=rule.rule_id,
+                                rule_version=version,
+                                title=rule.title,
+                                description=rule.description,
+                                evaluator=rule.evaluator,
+                                applicability=rule.applicability,
+                                parameters=rule.parameters,
+                                operator=rule.operator,
+                                limit_value=rule.limit_value,
+                                unit=rule.unit,
+                                tolerance=rule.tolerance,
+                                severity=rule.severity,
+                                risk_type=rule.risk_type,
+                                recommendation=rule.recommendation,
+                                reference=rule.reference,
+                                sort_order=rule.sort_order,
+                                enabled=rule.enabled,
+                            )
+                            for rule in source.rules.all()
+                        ]
+                    )
+                    RuleProfileApplicability.objects.bulk_create(
+                        [
+                            RuleProfileApplicability(
+                                profile=clone,
+                                dimension=item.dimension,
+                                value_code=item.value_code,
+                                match_mode=item.match_mode,
+                            )
+                            for item in source.applicability_entries.all()
+                        ]
+                    )
                 clone.applicability_checksum = applicability_checksum(clone)
                 clone.save(update_fields=["applicability_checksum"])
                 audit_identity_event(
-                    "rule_profile.cloned.v1",
+                    f"rule_profile.{action}_created.v1",
                     actor_id=actor,
-                    target_refs=[f"rule-profile:{clone.id}", f"rule-profile:{source.id}"],
-                    detail={"version": version, "reason": reason},
+                    target_refs=[
+                        f"rule-profile:{clone.id}",
+                        *([f"rule-profile:{source.id}"] if source else []),
+                    ],
+                    detail={"version": version, "reason": reason, "creation_mode": action},
                 )
         except IntegrityError:
             return _error(
                 request, "RULE_PROFILE_VERSION_CONFLICT", "This profile version exists.", 409
             )
-        clone = RuleProfile.objects.select_related("scope").prefetch_related(
-            "rules", "applicability_entries"
-        ).get(id=clone.id)
+        clone = (
+            RuleProfile.objects.select_related("scope")
+            .prefetch_related("rules", "applicability_entries")
+            .get(id=clone.id)
+        )
         return Response(rule_profile_payload(clone), status=201)
 
 
@@ -204,9 +311,12 @@ class RuleProfileWorkflowView(APIView):
     permission_classes: list = []
 
     def post(self, request: Request, profile_id: str) -> Response:
-        profile = RuleProfile.objects.select_related("scope").prefetch_related(
-            "rules", "applicability_entries"
-        ).filter(id=profile_id).first()
+        profile = (
+            RuleProfile.objects.select_related("scope")
+            .prefetch_related("rules", "applicability_entries")
+            .filter(id=profile_id)
+            .first()
+        )
         if profile is None:
             return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
         action = str(request.data.get("action", "")).strip()
@@ -241,14 +351,7 @@ class RuleProfileWorkflowView(APIView):
                 409,
             )
         if action == "test":
-            issues = []
-            if not profile.rules.exists():
-                issues.append("RULESET_EMPTY")
-            for rule in profile.rules.all():
-                if rule.evaluator not in EVALUATORS:
-                    issues.append(f"EVALUATOR_UNREGISTERED:{rule.rule_id}")
-                if rule.operator not in {"lte", "gte", "eq"}:
-                    issues.append(f"OPERATOR_UNSUPPORTED:{rule.rule_id}")
+            issues = _rule_validation_issues(profile)
             if issues:
                 return _error(
                     request,
@@ -290,6 +393,60 @@ class RuleProfileWorkflowView(APIView):
         return Response(rule_profile_payload(profile))
 
 
+class RuleProfileValidationView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, profile_id: str) -> Response:
+        if denied := _require(request, "rules:author"):
+            return denied
+        profile = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        if profile is None:
+            return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
+        issues = _rule_validation_issues(profile)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "profile_id": str(profile.id),
+                "valid": not issues,
+                "issues": issues,
+                "ruleset_checksum": profile.ruleset_checksum,
+            }
+        )
+
+
+class RuleProfileImpactPreviewView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, profile_id: str) -> Response:
+        if denied := _require(request, "rules:author"):
+            return denied
+        profile = RuleProfile.objects.select_related("scope").filter(id=profile_id).first()
+        if profile is None:
+            return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
+        mold_scope = Mold.objects.all()
+        revision_scope = MoldRevision.objects.all()
+        cad_scope = Artifact.objects.filter(kind=Artifact.Kind.CAD_SOURCE)
+        if profile.scope_id:
+            mold_scope = mold_scope.filter(project__scope=profile.scope)
+            revision_scope = revision_scope.filter(mold__project__scope=profile.scope)
+            cad_scope = cad_scope.filter(mold_revision__mold__project__scope=profile.scope)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "profile_id": str(profile.id),
+                "impact": {
+                    "molds": mold_scope.count(),
+                    "revisions": revision_scope.count(),
+                    "cad_artifacts": cad_scope.count(),
+                    "historical_reviews": ReviewRun.objects.filter(profile=profile).count(),
+                },
+                "note": "Counts are a governed scope preview; historical reviews remain immutable.",
+            }
+        )
+
+
 def _rule_checksum(profile: RuleProfile) -> str:
     content = [
         {
@@ -322,9 +479,12 @@ class RuleProfileDetailView(APIView):
     permission_classes: list = []
 
     def get(self, request: Request, profile_id: str) -> Response:
-        profile = RuleProfile.objects.select_related("scope").prefetch_related(
-            "rules", "applicability_entries"
-        ).filter(id=profile_id).first()
+        profile = (
+            RuleProfile.objects.select_related("scope")
+            .prefetch_related("rules", "applicability_entries")
+            .filter(id=profile_id)
+            .first()
+        )
         if profile is None:
             return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
         return Response(rule_profile_payload(profile))
@@ -457,9 +617,7 @@ class RuleProfileDetailView(APIView):
             priority = int(request.data.get("priority", profile.priority))
         except (TypeError, ValueError):
             return _error(request, "VALIDATION_PRIORITY", "priority must be an integer.", 400)
-        resolution_status = str(
-            request.data.get("resolution_status", profile.resolution_status)
-        )
+        resolution_status = str(request.data.get("resolution_status", profile.resolution_status))
         if resolution_status not in RuleProfile.ResolutionStatus.values:
             return _error(
                 request,
@@ -591,9 +749,7 @@ class RuleProfileDiffView(APIView):
                 if getattr(before, field, None) != getattr(after, field, None)
             ]
             if before is None or after is None or changed_fields:
-                change = (
-                    "added" if before is None else "removed" if after is None else "modified"
-                )
+                change = "added" if before is None else "removed" if after is None else "modified"
                 changes.append(
                     {
                         "rule_id": rule_id,

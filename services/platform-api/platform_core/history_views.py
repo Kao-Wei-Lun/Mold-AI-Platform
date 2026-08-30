@@ -86,9 +86,7 @@ def _page(request: Request) -> tuple[int, int] | Response:
 
 
 def _state(record_type: str, record_id: uuid.UUID) -> dict[str, object]:
-    state = HistoryRecordState.objects.filter(
-        record_type=record_type, record_id=record_id
-    ).first()
+    state = HistoryRecordState.objects.filter(record_type=record_type, record_id=record_id).first()
     return {
         "status": state.status if state else "active",
         "row_version": state.row_version if state else 1,
@@ -260,9 +258,11 @@ def _analysis_detail(record_type: str, record_id: str) -> dict[str, object] | No
                 "lifecycle": _state(record_type, item.id),
             }
     elif record_type == "cae_comparison":
-        item = CAEComparison.objects.select_related("baseline_run", "candidate_run").filter(
-            id=record_id
-        ).first()
+        item = (
+            CAEComparison.objects.select_related("baseline_run", "candidate_run")
+            .filter(id=record_id)
+            .first()
+        )
         if item:
             return {
                 "analysis_type": record_type,
@@ -411,9 +411,11 @@ def _rerun_analysis(record_type: str, record_id: str) -> tuple[str, str, str | N
             rerun = search_process_cases(source.request_snapshot)
             return record_type, str(rerun.id), None
     elif record_type == "cae_comparison":
-        source = CAEComparison.objects.select_related("baseline_run", "candidate_run").filter(
-            id=record_id
-        ).first()
+        source = (
+            CAEComparison.objects.select_related("baseline_run", "candidate_run")
+            .filter(id=record_id)
+            .first()
+        )
         if source:
             rerun = compare_cae_runs(source.baseline_run, source.candidate_run)
             return record_type, str(rerun.id), None
@@ -558,10 +560,7 @@ def _redact(value: object) -> object:
         return {
             key: (
                 "[REDACTED]"
-                if any(
-                    word in key.lower()
-                    for word in ("token", "secret", "password", "api_key")
-                )
+                if any(word in key.lower() for word in ("token", "secret", "password", "api_key"))
                 else _redact(item)
             )
             for key, item in value.items()

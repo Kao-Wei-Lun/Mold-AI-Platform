@@ -162,6 +162,49 @@ class GovernanceLifecycleTests(TestCase):
         self.assertEqual(difference.status_code, 200)
         self.assertEqual(difference.json()["changes"][0]["change"], "modified")
 
+    def test_rule_author_can_create_blank_profile_and_preview_validation(self):
+        self.client.force_login(self.rule_owner)
+        created = self.client.post(
+            "/api/v1/rule-profiles",
+            {
+                "action": "blank",
+                "profile_key": "thin-wall-injection",
+                "version": "1.0",
+                "change_summary": "New controlled family",
+                "reason": "Create a mold-type-specific profile",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(created.status_code, 201)
+        profile = created.json()
+        self.assertEqual(profile["workflow_status"], "draft")
+        self.assertEqual(profile["rule_count"], 0)
+
+        preview = self.client.post(
+            f"/api/v1/rule-profiles/{profile['profile_id']}/validate",
+            {},
+            content_type="application/json",
+        )
+        self.assertEqual(preview.status_code, 200)
+        self.assertFalse(preview.json()["valid"])
+        self.assertEqual(preview.json()["issues"][0]["code"], "RULESET_EMPTY")
+
+    def test_rule_impact_preview_is_scope_bounded_and_read_only(self):
+        source = get_demo_rule_profile()
+        self.client.force_login(self.rule_owner)
+        before = RuleProfile.objects.count()
+        response = self.client.post(
+            f"/api/v1/rule-profiles/{source.id}/impact-preview",
+            {},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(RuleProfile.objects.count(), before)
+        self.assertEqual(
+            set(response.json()["impact"]),
+            {"molds", "revisions", "cad_artifacts", "historical_reviews"},
+        )
+
     def test_published_rule_content_is_immutable(self):
         profile = get_demo_rule_profile()
         rule = profile.rules.first()

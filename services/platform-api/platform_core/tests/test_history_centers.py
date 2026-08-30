@@ -24,9 +24,7 @@ from platform_core.models import (
 
 
 def account(username: str, role_code: str):
-    user = get_user_model().objects.create_user(
-        username=username, password="History-Test-2026!"
-    )
+    user = get_user_model().objects.create_user(username=username, password="History-Test-2026!")
     ensure_account_profile(user)
     RoleAssignment.objects.create(
         user=user,

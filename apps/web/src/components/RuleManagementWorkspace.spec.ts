@@ -17,6 +17,15 @@ const profile = {
   published_at: "2026-08-29T00:00:00Z",
   retired_at: null,
   ruleset_checksum: "a".repeat(64),
+  priority: 0,
+  is_default: true,
+  effective_from: null,
+  effective_to: null,
+  scope: "public-demo",
+  classification: "public_demo",
+  resolution_status: "eligible",
+  applicability_checksum: "b".repeat(64),
+  applicability: [],
   rule_count: 2,
   rules: [
     {
@@ -31,6 +40,8 @@ const profile = {
       risk_type: "demolding",
       recommendation: "Review the draft angle.",
       reference: { document: "Demo Mold Standard", revision: "A", classification: "public_demo" },
+      applicability: { formats: ["step", "stp", "stl"] },
+      measurement_definition: { field: "minimum_draft_angle_deg" },
       enabled: true,
     },
     {
@@ -45,6 +56,8 @@ const profile = {
       risk_type: "sink_mark",
       recommendation: "Review rib thickness.",
       reference: { document: "Demo Mold Standard", revision: "A", classification: "public_demo" },
+      applicability: { formats: ["step", "stp", "stl"] },
+      measurement_definition: { field: "rib_ratio" },
       enabled: true,
     },
   ],
@@ -67,6 +80,8 @@ describe("RuleManagementWorkspace", () => {
 
     expect(wrapper.text()).toContain("demo-general-design @ 1.0");
     expect(wrapper.text()).toContain("Approved rules are immutable in this Demo");
+    const rulesTab = wrapper.findAll(".rule-detail-tabs button").find((button) => button.text() === "Rules");
+    await rulesTab!.trigger("click");
     expect(wrapper.findAll("tbody tr")).toHaveLength(2);
     await wrapper.get('input[type="search"]').setValue("draft");
     expect(wrapper.findAll("tbody tr")).toHaveLength(1);
@@ -83,11 +98,12 @@ describe("RuleManagementWorkspace", () => {
   });
 
   it("offers controlled version cloning to authorized rule authors", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [profile] }) })
-      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ ...profile, version: "2.0", workflow_status: "draft" }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [{ ...profile, version: "2.0", workflow_status: "draft" }] }) });
+    const draft = { ...profile, version: "2.0", workflow_status: "draft" };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("master-data/options")) return { ok: true, status: 200, json: async () => ({ results: {} }) };
+      if (init?.method === "POST") return { ok: true, status: 201, json: async () => draft };
+      return { ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [profile] }) };
+    });
     vi.stubGlobal("fetch", fetchMock);
     const wrapper = mount(RuleManagementWorkspace, {
       props: {
@@ -100,12 +116,36 @@ describe("RuleManagementWorkspace", () => {
       },
     });
     await flushPromises();
-    await wrapper.get(".rule-workflow-panel button").trigger("click");
+    await wrapper.get(".rule-catalog-toolbar button").trigger("click");
+    await wrapper.get(".rule-create-wizard").trigger("submit");
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/rule-profiles"),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("uses structured fields instead of exposing raw JSON to rule authors", async () => {
+    const draft = { ...profile, workflow_status: "draft" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("master-data/options")
+      ? { ok: true, status: 200, json: async () => ({ results: {} }) }
+      : { ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [draft] }) }));
+    const wrapper = mount(RuleManagementWorkspace, {
+      props: { currentAccount: {
+        id: "owner-1", username: "owner", email: "owner@example.test", display_name: "Owner",
+        status: "active", locale: "en", timezone: "Asia/Taipei", row_version: 1,
+        roles: ["rule_owner"], permissions: ["rules:read", "rules:author"], data_scopes: ["public-demo"],
+        role_assignments: [], last_login_at: null, created_at: "2026-08-29T00:00:00Z",
+      } },
+    });
+    await flushPromises();
+    const rulesTab = wrapper.findAll(".rule-detail-tabs button").find((button) => button.text() === "Rules");
+    await rulesTab!.trigger("click");
+
+    expect(wrapper.find(".structured-rule-list").exists()).toBe(true);
+    expect(wrapper.find('textarea[aria-label="Rules (JSON)"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("Evaluator");
+    expect(wrapper.text()).toContain("Reference document");
   });
 });

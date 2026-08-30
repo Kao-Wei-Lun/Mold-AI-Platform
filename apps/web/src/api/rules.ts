@@ -16,8 +16,29 @@ export type RuleProfile = {
   published_at: string | null;
   retired_at: string | null;
   ruleset_checksum: string;
+  priority: number;
+  is_default: boolean;
+  effective_from: string | null;
+  effective_to: string | null;
+  scope: string | null;
+  classification: string;
+  resolution_status: "eligible" | "disabled";
+  applicability_checksum: string;
+  applicability: RuleApplicability[];
   rule_count: number;
-  rules: Array<ReviewRule & { enabled: boolean }>;
+  rules: RuleDefinition[];
+};
+
+export type RuleApplicability = {
+  dimension: "mold_type" | "product_type" | "material" | "molding_process" | "project" | "location";
+  value_code: string;
+  match_mode: "include" | "exclude";
+};
+
+export type RuleDefinition = ReviewRule & {
+  enabled: boolean;
+  applicability: Record<string, unknown>;
+  measurement_definition: Record<string, unknown>;
 };
 
 export type RuleProfileDiff = {
@@ -25,6 +46,21 @@ export type RuleProfileDiff = {
   baseline_profile_id: string;
   profile_id: string;
   changes: Array<{ rule_id: string; change: "added" | "removed" | "modified"; changed_fields: string[] }>;
+};
+
+export type RuleValidation = {
+  schema_version: "1.0";
+  profile_id: string;
+  valid: boolean;
+  issues: Array<{ code: string; rule_id?: string; message: string }>;
+  ruleset_checksum: string;
+};
+
+export type RuleImpact = {
+  schema_version: "1.0";
+  profile_id: string;
+  impact: { molds: number; revisions: number; cad_artifacts: number; historical_reviews: number };
+  note: string;
 };
 
 type RuleProfileList = {
@@ -71,7 +107,17 @@ export async function fetchRuleProfileDiff(id: string, against: string): Promise
 
 export async function updateRuleProfile(
   profile: RuleProfile,
-  input: { change_summary: string; rules: RuleProfile["rules"]; reason: string },
+  input: {
+    change_summary: string;
+    rules: RuleProfile["rules"];
+    applicability?: RuleApplicability[];
+    priority?: number;
+    is_default?: boolean;
+    effective_from?: string | null;
+    effective_to?: string | null;
+    resolution_status?: "eligible" | "disabled";
+    reason: string;
+  },
 ): Promise<RuleProfile> {
   const response = await apiFetch(`${apiBaseUrl}/api/v1/rule-profiles/${profile.profile_id}`, {
     method: "PATCH",
@@ -81,6 +127,17 @@ export async function updateRuleProfile(
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error?.message || `Rule update returned HTTP ${response.status}`);
   return payload;
+}
+
+export function createRuleProfile(input: {
+  action: "blank" | "template" | "clone";
+  profile_key?: string;
+  source_profile_id?: string;
+  version: string;
+  change_summary: string;
+  reason: string;
+}): Promise<RuleProfile> {
+  return ruleRequest("/api/v1/rule-profiles", input);
 }
 
 export function cloneRuleProfile(
@@ -106,4 +163,12 @@ export function transitionRuleProfile(
     reason,
     row_version: profile.row_version,
   });
+}
+
+export function validateRuleProfile(profile: RuleProfile): Promise<RuleValidation> {
+  return ruleRequest(`/api/v1/rule-profiles/${profile.profile_id}/validate`, {});
+}
+
+export function previewRuleImpact(profile: RuleProfile): Promise<RuleImpact> {
+  return ruleRequest(`/api/v1/rule-profiles/${profile.profile_id}/impact-preview`, {});
 }

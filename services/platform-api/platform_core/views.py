@@ -399,9 +399,7 @@ def _error_response(code: str, message: str, http_status: int) -> Response:
 
 
 def _allowed_classifications(request: Request) -> list[str]:
-    scope_codes = set(getattr(request._request, "mold_ai_data_scopes", set())) or {
-        "public-demo"
-    }
+    scope_codes = set(getattr(request._request, "mold_ai_data_scopes", set())) or {"public-demo"}
     return list(
         DataScope.objects.filter(code__in=scope_codes, is_active=True)
         .values_list("classification", flat=True)
@@ -646,9 +644,8 @@ class KnowledgeDocumentListCreateView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request: Request) -> Response:
-        documents = (
-            KnowledgeDocument.objects.select_related("artifact_version__artifact")
-            .filter(artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET)
+        documents = KnowledgeDocument.objects.select_related("artifact_version__artifact").filter(
+            artifact_version__artifact__dataset_id=PUBLIC_KNOWLEDGE_DATASET
         )
         if publication_status := request.query_params.get("publication_status"):
             documents = documents.filter(publication_status=publication_status)
@@ -1107,9 +1104,7 @@ class DesignReviewListCreateView(APIView):
             )
         requested_profile_id = request.data.get("profile_id")
         if requested_profile_id:
-            if "rules:author" not in getattr(
-                request._request, "mold_ai_permissions", set()
-            ):
+            if "rules:author" not in getattr(request._request, "mold_ai_permissions", set()):
                 return _error_response(
                     "ACCESS_DENIED",
                     "The account cannot override automatic rule profile resolution.",
@@ -1142,9 +1137,7 @@ class DesignReviewListCreateView(APIView):
                 version,
                 context=request.data.get("context"),
                 resolution_context=resolution_context,
-                requested_profile_id=(
-                    str(requested_profile_id) if requested_profile_id else None
-                ),
+                requested_profile_id=(str(requested_profile_id) if requested_profile_id else None),
                 override_reason=str(request.data.get("override_reason", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
             )
@@ -1164,9 +1157,7 @@ class DesignReviewListCreateView(APIView):
             if requested_profile_id:
                 audit_identity_event(
                     "design_review.rule_profile_overridden.v1",
-                    actor_id=str(
-                        getattr(request._request, "mold_ai_actor_id", "anonymous")
-                    ),
+                    actor_id=str(getattr(request._request, "mold_ai_actor_id", "anonymous")),
                     target_refs=[
                         f"design-review:{records.review.id}",
                         f"rule-profile:{requested_profile_id}",

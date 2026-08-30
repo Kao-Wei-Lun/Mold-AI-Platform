@@ -102,8 +102,7 @@ def _candidate_payload(
         "priority": profile.priority,
         "is_default": profile.is_default,
         "matched_dimensions": matched_dimensions,
-        "applicability_checksum": profile.applicability_checksum
-        or applicability_checksum(profile),
+        "applicability_checksum": profile.applicability_checksum or applicability_checksum(profile),
     }
 
 
@@ -130,12 +129,15 @@ def resolve_rule_profile(
         ("molding_process", MasterDataItem.Kind.MOLDING_PROCESS),
         ("location", MasterDataItem.Kind.LOCATION),
     ):
-        if dimension in context and not MasterDataItem.objects.filter(
-            scope=scope,
-            kind=kind,
-            code=context[dimension],
-            status=MasterDataItem.Status.ACTIVE,
-        ).exists():
+        if (
+            dimension in context
+            and not MasterDataItem.objects.filter(
+                scope=scope,
+                kind=kind,
+                code=context[dimension],
+                status=MasterDataItem.Status.ACTIVE,
+            ).exists()
+        ):
             raise RuleResolutionError(
                 "VALIDATION_RESOLUTION_CONTEXT",
                 f"{dimension} must be an active governed engineering reference value.",

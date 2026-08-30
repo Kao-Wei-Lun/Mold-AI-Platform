@@ -57,9 +57,10 @@ def _actor(request: Request) -> str:
 
 
 def _scope(request: Request) -> tuple[DataScope | None, Response | None]:
-    scope_code = str(
-        request.data.get("scope") if request.method not in {"GET", "HEAD"} else ""
-    ).strip() or str(request.query_params.get("scope", "public-demo")).strip()
+    scope_code = (
+        str(request.data.get("scope") if request.method not in {"GET", "HEAD"} else "").strip()
+        or str(request.query_params.get("scope", "public-demo")).strip()
+    )
     allowed = set(getattr(request._request, "mold_ai_data_scopes", set()))
     if scope_code not in allowed:
         return None, _error(
@@ -256,19 +257,20 @@ class EnterprisePolicyView(APIView):
                 "Distinct index and cache namespaces are required.",
                 400,
             )
-        if EnterpriseDataPolicy.objects.exclude(id=policy.id).filter(
-            index_namespace=index_namespace
-        ).exists() or EnterpriseDataPolicy.objects.exclude(id=policy.id).filter(
-            cache_namespace=cache_namespace
-        ).exists():
+        if (
+            EnterpriseDataPolicy.objects.exclude(id=policy.id)
+            .filter(index_namespace=index_namespace)
+            .exists()
+            or EnterpriseDataPolicy.objects.exclude(id=policy.id)
+            .filter(cache_namespace=cache_namespace)
+            .exists()
+        ):
             return _error(
                 request, "ISOLATION_NAMESPACE_CONFLICT", "Namespace is already assigned.", 409
             )
         retention_days = int(request.data.get("retention_days", policy.retention_days))
         if retention_days < 30 or retention_days > 36500:
-            return _error(
-                request, "VALIDATION_RETENTION", "Retention must be 30–36500 days.", 400
-            )
+            return _error(request, "VALIDATION_RETENTION", "Retention must be 30–36500 days.", 400)
         policy.connector_mode = connector_mode
         policy.retention_days = retention_days
         policy.legal_hold = bool(request.data.get("legal_hold", policy.legal_hold))
@@ -474,9 +476,7 @@ class BulkImportDetailView(APIView):
             }
             batch.committed_by = _actor(request)
             batch.committed_at = timezone.now()
-            batch.save(
-                update_fields=["status", "reconciliation", "committed_by", "committed_at"]
-            )
+            batch.save(update_fields=["status", "reconciliation", "committed_by", "committed_at"])
         if batch.domain == "master_data":
             invalidate_master_data_cache()
         audit_identity_event(

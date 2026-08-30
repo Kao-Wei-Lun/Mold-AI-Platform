@@ -47,9 +47,7 @@ class RuleResolutionTests(TestCase):
             mold=mold, revision_code="A", status=MoldRevision.Status.RELEASED
         )
         records = create_upload_records(
-            SimpleUploadedFile(
-                "rule-part.stl", ASCII_TETRAHEDRON_STL, content_type="model/stl"
-            ),
+            SimpleUploadedFile("rule-part.stl", ASCII_TETRAHEDRON_STL, content_type="model/stl"),
             artifact_name="Rule resolution fixture",
         )
         process_cad_job.run(str(records.job.id))
@@ -121,9 +119,7 @@ class RuleResolutionTests(TestCase):
 
         self.assertEqual(resolution.profile, selected)
         self.assertEqual(resolution.snapshot["selected"]["specificity"], 2)
-        self.assertEqual(
-            resolution.snapshot["context"]["molding_process"], "injection"
-        )
+        self.assertEqual(resolution.snapshot["context"]["molding_process"], "injection")
         self.assertIn("most specific", resolution.snapshot["reason"])
 
     def test_equal_specificity_and_priority_fails_closed(self) -> None:

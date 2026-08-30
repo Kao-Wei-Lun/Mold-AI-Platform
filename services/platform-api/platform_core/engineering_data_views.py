@@ -770,9 +770,7 @@ class HMIProfileDetailView(APIView):
 
     def get(self, request: Request, profile_id: str) -> Response:
         profile = (
-            HMIProfileVersion.objects.prefetch_related("extractions")
-            .filter(id=profile_id)
-            .first()
+            HMIProfileVersion.objects.prefetch_related("extractions").filter(id=profile_id).first()
         )
         if profile is None:
             return _error(request, "NOT_FOUND", "HMI profile not found.", 404)

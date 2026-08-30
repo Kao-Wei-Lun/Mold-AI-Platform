@@ -22,6 +22,8 @@ from .governance_views import (
     RuleProfileDetailView,
     RuleProfileDiffView,
     RuleProfileGovernanceListView,
+    RuleProfileImpactPreviewView,
+    RuleProfileValidationView,
     RuleProfileWorkflowView,
 )
 from .history_views import (
@@ -324,6 +326,16 @@ urlpatterns = [
         "rule-profiles/<uuid:profile_id>/actions",
         RuleProfileWorkflowView.as_view(),
         name="rule-profile-actions",
+    ),
+    path(
+        "rule-profiles/<uuid:profile_id>/validate",
+        RuleProfileValidationView.as_view(),
+        name="rule-profile-validate",
+    ),
+    path(
+        "rule-profiles/<uuid:profile_id>/impact-preview",
+        RuleProfileImpactPreviewView.as_view(),
+        name="rule-profile-impact-preview",
     ),
     path(
         "design-reviews",

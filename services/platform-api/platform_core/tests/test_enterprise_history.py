@@ -17,9 +17,7 @@ from platform_core.models import (
 
 
 def account(username: str, scopes: list[DataScope]):
-    user = get_user_model().objects.create_user(
-        username=username, password="Enterprise-Test-2026!"
-    )
+    user = get_user_model().objects.create_user(username=username, password="Enterprise-Test-2026!")
     ensure_account_profile(user)
     role = AccessRole.objects.get(code="platform_admin")
     for scope in scopes:
@@ -81,9 +79,7 @@ class EnterpriseHistoryTests(TestCase):
             "source_name": "company-materials.csv",
             "idempotency_key": "company-materials-2026-08-29",
             "field_mapping": {"kind": "type", "code": "material_id", "name_en": "label"},
-            "records": [
-                {"type": "material", "material_id": "COMP-ABS-1", "label": "Company ABS"}
-            ],
+            "records": [{"type": "material", "material_id": "COMP-ABS-1", "label": "Company ABS"}],
         }
         validated = self.client.post(
             "/api/v1/enterprise/import-batches",
@@ -195,9 +191,7 @@ class EnterpriseHistoryTests(TestCase):
         self.assertEqual(commit.status_code, 409)
         artifact.refresh_from_db()
         self.assertEqual(artifact.lifecycle_status, "active")
-        audit_export = self.client.get(
-            "/api/v1/history/audit-events/export?scope=company-alpha"
-        )
+        audit_export = self.client.get("/api/v1/history/audit-events/export?scope=company-alpha")
         self.assertEqual(audit_export.status_code, 409)
         self.assertEqual(audit_export.json()["error"]["code"], "DLP_EXPORT_BLOCKED")
 
