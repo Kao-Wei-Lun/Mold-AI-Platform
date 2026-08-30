@@ -20,6 +20,7 @@ import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 import type { LocalAccount } from "../api/identity";
+import { formatFileSize, uploadPolicies, validateUploadFile } from "../fileUpload";
 
 const { locale, t } = useI18n();
 
@@ -44,6 +45,7 @@ const searchResult = ref<KnowledgeSearchResult | null>(null);
 const selectedResult = ref<KnowledgeResultItem | null>(null);
 const error = ref<string | null>(null);
 const uploadAttempted = ref(false);
+const fileSelectionError = ref("");
 const searchAttempted = ref(false);
 const workflowReason = ref("Controlled knowledge lifecycle change");
 const workflowBusyId = ref("");
@@ -62,7 +64,9 @@ const missingUploadFields = computed(
 );
 const missingSearchFields = computed(() => Number(!query.value.trim()));
 const fileError = computed(() =>
-  uploadAttempted.value && !file.value ? t("Choose a UTF-8 TXT or Markdown file.") : "",
+  fileSelectionError.value || (uploadAttempted.value && !file.value
+    ? t("Choose a TXT, Markdown, PDF or DOCX file.")
+    : ""),
 );
 const titleError = computed(() =>
   uploadAttempted.value && title.value.trim().length < 3
@@ -74,8 +78,24 @@ const queryError = computed(() =>
 );
 
 function onFile(event: Event): void {
-  file.value = (event.target as HTMLInputElement).files?.[0] || null;
-  if (file.value && !title.value) title.value = file.value.name.replace(/\.(md|txt)$/i, "");
+  const input = event.target as HTMLInputElement;
+  const candidate = input.files?.[0] || null;
+  fileSelectionError.value = "";
+  if (!candidate) {
+    file.value = null;
+    return;
+  }
+  const validation = validateUploadFile(candidate, uploadPolicies.knowledge);
+  if (validation) {
+    file.value = null;
+    input.value = "";
+    fileSelectionError.value = validation === "too_large"
+      ? t("File size exceeds the {limit} MB limit.", { limit: 5 })
+      : t("File type is not supported. Allowed: {formats}.", { formats: "TXT, MD, PDF, DOCX" });
+    return;
+  }
+  file.value = candidate;
+  if (!title.value) title.value = candidate.name.replace(/\.(md|txt|pdf|docx)$/i, "");
 }
 
 async function loadDocuments(): Promise<void> {
@@ -260,8 +280,12 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <form class="knowledge-upload-form" @submit.prevent="submitUpload">
-          <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('UTF-8 TXT or Markdown')" required :helper="t('Accepted formats: UTF-8 TXT or Markdown.')" :error="fileError">
-            <input :id="fieldId" type="file" accept=".txt,.md,text/plain,text/markdown" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
+          <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('Knowledge source file')" required :helper="t('TXT, Markdown, PDF or DOCX · maximum 5 MB · security screened')" :error="fileError">
+            <input :id="fieldId" type="file" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
+            <div v-if="file" class="selected-file-summary" aria-live="polite">
+              <strong>{{ file.name }}</strong>
+              <span>{{ formatFileSize(file.size) }} · {{ t("Ready for security screening") }}</span>
+            </div>
           </FormField>
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Title')" required :helper="t('Use at least 3 characters so the source is recognizable.')" :error="titleError">
             <input :id="fieldId" v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" :aria-describedby="describedBy" :aria-invalid="invalid" />

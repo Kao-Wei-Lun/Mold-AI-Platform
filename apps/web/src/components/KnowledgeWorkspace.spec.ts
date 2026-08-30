@@ -125,9 +125,49 @@ describe("KnowledgeWorkspace", () => {
     await wrapper.get(".knowledge-upload-form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Choose a UTF-8 TXT or Markdown file");
+    expect(wrapper.text()).toContain("Choose a TXT, Markdown, PDF or DOCX file");
     expect(wrapper.text()).toContain("Enter a title with at least 3 characters");
     expect(wrapper.text()).toContain("Required fields remaining: 2");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts PDF and DOCX in the governed picker and shows a file summary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ schema_version: "1.0", items: [indexedDocument] })),
+    );
+    const wrapper = mount(KnowledgeWorkspace);
+    await flushPromises();
+    const input = wrapper.get('.knowledge-upload-form input[type="file"]');
+    const pdf = new File(["demo"], "mold-guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(input.element, "files", { value: [pdf] });
+
+    await input.trigger("change");
+
+    expect(input.attributes("accept")).toContain(".pdf");
+    expect(input.attributes("accept")).toContain(".docx");
+    expect(wrapper.text()).toContain("mold-guide.pdf");
+    expect(wrapper.text()).toContain("Ready for security screening");
+    expect((wrapper.get('.knowledge-upload-form input[type="text"]').element as HTMLInputElement).value)
+      .toBe("mold-guide");
+  });
+
+  it("rejects a Knowledge file over 5 MB before upload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ schema_version: "1.0", items: [indexedDocument] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(KnowledgeWorkspace);
+    await flushPromises();
+    const input = wrapper.get('.knowledge-upload-form input[type="file"]');
+    const oversized = new File(["x"], "large.pdf", { type: "application/pdf" });
+    Object.defineProperty(oversized, "size", { value: 5 * 1024 * 1024 + 1 });
+    Object.defineProperty(input.element, "files", { value: [oversized] });
+
+    await input.trigger("change");
+
+    expect(wrapper.text()).toContain("5 MB");
+    expect(wrapper.text()).not.toContain("Ready for security screening");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

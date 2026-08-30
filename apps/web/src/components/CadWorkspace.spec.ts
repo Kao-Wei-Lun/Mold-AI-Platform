@@ -243,6 +243,22 @@ describe("CadWorkspace", () => {
     expect(wrapper.get('[role="alert"]').text()).toContain("Invalid STL signature");
   });
 
+  it("rejects an oversized CAD file before using network bandwidth", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const oversized = new File(["x"], "oversized.step", { type: "model/step" });
+    Object.defineProperty(oversized, "size", { value: 200 * 1024 * 1024 + 1 });
+    const wrapper = mount(CadWorkspace);
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, "files", { value: [oversized] });
+
+    await input.trigger("change");
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("200 MB");
+    expect(wrapper.text()).not.toContain("oversized.step");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("loads an existing indexed CAD artifact as the active query", async () => {
     vi.stubGlobal(
       "fetch",

@@ -172,4 +172,21 @@ describe("HMIWorkspace", () => {
     expect(wrapper.get("[role='alert']").text()).toBe("Unreadable image");
     expect(wrapper.find(".hmi-table").exists()).toBe(false);
   });
+
+  it("rejects an HMI image over 10 MB before creating a preview", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(HMIWorkspace);
+    const input = wrapper.get('input[type="file"]');
+    const oversized = new File(["x"], "large-screen.png", { type: "image/png" });
+    Object.defineProperty(oversized, "size", { value: 10 * 1024 * 1024 + 1 });
+    Object.defineProperty(input.element, "files", { value: [oversized] });
+
+    await input.trigger("change");
+
+    expect(wrapper.get('[role="alert"]').text()).toContain("10 MB");
+    expect(wrapper.find(".hmi-preview-card").exists()).toBe(false);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

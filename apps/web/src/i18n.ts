@@ -6,6 +6,13 @@ export type MessageParams = Record<string, string | number>;
 const STORAGE_KEY = "mold-ai.locale";
 
 const zhTW: Record<string, string> = {
+  "Knowledge source file": "知識來源檔案",
+  "TXT, Markdown, PDF or DOCX · maximum 5 MB · security screened": "TXT、Markdown、PDF 或 DOCX · 最大 5 MB · 會進行安全篩檢",
+  "Choose a TXT, Markdown, PDF or DOCX file.": "請選擇 TXT、Markdown、PDF 或 DOCX 檔案。",
+  "File size exceeds the {limit} MB limit.": "檔案大小超過 {limit} MB 上限。",
+  "File type is not supported. Allowed: {formats}.": "不支援此檔案類型。允許格式：{formats}。",
+  "Ready to upload": "可上傳",
+  "Ready for security screening": "可進行安全篩檢",
   "Data library": "工程資料庫",
   "Governance / Data library": "治理／工程資料庫",
   "Browse governed engineering data": "瀏覽受治理的工程資料",

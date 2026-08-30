@@ -14,6 +14,7 @@ import { downloadProtectedArtifact } from "../api/client";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
+import { formatFileSize, uploadPolicies, validateUploadFile } from "../fileUpload";
 
 const { t } = useI18n();
 
@@ -33,17 +34,28 @@ const pendingCount = computed(
 );
 
 function setFile(file: File): void {
+  const validation = validateUploadFile(file, uploadPolicies.hmi);
+  if (validation) {
+    error.value = validation === "too_large"
+      ? t("File size exceeds the {limit} MB limit.", { limit: 10 })
+      : t("File type is not supported. Allowed: {formats}.", { formats: "PNG, JPG, JPEG" });
+    return;
+  }
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   selectedFile.value = file;
   previewUrl.value = URL.createObjectURL(file);
   extraction.value = null;
   exported.value = null;
   edits.value = {};
+  error.value = null;
 }
 
 function onFile(event: Event): void {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (file) setFile(file);
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  setFile(file);
+  if (selectedFile.value !== file) input.value = "";
 }
 
 async function loadDemo(): Promise<void> {
@@ -167,7 +179,7 @@ onBeforeUnmount(() => {
       <img :src="previewUrl" :alt="t('Selected injection molding machine HMI screen')" />
       <div>
         <strong>{{ selectedFile?.name }}</strong>
-        <span>{{ t("Local preview · content is sent only to this platform API") }}</span>
+        <span>{{ formatFileSize(selectedFile?.size || 0) }} · {{ t("Local preview · content is sent only to this platform API") }}</span>
       </div>
     </div>
 

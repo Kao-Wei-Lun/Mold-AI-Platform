@@ -10,7 +10,7 @@ export type KnowledgeDocument = {
   artifact_version_id: string;
   title: string;
   original_filename: string;
-  format: "txt" | "md";
+  format: "txt" | "md" | "pdf" | "docx";
   sha256: string;
   document_type: "demo_sop" | "design_guideline" | "trial_report" | "case_note";
   authority_level: "demo" | "reviewed_demo";

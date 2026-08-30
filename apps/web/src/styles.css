@@ -1394,6 +1394,32 @@ button[aria-busy="true"]::before {
   margin-top: 0.75rem;
 }
 
+.selected-file-summary {
+  display: flex;
+  gap: 0.4rem 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  margin-top: 0.45rem;
+  border: 1px solid #c9d8ed;
+  border-radius: 9px;
+  padding: 0.55rem 0.7rem;
+  background: #f3f7fd;
+}
+
+.selected-file-summary strong {
+  overflow: hidden;
+  color: #1d3554;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-summary span {
+  flex: 0 0 auto;
+  color: #5d6f86;
+  font-size: 0.72rem;
+}
+
 .document-list,
 .knowledge-result-list {
   display: grid;
