@@ -46,7 +46,7 @@ const canManage = computed(() => props.currentAccount?.permissions.includes("reg
 const activeParts = computed(() => parts.value.filter((item) => !moldForm.project_id || item.project_id === moldForm.project_id));
 const releasedCount = computed(() => revisions.value.filter((item) => item.status === "released").length);
 
-function masterLabel(kind: "product_type" | "material", code: string): string {
+function masterLabel(kind: "product_type" | "material" | "mold_type", code: string): string {
   const item = props.masterDataOptions[kind].find((option) => option.code === code);
   if (!item) return code;
   return locale.value === "zh-TW" ? item.name_zh_tw : item.name_en;
@@ -64,6 +64,9 @@ async function load(): Promise<void> {
     if (!partForm.project_id) partForm.project_id = projects.value[0]?.id || "";
     if (!moldForm.project_id) moldForm.project_id = projects.value[0]?.id || "";
     if (!revisionForm.mold_id) revisionForm.mold_id = molds.value[0]?.id || "";
+    if (!props.masterDataOptions.mold_type.some((item) => item.code === moldForm.mold_type)) {
+      moldForm.mold_type = props.masterDataOptions.mold_type[0]?.code || "";
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load mold registry.");
   } finally {
@@ -170,7 +173,7 @@ onMounted(load);
         <template v-else-if="tab === 'molds'">
           <article v-for="mold in molds" :key="mold.id">
             <div><strong>{{ mold.mold_code }}</strong><span>{{ mold.name }}</span></div>
-            <small>{{ mold.project_code }} · {{ mold.part_number || t('No part') }} · {{ mold.revision_count }} {{ t('revisions') }}</small>
+            <small>{{ mold.project_code }} · {{ mold.part_number || t('No part') }} · {{ masterLabel('mold_type', mold.mold_type) }} · {{ mold.revision_count }} {{ t('revisions') }}</small>
             <em :class="`status-${mold.status}`">{{ t(mold.status) }}</em>
           </article>
         </template>
@@ -203,6 +206,7 @@ onMounted(load);
           <FormField v-slot="{ fieldId }" :label="t('Product / part')"><select :id="fieldId" v-model="moldForm.product_part_id"><option value="">{{ t("Not specified") }}</option><option v-for="part in activeParts" :key="part.id" :value="part.id">{{ part.part_number }} · {{ part.name }}</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Mold code')" required><input :id="fieldId" v-model="moldForm.mold_code" required /></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Mold name')" required><input :id="fieldId" v-model="moldForm.name" required /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Mold type')" required :helper="t('Choose an active value maintained in Engineering reference data.')"><select :id="fieldId" v-model="moldForm.mold_type" required><option value="" disabled>{{ t("Select a mold type") }}</option><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ locale === 'zh-TW' ? option.name_zh_tw : option.name_en }}</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Cavity count')" required><input :id="fieldId" v-model.number="moldForm.cavity_count" type="number" min="1" max="128" required /></FormField>
         </template>
         <template v-else>

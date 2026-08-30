@@ -111,6 +111,16 @@ describe("DesignReviewWorkspace", () => {
             },
             geometry_engine_version: "cadquery@2.8.0",
             input_snapshot: {},
+            resolution_snapshot: {
+              schema_version: "1.0",
+              resolved_at: "2026-08-30",
+              selection_mode: "default",
+              context: { mold_type: "three_plate", product_type: "housing" },
+              candidates: [{ profile_id: "profile-1", profile_key: "demo-general-design@1.0", version: "1.0", specificity: 0, priority: 0 }],
+              selected: { profile_id: "profile-1", profile_key: "demo-general-design@1.0", version: "1.0", specificity: 0, priority: 0, matched_dimensions: [] },
+              reason: "Selected the default published profile because no more specific profile matched.",
+              applicability_checksum: "applicability-checksum",
+            },
             context: { nominal_wall_thickness_mm: 2, max_rib_thickness_mm: 1.5 },
             summary: {
               total: 13,
@@ -162,6 +172,8 @@ describe("DesignReviewWorkspace", () => {
     expect(wrapper.text()).toContain("0.75 ratio");
     expect(wrapper.text()).toContain("0.6 ratio");
     expect(wrapper.text()).toContain("context:rib-measurement");
+    expect(wrapper.text()).toContain("demo-general-design@1.0");
+    expect(wrapper.text()).toContain("applicability-checksum");
 
     const decisionSelects = wrapper.findAll(".decision-form select");
     await decisionSelects[0].setValue("waived");

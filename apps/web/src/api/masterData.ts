@@ -7,7 +7,10 @@ export type MasterDataKind =
   | "machine"
   | "defect"
   | "location"
-  | "unit";
+  | "unit"
+  | "mold_type"
+  | "molding_process"
+  | "rule_category";
 
 export type MasterDataStatus = "active" | "inactive" | "archived";
 
@@ -48,6 +51,9 @@ export const emptyMasterDataOptions = (): MasterDataOptions => ({
   defect: [],
   location: [],
   unit: [],
+  mold_type: [],
+  molding_process: [],
+  rule_category: [],
 });
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";

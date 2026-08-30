@@ -151,6 +151,12 @@ class DesignReviewTests(TestCase):
         self.assertEqual(payload["review_id"], str(records.review.id))
         self.assertEqual(payload["profile"]["rule_count"], 13)
         self.assertEqual(payload["input_snapshot"]["cad_sha256"], self.version.sha256)
+        self.assertEqual(payload["resolution_snapshot"]["selection_mode"], "default")
+        self.assertEqual(
+            payload["resolution_snapshot"]["selected"]["profile_key"],
+            "demo-general-design@1.0",
+        )
+        self.assertEqual(len(payload["resolution_snapshot"]["applicability_checksum"]), 64)
         self.assertEqual(len(payload["findings"]), 13)
         self.assertEqual(review_response.status_code, 200)
         self.assertTrue(review_response.json()["preview"]["download_url"])

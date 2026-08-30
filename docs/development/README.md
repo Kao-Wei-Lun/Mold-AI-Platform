@@ -331,3 +331,8 @@ Stage 23 separates quick CAD analysis from governed archiving. Exploratory uploa
 require a MoldRevision, while formal history continues to enforce one and both intents remain
 traceable in the API and Job snapshot. See
 [`stage-23-cad-upload-governance-modes.md`](stage-23-cad-upload-governance-modes.md).
+
+Stage 24 Phase 1 extends Engineering reference data with Mold Type, Molding Process and Rule
+Category, adds deterministic Rule Profile applicability resolution and stores immutable Design
+Review resolution evidence. See
+[`stage-24-phase-1-rule-resolution-foundation.md`](stage-24-phase-1-rule-resolution-foundation.md).

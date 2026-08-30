@@ -271,6 +271,22 @@ def rule_profile_payload(profile: RuleProfile, *, include_rules: bool = True) ->
         "published_at": profile.published_at.isoformat() if profile.published_at else None,
         "retired_at": profile.retired_at.isoformat() if profile.retired_at else None,
         "ruleset_checksum": profile.ruleset_checksum,
+        "priority": profile.priority,
+        "is_default": profile.is_default,
+        "effective_from": profile.effective_from.isoformat() if profile.effective_from else None,
+        "effective_to": profile.effective_to.isoformat() if profile.effective_to else None,
+        "scope": profile.scope.code if profile.scope_id else None,
+        "classification": profile.classification,
+        "resolution_status": profile.resolution_status,
+        "applicability_checksum": profile.applicability_checksum,
+        "applicability": [
+            {
+                "dimension": item.dimension,
+                "value_code": item.value_code,
+                "match_mode": item.match_mode,
+            }
+            for item in profile.applicability_entries.all()
+        ],
         "rule_count": profile.rules.filter(enabled=True).count(),
     }
     if include_rules:
@@ -320,6 +336,7 @@ def review_payload(review: ReviewRun) -> dict[str, object]:
         "profile": rule_profile_payload(review.profile, include_rules=False),
         "geometry_engine_version": review.geometry_engine_version,
         "input_snapshot": review.input_snapshot,
+        "resolution_snapshot": review.resolution_snapshot,
         "context": review.context,
         "summary": review.result_summary,
         "preview": preview,

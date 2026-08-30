@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import date
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -15,8 +16,16 @@ from .contracts import rule_profile_payload
 from .design_review import EVALUATORS, get_demo_rule_profile
 from .identity import audit_identity_event
 from .knowledge import knowledge_document_payload
-from .models import KnowledgeDocument, RuleProfile, RuleVersion
+from .models import (
+    KnowledgeDocument,
+    MasterDataItem,
+    Project,
+    RuleProfile,
+    RuleProfileApplicability,
+    RuleVersion,
+)
 from .pagination import PaginationValueError, paginate
+from .rule_resolution import applicability_checksum
 
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 KNOWLEDGE_TRANSITIONS = {
@@ -66,7 +75,9 @@ class RuleProfileGovernanceListView(APIView):
 
     def get(self, request: Request) -> Response:
         get_demo_rule_profile()
-        profiles = RuleProfile.objects.prefetch_related("rules").order_by(
+        profiles = RuleProfile.objects.select_related("scope").prefetch_related(
+            "rules", "applicability_entries"
+        ).order_by(
             "profile_key", "-created_at"
         )
         if workflow_status := request.query_params.get("status"):
@@ -101,7 +112,9 @@ class RuleProfileGovernanceListView(APIView):
         if invalid:
             return invalid
         source = (
-            RuleProfile.objects.prefetch_related("rules")
+            RuleProfile.objects.select_related("scope").prefetch_related(
+                "rules", "applicability_entries"
+            )
             .filter(id=request.data.get("source_profile_id"))
             .first()
         )
@@ -120,6 +133,13 @@ class RuleProfileGovernanceListView(APIView):
                     workflow_status=RuleProfile.WorkflowStatus.DRAFT,
                     product_scope=source.product_scope,
                     material_scope=source.material_scope,
+                    priority=source.priority,
+                    is_default=False,
+                    effective_from=source.effective_from,
+                    effective_to=source.effective_to,
+                    scope=source.scope,
+                    classification=source.classification,
+                    resolution_status=RuleProfile.ResolutionStatus.ELIGIBLE,
                     owner=actor,
                     approved_by="",
                     ruleset_checksum=source.ruleset_checksum,
@@ -150,6 +170,19 @@ class RuleProfileGovernanceListView(APIView):
                         for rule in source.rules.all()
                     ]
                 )
+                RuleProfileApplicability.objects.bulk_create(
+                    [
+                        RuleProfileApplicability(
+                            profile=clone,
+                            dimension=item.dimension,
+                            value_code=item.value_code,
+                            match_mode=item.match_mode,
+                        )
+                        for item in source.applicability_entries.all()
+                    ]
+                )
+                clone.applicability_checksum = applicability_checksum(clone)
+                clone.save(update_fields=["applicability_checksum"])
                 audit_identity_event(
                     "rule_profile.cloned.v1",
                     actor_id=actor,
@@ -160,7 +193,9 @@ class RuleProfileGovernanceListView(APIView):
             return _error(
                 request, "RULE_PROFILE_VERSION_CONFLICT", "This profile version exists.", 409
             )
-        clone = RuleProfile.objects.prefetch_related("rules").get(id=clone.id)
+        clone = RuleProfile.objects.select_related("scope").prefetch_related(
+            "rules", "applicability_entries"
+        ).get(id=clone.id)
         return Response(rule_profile_payload(clone), status=201)
 
 
@@ -169,7 +204,9 @@ class RuleProfileWorkflowView(APIView):
     permission_classes: list = []
 
     def post(self, request: Request, profile_id: str) -> Response:
-        profile = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        profile = RuleProfile.objects.select_related("scope").prefetch_related(
+            "rules", "applicability_entries"
+        ).filter(id=profile_id).first()
         if profile is None:
             return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
         action = str(request.data.get("action", "")).strip()
@@ -285,7 +322,9 @@ class RuleProfileDetailView(APIView):
     permission_classes: list = []
 
     def get(self, request: Request, profile_id: str) -> Response:
-        profile = RuleProfile.objects.prefetch_related("rules").filter(id=profile_id).first()
+        profile = RuleProfile.objects.select_related("scope").prefetch_related(
+            "rules", "applicability_entries"
+        ).filter(id=profile_id).first()
         if profile is None:
             return _error(request, "NOT_FOUND", "Rule profile not found.", 404)
         return Response(rule_profile_payload(profile))
@@ -350,6 +389,113 @@ class RuleProfileDetailView(APIView):
                 )
         except (TypeError, ValueError) as exc:
             return _error(request, "VALIDATION_RULES", str(exc), 400)
+        normalized_applicability: list[tuple[str, str, str]] | None = None
+        applicability = request.data.get("applicability")
+        if applicability is not None:
+            if not isinstance(applicability, list) or len(applicability) > 100:
+                return _error(
+                    request,
+                    "VALIDATION_APPLICABILITY",
+                    "applicability must be a list of at most 100 items.",
+                    400,
+                )
+            normalized_applicability = []
+            seen_applicability: set[tuple[str, str, str]] = set()
+            for item in applicability:
+                if not isinstance(item, dict):
+                    return _error(
+                        request,
+                        "VALIDATION_APPLICABILITY",
+                        "Each applicability item must be an object.",
+                        400,
+                    )
+                entry = (
+                    str(item.get("dimension", "")),
+                    str(item.get("value_code", "")).strip(),
+                    str(item.get("match_mode", "include")),
+                )
+                if (
+                    entry[0] not in RuleProfileApplicability.Dimension.values
+                    or not entry[1]
+                    or entry[2] not in RuleProfileApplicability.MatchMode.values
+                    or entry in seen_applicability
+                ):
+                    return _error(
+                        request,
+                        "VALIDATION_APPLICABILITY",
+                        "Applicability contains an invalid or duplicate entry.",
+                        400,
+                    )
+                seen_applicability.add(entry)
+                kind_by_dimension = {
+                    "mold_type": MasterDataItem.Kind.MOLD_TYPE,
+                    "product_type": MasterDataItem.Kind.PRODUCT_TYPE,
+                    "material": MasterDataItem.Kind.MATERIAL,
+                    "molding_process": MasterDataItem.Kind.MOLDING_PROCESS,
+                    "location": MasterDataItem.Kind.LOCATION,
+                }
+                if entry[0] == "project":
+                    exists = Project.objects.filter(
+                        scope=profile.scope, code=entry[1], status=Project.Status.ACTIVE
+                    ).exists()
+                else:
+                    exists = MasterDataItem.objects.filter(
+                        scope=profile.scope,
+                        kind=kind_by_dimension[entry[0]],
+                        code=entry[1],
+                        status=MasterDataItem.Status.ACTIVE,
+                    ).exists()
+                if not exists:
+                    return _error(
+                        request,
+                        "VALIDATION_APPLICABILITY_REFERENCE",
+                        f"Unknown active {entry[0]} reference: {entry[1]}.",
+                        400,
+                    )
+                normalized_applicability.append(entry)
+        try:
+            priority = int(request.data.get("priority", profile.priority))
+        except (TypeError, ValueError):
+            return _error(request, "VALIDATION_PRIORITY", "priority must be an integer.", 400)
+        resolution_status = str(
+            request.data.get("resolution_status", profile.resolution_status)
+        )
+        if resolution_status not in RuleProfile.ResolutionStatus.values:
+            return _error(
+                request,
+                "VALIDATION_RESOLUTION_STATUS",
+                "Invalid resolution status.",
+                400,
+            )
+        try:
+            effective_from = profile.effective_from
+            effective_to = profile.effective_to
+            if "effective_from" in request.data:
+                effective_from = (
+                    date.fromisoformat(str(request.data["effective_from"]))
+                    if request.data.get("effective_from")
+                    else None
+                )
+            if "effective_to" in request.data:
+                effective_to = (
+                    date.fromisoformat(str(request.data["effective_to"]))
+                    if request.data.get("effective_to")
+                    else None
+                )
+        except ValueError:
+            return _error(
+                request,
+                "VALIDATION_EFFECTIVE_PERIOD",
+                "Effective dates must use YYYY-MM-DD.",
+                400,
+            )
+        if effective_from and effective_to and effective_from > effective_to:
+            return _error(
+                request,
+                "VALIDATION_EFFECTIVE_PERIOD",
+                "effective_from must not be after effective_to.",
+                400,
+            )
         with transaction.atomic():
             existing = {item.rule_id: item for item in profile.rules.all()}
             for values in normalized:
@@ -373,7 +519,27 @@ class RuleProfileDetailView(APIView):
                 profile.product_scope = request.data["product_scope"]
             if isinstance(request.data.get("material_scope"), list):
                 profile.material_scope = request.data["material_scope"]
+            profile.priority = priority
+            if "is_default" in request.data:
+                profile.is_default = bool(request.data["is_default"])
+            profile.resolution_status = resolution_status
+            profile.effective_from = effective_from
+            profile.effective_to = effective_to
+            if normalized_applicability is not None:
+                profile.applicability_entries.all().delete()
+                RuleProfileApplicability.objects.bulk_create(
+                    [
+                        RuleProfileApplicability(
+                            profile=profile,
+                            dimension=dimension,
+                            value_code=value_code,
+                            match_mode=match_mode,
+                        )
+                        for dimension, value_code, match_mode in normalized_applicability
+                    ]
+                )
             profile.ruleset_checksum = _rule_checksum(profile)
+            profile.applicability_checksum = applicability_checksum(profile)
             profile.row_version += 1
             profile.save()
             audit_identity_event(

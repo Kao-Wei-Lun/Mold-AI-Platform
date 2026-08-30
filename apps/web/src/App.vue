@@ -387,6 +387,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           v-else-if="currentRoute.id === 'history_data' && accessReady"
           :path="currentPath"
           :current-account="currentAccount"
+          :master-data-options="masterDataOptions"
           @navigate="navigatePath"
         />
         <IdentityManagementWorkspace

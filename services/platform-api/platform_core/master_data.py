@@ -10,11 +10,12 @@ from .models import (
     DataScope,
     DefectObservation,
     MasterDataItem,
+    Mold,
     ProcessParameter,
     TrialCase,
 )
 
-MASTER_DATA_CACHE_KEY = "mold-ai:master-data-options:v1"
+MASTER_DATA_CACHE_KEY = "mold-ai:master-data-options:v2"
 MASTER_DATA_KINDS = {choice for choice, _ in MasterDataItem.Kind.choices}
 
 MASTER_DATA_SEED: tuple[dict[str, Any], ...] = (
@@ -223,6 +224,126 @@ MASTER_DATA_SEED: tuple[dict[str, Any], ...] = (
         "sort_order": 40,
         "attributes": {"dimension": "time", "symbol": "s"},
     },
+    {
+        "kind": "mold_type",
+        "code": "injection",
+        "name_en": "General injection mold",
+        "name_zh_tw": "一般射出模具",
+        "sort_order": 10,
+        "attributes": {"process_family": "injection"},
+    },
+    {
+        "kind": "mold_type",
+        "code": "two_plate",
+        "name_en": "Two-plate mold",
+        "name_zh_tw": "二板模",
+        "sort_order": 20,
+        "attributes": {"process_family": "injection", "plate_count": 2},
+    },
+    {
+        "kind": "mold_type",
+        "code": "three_plate",
+        "name_en": "Three-plate mold",
+        "name_zh_tw": "三板模",
+        "sort_order": 30,
+        "attributes": {"process_family": "injection", "plate_count": 3},
+    },
+    {
+        "kind": "mold_type",
+        "code": "hot_runner",
+        "name_en": "Hot-runner mold",
+        "name_zh_tw": "熱澆道模具",
+        "sort_order": 40,
+        "attributes": {"process_family": "injection", "hot_runner": True},
+    },
+    {
+        "kind": "mold_type",
+        "code": "insert_overmolding",
+        "name_en": "Insert / overmolding mold",
+        "name_zh_tw": "埋入／包覆成型模具",
+        "sort_order": 50,
+        "attributes": {"process_family": "overmolding"},
+    },
+    {
+        "kind": "mold_type",
+        "code": "unscrewing",
+        "name_en": "Unscrewing mold",
+        "name_zh_tw": "旋牙／退牙模具",
+        "sort_order": 60,
+        "attributes": {"process_family": "injection", "unscrewing": True},
+    },
+    {
+        "kind": "mold_type",
+        "code": "multi_cavity",
+        "name_en": "Multi-cavity mold",
+        "name_zh_tw": "多穴模具",
+        "sort_order": 70,
+        "attributes": {"process_family": "injection", "multi_cavity": True},
+    },
+    {
+        "kind": "mold_type",
+        "code": "family_mold",
+        "name_en": "Family mold",
+        "name_zh_tw": "共模／Family Mold",
+        "sort_order": 80,
+        "attributes": {"process_family": "injection", "family_mold": True},
+    },
+    {
+        "kind": "molding_process",
+        "code": "injection",
+        "name_en": "Injection molding",
+        "name_zh_tw": "射出成型",
+        "sort_order": 10,
+    },
+    {
+        "kind": "molding_process",
+        "code": "compression",
+        "name_en": "Compression molding",
+        "name_zh_tw": "壓縮成型",
+        "sort_order": 20,
+    },
+    {
+        "kind": "molding_process",
+        "code": "overmolding",
+        "name_en": "Insert / overmolding",
+        "name_zh_tw": "埋入／包覆成型",
+        "sort_order": 30,
+    },
+    {
+        "kind": "rule_category",
+        "code": "mold_design",
+        "name_en": "Mold design",
+        "name_zh_tw": "模具設計",
+        "sort_order": 10,
+    },
+    {
+        "kind": "rule_category",
+        "code": "product_design",
+        "name_en": "Product design",
+        "name_zh_tw": "產品設計",
+        "sort_order": 20,
+    },
+    {
+        "kind": "rule_category",
+        "code": "material",
+        "name_en": "Material",
+        "name_zh_tw": "材料",
+        "sort_order": 30,
+    },
+    {
+        "kind": "rule_category",
+        "code": "process",
+        "name_en": "Process",
+        "name_zh_tw": "製程",
+        "sort_order": 40,
+    },
+    {
+        "kind": "rule_category",
+        "code": "quality",
+        "name_en": "Quality",
+        "name_zh_tw": "品質",
+        "sort_order": 50,
+    },
 )
 
 
@@ -278,6 +399,8 @@ def reference_summary(item: MasterDataItem) -> dict[str, int]:
         refs["defect_observations"] = DefectObservation.objects.filter(location=item.code).count()
     elif item.kind == MasterDataItem.Kind.UNIT:
         refs["process_parameters"] = ProcessParameter.objects.filter(unit=item.code).count()
+    elif item.kind == MasterDataItem.Kind.MOLD_TYPE:
+        refs["molds"] = Mold.objects.filter(mold_type=item.code).count()
     return {key: value for key, value in refs.items() if value}
 
 

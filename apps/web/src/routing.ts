@@ -150,11 +150,11 @@ export const workspaceRoutes: WorkspaceRoute[] = [
   {
     id: "master_data",
     path: "/governance/master-data",
-    label: "Master data",
+    label: "Engineering reference data",
     group: "Governance",
-    eyebrow: "Governance / Master data",
-    title: "Govern canonical engineering choices",
-    description: "Manage bilingual names and lifecycle while preserving immutable engineering codes and references.",
+    eyebrow: "Governance / Engineering reference data",
+    title: "Engineering reference data and choices",
+    description: "Manage mold types and shared engineering choices while preserving immutable codes, lifecycle and references.",
   },
   {
     id: "status",

@@ -144,6 +144,40 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(renamed.status_code, 409)
 
+    def test_mold_type_must_be_an_active_governed_choice(self):
+        project = self.client.post(
+            "/api/v1/registry/projects",
+            {"code": "P-TYPE", "name": "Type governance", "reason": "Test project"},
+            content_type="application/json",
+        ).json()
+        invalid = self.client.post(
+            "/api/v1/registry/molds",
+            {
+                "project_id": project["id"],
+                "mold_code": "MOLD-FREE-TEXT",
+                "name": "Invalid mold",
+                "mold_type": "whatever-the-user-types",
+                "reason": "Verify controlled value",
+            },
+            content_type="application/json",
+        )
+        valid = self.client.post(
+            "/api/v1/registry/molds",
+            {
+                "project_id": project["id"],
+                "mold_code": "MOLD-3PLATE",
+                "name": "Three plate mold",
+                "mold_type": "three_plate",
+                "reason": "Verify controlled value",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["error"]["code"], "VALIDATION_MOLD_TYPE")
+        self.assertEqual(valid.status_code, 201)
+        self.assertEqual(valid.json()["mold_type"], "three_plate")
+
     def test_part_detail_supports_read_and_controlled_update(self):
         _, part, _, _ = self.create_hierarchy()
         detail = self.client.get(f"/api/v1/registry/parts/{part['id']}")

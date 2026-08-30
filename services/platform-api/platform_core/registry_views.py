@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .identity import audit_identity_event
-from .models import Artifact, DataScope, Mold, MoldRevision, ProductPart, Project
+from .models import Artifact, DataScope, MasterDataItem, Mold, MoldRevision, ProductPart, Project
 from .pagination import PaginationValueError, paginate
 
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
@@ -95,6 +95,25 @@ def _reason(request: Request) -> tuple[str, Response | None]:
             request, "VALIDATION_REASON_REQUIRED", "A change reason is required.", 400
         )
     return value[:512], None
+
+
+def _governed_mold_type(
+    request: Request, project: Project, value: object
+) -> tuple[str, Response | None]:
+    code = str(value or "").strip()
+    if not code or not MasterDataItem.objects.filter(
+        scope=project.scope,
+        kind=MasterDataItem.Kind.MOLD_TYPE,
+        code=code,
+        status=MasterDataItem.Status.ACTIVE,
+    ).exists():
+        return "", _error(
+            request,
+            "VALIDATION_MOLD_TYPE",
+            "mold_type must be an active governed engineering reference value.",
+            400,
+        )
+    return code, None
 
 
 def project_payload(project: Project) -> dict[str, object]:
@@ -499,6 +518,11 @@ class MoldListCreateView(APIView):
         ).first()
         if project is None:
             return _error(request, "VALIDATION_PROJECT", "An active project is required.", 400)
+        mold_type, invalid = _governed_mold_type(
+            request, project, request.data.get("mold_type", "injection")
+        )
+        if invalid:
+            return invalid
         part = None
         if request.data.get("product_part_id"):
             part = ProductPart.objects.filter(
@@ -521,7 +545,7 @@ class MoldListCreateView(APIView):
                 product_part=part,
                 mold_code=mold_code,
                 name=name,
-                mold_type=str(request.data.get("mold_type", "injection"))[:64],
+                mold_type=mold_type,
                 cavity_count=cavity_count,
                 created_by=actor,
                 updated_by=actor,
@@ -571,7 +595,14 @@ class MoldDetailView(APIView):
             return _error(request, "CONCURRENT_MODIFICATION", "Mold changed after loading.", 409)
         if "status" in request.data and request.data["status"] not in Mold.Status.values:
             return _error(request, "VALIDATION_STATUS", "Mold status is invalid.", 400)
-        for field in ("name", "mold_type", "status"):
+        if "mold_type" in request.data:
+            mold_type, invalid = _governed_mold_type(
+                request, mold.project, request.data["mold_type"]
+            )
+            if invalid:
+                return invalid
+            mold.mold_type = mold_type
+        for field in ("name", "status"):
             if field in request.data:
                 setattr(mold, field, str(request.data[field]).strip())
         if "cavity_count" in request.data:

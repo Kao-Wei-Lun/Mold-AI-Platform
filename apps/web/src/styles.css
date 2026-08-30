@@ -1598,6 +1598,45 @@ button[aria-busy="true"]::before {
   text-transform: uppercase;
 }
 
+.rule-resolution-card {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+  border: 1px solid #bfd2f3;
+  border-radius: 14px;
+  padding: 1rem;
+  color: #203b61;
+  background: linear-gradient(135deg, #f8fbff, #edf4ff);
+}
+
+.rule-resolution-card > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.rule-resolution-card p,
+.rule-resolution-card small { margin: 0; }
+.rule-resolution-card small { overflow-wrap: anywhere; color: #6a7d97; }
+
+.resolution-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.resolution-context span {
+  display: inline-flex;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  color: #315477;
+  background: #fff;
+  font-size: 0.72rem;
+}
+
 .review-decision.fail {
   color: #8d2b2b;
   background: #fde5e5;

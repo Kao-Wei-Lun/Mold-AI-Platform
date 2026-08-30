@@ -469,12 +469,34 @@ class RuleProfile(models.Model):
         PUBLISHED = "published", "Published"
         RETIRED = "retired", "Retired"
 
+    class ResolutionStatus(models.TextChoices):
+        ELIGIBLE = "eligible", "Eligible"
+        DISABLED = "disabled", "Disabled"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile_key = models.CharField(max_length=128)
     version = models.CharField(max_length=32)
     status = models.CharField(max_length=32, default="approved_demo")
     product_scope = models.JSONField(default=list)
     material_scope = models.JSONField(default=list)
+    priority = models.IntegerField(default=0)
+    is_default = models.BooleanField(default=False)
+    effective_from = models.DateField(null=True, blank=True)
+    effective_to = models.DateField(null=True, blank=True)
+    scope = models.ForeignKey(
+        "DataScope",
+        related_name="rule_profiles",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    classification = models.CharField(max_length=32, default="public_demo")
+    resolution_status = models.CharField(
+        max_length=16,
+        choices=ResolutionStatus.choices,
+        default=ResolutionStatus.ELIGIBLE,
+    )
+    applicability_checksum = models.CharField(max_length=64, blank=True)
     owner = models.CharField(max_length=128)
     approved_by = models.CharField(max_length=128)
     ruleset_checksum = models.CharField(max_length=64)
@@ -504,6 +526,49 @@ class RuleProfile(models.Model):
 
     def __str__(self) -> str:
         return self.profile_key
+
+
+class RuleProfileApplicability(models.Model):
+    class Dimension(models.TextChoices):
+        MOLD_TYPE = "mold_type", "Mold type"
+        PRODUCT_TYPE = "product_type", "Product type"
+        MATERIAL = "material", "Material"
+        MOLDING_PROCESS = "molding_process", "Molding process"
+        PROJECT = "project", "Project"
+        LOCATION = "location", "Location"
+
+    class MatchMode(models.TextChoices):
+        INCLUDE = "include", "Include"
+        EXCLUDE = "exclude", "Exclude"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        RuleProfile, related_name="applicability_entries", on_delete=models.CASCADE
+    )
+    dimension = models.CharField(max_length=32, choices=Dimension.choices)
+    value_code = models.CharField(max_length=128)
+    match_mode = models.CharField(
+        max_length=16, choices=MatchMode.choices, default=MatchMode.INCLUDE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["dimension", "match_mode", "value_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "dimension", "value_code", "match_mode"],
+                name="unique_rule_profile_applicability",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["dimension", "value_code", "match_mode"],
+                name="rule_applicability_lookup_idx",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.profile_id}:{self.dimension}:{self.match_mode}:{self.value_code}"
 
 
 class RuleVersion(models.Model):
@@ -588,6 +653,7 @@ class ReviewRun(models.Model):
     profile = models.ForeignKey(RuleProfile, related_name="review_runs", on_delete=models.PROTECT)
     context = models.JSONField(default=dict)
     input_snapshot = models.JSONField(default=dict)
+    resolution_snapshot = models.JSONField(default=dict)
     geometry_engine_version = models.CharField(max_length=128)
     review_status = models.CharField(max_length=24, choices=Status.choices, default=Status.QUEUED)
     result_summary = models.JSONField(default=dict)
@@ -919,6 +985,9 @@ class MasterDataItem(models.Model):
         DEFECT = "defect", "Defect"
         LOCATION = "location", "Location"
         UNIT = "unit", "Unit"
+        MOLD_TYPE = "mold_type", "Mold type"
+        MOLDING_PROCESS = "molding_process", "Molding process"
+        RULE_CATEGORY = "rule_category", "Rule category"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"

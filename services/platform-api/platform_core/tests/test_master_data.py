@@ -49,9 +49,25 @@ class MasterDataApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             set(response.json()["results"]),
-            {"dataset", "product_type", "material", "machine", "defect", "location", "unit"},
+            {
+                "dataset",
+                "product_type",
+                "material",
+                "machine",
+                "defect",
+                "location",
+                "unit",
+                "mold_type",
+                "molding_process",
+                "rule_category",
+            },
         )
         self.assertTrue(response.json()["results"]["material"][0]["name_zh_tw"])
+        self.assertEqual(len(response.json()["results"]["mold_type"]), 8)
+        self.assertEqual(
+            response.json()["results"]["mold_type"][0]["attributes"]["process_family"],
+            "injection",
+        )
 
     def test_create_list_update_etag_and_archive(self):
         created = self.client.post(

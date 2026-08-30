@@ -28,6 +28,9 @@ const kinds: Array<{ code: MasterDataKind; label: string }> = [
   { code: "defect", label: "Defects" },
   { code: "location", label: "Locations" },
   { code: "unit", label: "Units" },
+  { code: "mold_type", label: "Mold types" },
+  { code: "molding_process", label: "Molding processes" },
+  { code: "rule_category", label: "Rule categories" },
 ];
 
 const selectedKind = ref<MasterDataKind>("dataset");
@@ -233,7 +236,7 @@ onMounted(load);
 <template>
   <section class="master-data-workspace" aria-labelledby="master-data-title">
     <div class="section-heading">
-      <div><p class="eyebrow">{{ t("Canonical catalog") }}</p><h2 id="master-data-title">{{ t("Govern engineering master data") }}</h2></div>
+      <div><p class="eyebrow">{{ t("Governed engineering choices") }}</p><h2 id="master-data-title">{{ t("Engineering reference data and choices") }}</h2></div>
       <button v-if="canManage" type="button" @click="beginCreate">{{ t("Create item") }}</button>
     </div>
 
@@ -258,7 +261,7 @@ onMounted(load);
     <p v-if="notice" class="success-message" role="status">{{ notice }}</p>
     <p v-if="loading" class="workspace-state">{{ t("Loading governed master data...") }}</p>
 
-    <WorkspaceEmptyState v-else-if="!items.length && !createMode" :eyebrow="t('No records')" :title="t('No master data matches these filters')" :message="t('Clear filters or create the first controlled code in this domain.')" :action-label="canManage ? t('Create item') : ''" @action="beginCreate" />
+    <WorkspaceEmptyState v-else-if="!items.length && !createMode" :eyebrow="t('No records')" :title="t('No engineering reference data matches these filters')" :message="t('Clear filters or create the first controlled choice in this domain.')" :action-label="canManage ? t('Create item') : ''" @action="beginCreate" />
 
     <div v-else class="master-data-layout">
       <div class="master-data-list" role="listbox" :aria-label="t('Master-data records')">

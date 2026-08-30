@@ -61,6 +61,16 @@ export type DesignReviewResult = {
   };
   geometry_engine_version: string;
   input_snapshot: Record<string, unknown>;
+  resolution_snapshot: {
+    schema_version: string;
+    resolved_at: string;
+    selection_mode: "automatic" | "default" | "manual_override";
+    context: Record<string, string>;
+    candidates: Array<{ profile_id: string; profile_key: string; version: string; specificity: number; priority: number }>;
+    selected: { profile_id: string; profile_key: string; version: string; specificity: number; priority: number; matched_dimensions: string[] };
+    reason: string;
+    applicability_checksum: string;
+  };
   context: Record<string, number>;
   summary: {
     total: number;
@@ -102,7 +112,6 @@ export async function createDesignReview(
     body: JSON.stringify({
       schema_version: "1.0",
       cad_artifact_version_id: query.artifact_version_id,
-      profile: "demo-general-design@1.0",
       context,
       idempotency_key: `web-review-${Date.now()}-${query.artifact_version_id}`,
     }),

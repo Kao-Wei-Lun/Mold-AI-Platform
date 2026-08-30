@@ -20,13 +20,19 @@ import {
   type RegistryRevision,
 } from "../api/registry";
 import { useI18n } from "../i18n";
+import { emptyMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import DataTable from "./DataTable.vue";
 import DetailTabs from "./DetailTabs.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RecordHeader from "./RecordHeader.vue";
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
-const props = defineProps<{ domain: "molds" | "cad-artifacts"; path: string; canManage?: boolean }>();
+const props = withDefaults(defineProps<{
+  domain: "molds" | "cad-artifacts";
+  path: string;
+  canManage?: boolean;
+  masterDataOptions?: MasterDataOptions;
+}>(), { masterDataOptions: emptyMasterDataOptions });
 const emit = defineEmits<{ navigate: [path: string] }>();
 const { t } = useI18n();
 const loading = ref(false);
@@ -194,7 +200,7 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
 
     <template v-else-if="mold">
       <RecordHeader :title="mold.name" :identifier="mold.mold_code" :status="mold.status" :version="`row ${mold.row_version}`" />
-      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><input v-model="registryForm.mold_type" /></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
       <PropertyGrid :items="[{ label: t('Project'), value: mold.project_code }, { label: t('Part number'), value: mold.part_number }, { label: t('Mold type'), value: mold.mold_type }, { label: t('Cavities'), value: mold.cavity_count }, { label: t('Revisions'), value: mold.revisions?.length || 0 }]" />
       <DataTable :columns="[{ key: 'code', label: t('Revision') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'released', label: t('Released at') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, artifacts: item.artifact_count, released: item.released_at ? new Date(item.released_at).toLocaleString() : '—', status: item.status }))" @select="emit('navigate', `/data/molds/revisions/${$event.id}`)" />
     </template>

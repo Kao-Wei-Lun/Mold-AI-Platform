@@ -11,6 +11,7 @@ from .models import (
     ArtifactVersion,
     AuditEvent,
     CADModel,
+    DataScope,
     Job,
     JobEvent,
     ReviewDecision,
@@ -19,6 +20,7 @@ from .models import (
     RuleProfile,
     RuleVersion,
 )
+from .rule_resolution import RuleResolutionError, applicability_checksum, resolve_rule_profile
 
 PROFILE_KEY = "demo-general-design@1.0"
 CAPABILITY_ID = "mold.design_review"
@@ -260,6 +262,7 @@ def get_demo_rule_profile() -> RuleProfile:
             .order_by("-published_at", "-created_at")
             .first()
         )
+        scope = DataScope.objects.filter(code="public-demo", is_active=True).first()
         if profile is None:
             profile = RuleProfile.objects.create(
                 profile_key=PROFILE_KEY,
@@ -271,6 +274,10 @@ def get_demo_rule_profile() -> RuleProfile:
                 approved_by="demo-technical-review",
                 ruleset_checksum=checksum,
                 workflow_status=RuleProfile.WorkflowStatus.PUBLISHED,
+                scope=scope,
+                classification="public_demo",
+                is_default=True,
+                priority=0,
             )
         if profile.ruleset_checksum != checksum:
             raise DesignReviewValidationError(
@@ -294,6 +301,19 @@ def get_demo_rule_profile() -> RuleProfile:
                     "sort_order": order,
                 },
             )
+        resolution_updates: list[str] = []
+        if not profile.is_default:
+            profile.is_default = True
+            resolution_updates.append("is_default")
+        if profile.scope_id is None and scope is not None:
+            profile.scope = scope
+            resolution_updates.append("scope")
+        checksum_value = applicability_checksum(profile)
+        if profile.applicability_checksum != checksum_value:
+            profile.applicability_checksum = checksum_value
+            resolution_updates.append("applicability_checksum")
+        if resolution_updates:
+            profile.save(update_fields=resolution_updates)
     return profile
 
 
@@ -330,6 +350,9 @@ def create_design_review_records(
     artifact_version: ArtifactVersion,
     *,
     context: object = None,
+    resolution_context: dict[str, object] | None = None,
+    requested_profile_id: str | None = None,
+    override_reason: str = "",
     idempotency_key: str | None = None,
 ) -> DesignReviewRecords:
     try:
@@ -356,8 +379,18 @@ def create_design_review_records(
                 )
             return DesignReviewRecords(existing_job.design_review, existing_job, created=False)
 
-    profile = get_demo_rule_profile()
+    get_demo_rule_profile()
     normalized = _normalized_context(context)
+    try:
+        resolution = resolve_rule_profile(
+            artifact_version,
+            extra_context=resolution_context,
+            requested_profile_id=requested_profile_id,
+            override_reason=override_reason,
+        )
+    except RuleResolutionError as exc:
+        raise DesignReviewValidationError(exc.code, exc.user_message) from exc
+    profile = resolution.profile
     rules = list(profile.rules.filter(enabled=True))
     snapshot = {
         "schema_version": "1.0",
@@ -368,6 +401,7 @@ def create_design_review_records(
         "ruleset_checksum": profile.ruleset_checksum,
         "rules": [{"rule_id": rule.rule_id, "rule_version": rule.rule_version} for rule in rules],
         "context": normalized,
+        "resolution": resolution.snapshot,
     }
     with transaction.atomic():
         job = Job.objects.create(
@@ -393,6 +427,7 @@ def create_design_review_records(
             profile=profile,
             context=normalized,
             input_snapshot=snapshot,
+            resolution_snapshot=resolution.snapshot,
             geometry_engine_version=f"{cad_model.parser_name}@{cad_model.parser_version}",
         )
     return DesignReviewRecords(review, job, created=True)

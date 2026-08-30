@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 
 import { useI18n } from "../i18n";
 import type { LocalAccount } from "../api/identity";
+import { emptyMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import DataTable from "./DataTable.vue";
 import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
@@ -21,7 +22,11 @@ type HistoryDomain = {
   permission: string;
 };
 
-const props = defineProps<{ path: string; currentAccount?: LocalAccount | null }>();
+const props = withDefaults(defineProps<{
+  path: string;
+  currentAccount?: LocalAccount | null;
+  masterDataOptions?: MasterDataOptions;
+}>(), { masterDataOptions: emptyMasterDataOptions });
 const emit = defineEmits<{ navigate: [path: string] }>();
 const { t } = useI18n();
 const drawerDomain = ref<HistoryDomain | null>(null);
@@ -95,6 +100,7 @@ function openDomain(domain: HistoryDomain): void {
       :domain="currentSlug"
       :path="path"
       :can-manage="currentAccount?.permissions.includes('registry:manage') || false"
+      :master-data-options="masterDataOptions"
       @navigate="emit('navigate', $event)"
     />
 

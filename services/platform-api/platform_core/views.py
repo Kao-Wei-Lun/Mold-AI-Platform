@@ -36,9 +36,6 @@ from .contracts import (
     rule_profile_payload,
 )
 from .design_review import (
-    PROFILE_KEY as DESIGN_REVIEW_PROFILE_KEY,
-)
-from .design_review import (
     DesignReviewValidationError,
     create_design_review_records,
     create_review_decision,
@@ -53,6 +50,7 @@ from .hmi import (
     extraction_payload,
     review_hmi_fields,
 )
+from .identity import audit_identity_event
 from .ingestion import UploadValidationError, create_upload_records
 from .job_recovery import stale_job_snapshot
 from .knowledge import (
@@ -1100,13 +1098,31 @@ class DesignReviewListCreateView(APIView):
                 "cad_artifact_version_id must be a UUID.",
                 status.HTTP_400_BAD_REQUEST,
             )
-        requested_profile = str(request.data.get("profile", DESIGN_REVIEW_PROFILE_KEY))
-        if requested_profile != DESIGN_REVIEW_PROFILE_KEY:
+        resolution_context = request.data.get("resolution_context")
+        if resolution_context is not None and not isinstance(resolution_context, dict):
             return _error_response(
-                "VALIDATION_REVIEW_PROFILE",
-                f"Only {DESIGN_REVIEW_PROFILE_KEY} is available in the Demo environment.",
+                "VALIDATION_RESOLUTION_CONTEXT",
+                "resolution_context must be an object.",
                 status.HTTP_400_BAD_REQUEST,
             )
+        requested_profile_id = request.data.get("profile_id")
+        if requested_profile_id:
+            if "rules:author" not in getattr(
+                request._request, "mold_ai_permissions", set()
+            ):
+                return _error_response(
+                    "ACCESS_DENIED",
+                    "The account cannot override automatic rule profile resolution.",
+                    status.HTTP_403_FORBIDDEN,
+                )
+            try:
+                uuid.UUID(str(requested_profile_id))
+            except (TypeError, ValueError):
+                return _error_response(
+                    "VALIDATION_REVIEW_PROFILE",
+                    "profile_id must be a UUID.",
+                    status.HTTP_400_BAD_REQUEST,
+                )
         version = get_object_or_404(
             ArtifactVersion.objects.select_related("artifact", "cad_model"),
             pk=version_id,
@@ -1125,10 +1141,19 @@ class DesignReviewListCreateView(APIView):
             records = create_design_review_records(
                 version,
                 context=request.data.get("context"),
+                resolution_context=resolution_context,
+                requested_profile_id=(
+                    str(requested_profile_id) if requested_profile_id else None
+                ),
+                override_reason=str(request.data.get("override_reason", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
             )
         except DesignReviewValidationError as exc:
-            conflict = exc.code.startswith("CONFLICT_") or exc.code.endswith("MISMATCH")
+            conflict = (
+                exc.code.startswith("CONFLICT_")
+                or exc.code.endswith("MISMATCH")
+                or exc.code.startswith("RULE_PROFILE_")
+            )
             return _error_response(
                 exc.code,
                 exc.user_message,
@@ -1136,6 +1161,21 @@ class DesignReviewListCreateView(APIView):
             )
 
         if records.created:
+            if requested_profile_id:
+                audit_identity_event(
+                    "design_review.rule_profile_overridden.v1",
+                    actor_id=str(
+                        getattr(request._request, "mold_ai_actor_id", "anonymous")
+                    ),
+                    target_refs=[
+                        f"design-review:{records.review.id}",
+                        f"rule-profile:{requested_profile_id}",
+                    ],
+                    detail={
+                        "reason": str(request.data.get("override_reason", "")).strip(),
+                        "automatic_resolution_preserved": True,
+                    },
+                )
             try:
                 run_design_review_job.apply_async(args=[str(records.job.id)], queue="cad")
             except Exception:
@@ -1162,6 +1202,7 @@ class DesignReviewListCreateView(APIView):
                 "review_id": str(records.review.id),
                 "job_id": str(records.job.id),
                 "idempotent_replay": not records.created,
+                "resolution": records.review.resolution_snapshot,
                 "links": {
                     "status": f"/api/v1/jobs/{records.job.id}",
                     "result": f"/api/v1/design-reviews/{records.review.id}",

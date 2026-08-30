@@ -279,6 +279,19 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <article class="rule-resolution-card" aria-labelledby="rule-resolution-title">
+        <div>
+          <span>{{ t("Applied rule profile") }}</span>
+          <strong id="rule-resolution-title">{{ result.resolution_snapshot.selected.profile_key }} · {{ result.resolution_snapshot.selected.version }}</strong>
+        </div>
+        <p><strong>{{ t("Why this version was selected") }}</strong> {{ t(result.resolution_snapshot.reason) }}</p>
+        <div class="resolution-context">
+          <span v-for="(value, key) in result.resolution_snapshot.context" :key="key"><b>{{ t(String(key).replaceAll('_', ' ')) }}</b>{{ value }}</span>
+          <span><b>{{ t("Eligible candidates") }}</b>{{ result.resolution_snapshot.candidates.length }}</span>
+        </div>
+        <small>{{ t("Applicability checksum") }} · {{ result.resolution_snapshot.applicability_checksum }}</small>
+      </article>
+
       <div class="review-layout">
         <ol class="finding-list" :aria-label="t('Design review findings')">
           <li v-for="finding in result.findings" :key="finding.finding_id">
