@@ -1,15 +1,20 @@
 import hashlib
+import io
 import math
 import re
 import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import date
+from xml.etree import ElementTree
 
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils import timezone
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from .models import (
     Artifact,
@@ -26,7 +31,7 @@ KNOWLEDGE_CAPABILITY_ID = "knowledge.ingest"
 KNOWLEDGE_CAPABILITY_VERSION = "1.0.0"
 EMBEDDING_MODEL = "feature-hash-demo@1.0.0"
 EMBEDDING_DIMENSION = 64
-PARSER_VERSION = "plain-text@1.0.0"
+PARSER_VERSION = "secure-document@2.0.0"
 CHUNKER_VERSION = "section-paragraph@1.0.0"
 PUBLIC_DEMO_SCOPES = ["public-demo"]
 PUBLIC_KNOWLEDGE_DATASET = "public-knowledge-demo-v1"
@@ -34,7 +39,15 @@ AUTOMATED_SMOKE_DATASET = "automated-smoke-v1"
 KNOWLEDGE_DATASETS = {PUBLIC_KNOWLEDGE_DATASET, AUTOMATED_SMOKE_DATASET}
 DOCUMENT_TYPES = {"demo_sop", "design_guideline", "trial_report", "case_note"}
 AUTHORITY_LEVELS = {"demo", "reviewed_demo"}
-SUPPORTED_EXTENSIONS = {".txt": ("txt", "text/plain"), ".md": ("md", "text/markdown")}
+SUPPORTED_EXTENSIONS = {
+    ".txt": ("txt", "text/plain"),
+    ".md": ("md", "text/markdown"),
+    ".pdf": ("pdf", "application/pdf"),
+    ".docx": (
+        "docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
+}
 EICAR_MARKER = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
 TOKEN_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 CJK_RUN_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
@@ -96,6 +109,102 @@ def _hash_and_screen(upload: UploadedFile) -> str:
     return digest.hexdigest()
 
 
+def _extract_pdf(data: bytes) -> str:
+    if not data.startswith(b"%PDF-"):
+        raise KnowledgeValidationError("VALIDATION_SIGNATURE", "PDF signature is invalid.")
+    try:
+        reader = PdfReader(io.BytesIO(data), strict=True)
+        if reader.is_encrypted:
+            raise KnowledgeValidationError(
+                "VALIDATION_PDF_ENCRYPTED", "Encrypted PDF files are not accepted."
+            )
+        root = reader.trailer.get("/Root", {})
+        names = root.get("/Names", {}) if hasattr(root, "get") else {}
+        if any(key in root for key in ("/OpenAction", "/AA")) or any(
+            key in names for key in ("/JavaScript", "/EmbeddedFiles")
+        ):
+            raise KnowledgeValidationError(
+                "VALIDATION_PDF_ACTIVE_CONTENT", "PDF active or embedded content is not accepted."
+            )
+        if len(reader.pages) > 200:
+            raise KnowledgeValidationError(
+                "VALIDATION_DOCUMENT_COMPLEXITY", "PDF files may contain at most 200 pages."
+            )
+        return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+    except KnowledgeValidationError:
+        raise
+    except (PdfReadError, ValueError, TypeError) as exc:
+        raise KnowledgeValidationError(
+            "VALIDATION_PDF_PARSE", "The PDF is not safely readable."
+        ) from exc
+
+
+def _extract_docx(data: bytes) -> str:
+    if not data.startswith(b"PK"):
+        raise KnowledgeValidationError("VALIDATION_SIGNATURE", "DOCX signature is invalid.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = archive.infolist()
+            if len(entries) > 1_000 or sum(item.file_size for item in entries) > 25 * 1024 * 1024:
+                raise KnowledgeValidationError(
+                    "VALIDATION_ARCHIVE_BOMB", "The DOCX container exceeds safe complexity limits."
+                )
+            for item in entries:
+                if item.file_size > max(item.compress_size, 1) * 100:
+                    raise KnowledgeValidationError(
+                        "VALIDATION_ARCHIVE_BOMB", "The DOCX compression ratio is unsafe."
+                    )
+                name = item.filename.lower()
+                if "vbaproject.bin" in name:
+                    raise KnowledgeValidationError(
+                        "VALIDATION_DOCX_MACRO", "Macro-enabled Office content is not accepted."
+                    )
+                if name.endswith(".rels") and b'TargetMode="External"' in archive.read(item):
+                    raise KnowledgeValidationError(
+                        "VALIDATION_DOCX_EXTERNAL_LINK",
+                        "External DOCX relationships are not accepted.",
+                    )
+            document = archive.read("word/document.xml")
+    except KnowledgeValidationError:
+        raise
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        raise KnowledgeValidationError(
+            "VALIDATION_DOCX_PARSE", "The DOCX is not safely readable."
+        ) from exc
+    try:
+        root = ElementTree.fromstring(document)
+    except ElementTree.ParseError as exc:
+        raise KnowledgeValidationError(
+            "VALIDATION_DOCX_PARSE", "The DOCX document XML is invalid."
+        ) from exc
+    namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    paragraphs = []
+    for paragraph in root.iter(f"{namespace}p"):
+        text = "".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
+        if text.strip():
+            paragraphs.append(text.strip())
+    return "\n\n".join(paragraphs)
+
+
+def extract_knowledge_text(data: bytes, document_format: str) -> str:
+    if document_format == "pdf":
+        text = _extract_pdf(data)
+    elif document_format == "docx":
+        text = _extract_docx(data)
+    else:
+        try:
+            text = data.decode("utf-8-sig", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise KnowledgeValidationError(
+                "VALIDATION_TEXT_ENCODING", "Knowledge files must use UTF-8 encoding."
+            ) from exc
+    if not text.strip():
+        raise KnowledgeValidationError(
+            "RAG_NO_TEXT", "No indexable text was found in the document."
+        )
+    return text
+
+
 def validate_knowledge_upload(upload: UploadedFile) -> tuple[str, str, str, str]:
     if upload.size <= 0:
         raise KnowledgeValidationError("VALIDATION_EMPTY_FILE", "The uploaded file is empty.")
@@ -111,17 +220,11 @@ def validate_knowledge_upload(upload: UploadedFile) -> tuple[str, str, str, str]
     except KeyError as exc:
         raise KnowledgeValidationError(
             "VALIDATION_UNSUPPORTED_FORMAT",
-            "Only UTF-8 TXT and Markdown knowledge files are supported in Stage 5.",
+            "Only TXT, Markdown, PDF, and DOCX knowledge files are supported.",
         ) from exc
     sha256 = _hash_and_screen(upload)
     upload.seek(0)
-    try:
-        upload.read().decode("utf-8-sig", errors="strict")
-    except UnicodeDecodeError as exc:
-        upload.seek(0)
-        raise KnowledgeValidationError(
-            "VALIDATION_TEXT_ENCODING", "Knowledge files must use UTF-8 encoding."
-        ) from exc
+    extract_knowledge_text(upload.read(), document_format)
     upload.seek(0)
     return filename, document_format, media_type, sha256
 
@@ -382,9 +485,8 @@ def chunk_document(text: str, document_format: str) -> list[dict[str, object]]:
 
 
 def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
-    source_path = default_storage.path(document.artifact_version.storage_key)
-    with open(source_path, encoding="utf-8-sig") as source:
-        text = source.read()
+    with default_storage.open(document.artifact_version.storage_key, "rb") as source:
+        text = extract_knowledge_text(source.read(), document.artifact_version.format)
     findings = scan_untrusted_text(text)
     if findings:
         document.ingestion_status = KnowledgeDocument.IngestionStatus.QUARANTINED

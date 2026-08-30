@@ -302,7 +302,7 @@ class KnowledgeTests(TestCase):
         upsert.assert_called()
 
     def test_upload_rejects_unsupported_format_and_effective_date_order(self) -> None:
-        unsupported = self.client.post(
+        malformed_pdf = self.client.post(
             "/api/v1/knowledge-documents",
             {
                 "file": SimpleUploadedFile(
@@ -321,8 +321,8 @@ class KnowledgeTests(TestCase):
             },
         )
 
-        self.assertEqual(unsupported.status_code, 400)
-        self.assertEqual(unsupported.json()["error"]["code"], "VALIDATION_UNSUPPORTED_FORMAT")
+        self.assertEqual(malformed_pdf.status_code, 400)
+        self.assertEqual(malformed_pdf.json()["error"]["code"], "VALIDATION_PDF_PARSE")
         self.assertEqual(invalid_dates.status_code, 400)
         self.assertEqual(invalid_dates.json()["error"]["code"], "VALIDATION_EFFECTIVE_DATE")
 
