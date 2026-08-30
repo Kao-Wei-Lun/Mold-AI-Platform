@@ -56,3 +56,23 @@ function Get-DemoFileSha256 {
     param([Parameter(Mandatory)][string]$Path)
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+
+function Wait-DemoApiReady {
+    param(
+        [Parameter(Mandatory)][string[]]$ComposeArgs,
+        [int]$TimeoutSeconds = 120
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & docker @ComposeArgs exec -T api python -c `
+            "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=2)" `
+            2>$null | Out-Null
+        $ready = $LASTEXITCODE -eq 0
+        $ErrorActionPreference = $previousPreference
+        if ($ready) { return }
+        Start-Sleep -Seconds 2
+    }
+    throw "API migrations and startup did not complete within $TimeoutSeconds seconds."
+}

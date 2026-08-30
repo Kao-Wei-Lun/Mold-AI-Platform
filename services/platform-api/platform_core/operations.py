@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 from django.conf import settings
 from django.db import connection
 from django.db.models import Count
@@ -13,6 +16,7 @@ from .job_recovery import stale_job_snapshot
 from .models import (
     Artifact,
     ArtifactVersion,
+    AuditEvent,
     CAEStudy,
     FeatureSet,
     HMIExtraction,
@@ -40,6 +44,31 @@ def release_snapshot_payload() -> dict[str, object]:
         .order_by("index_collection", "index_version", "index_status")
         .annotate(count=Count("id"))
     )
+    artifact_manifest = [
+        {
+            "artifact_id": str(version.artifact_id),
+            "artifact_version_id": str(version.id),
+            "dataset_id": version.artifact.dataset_id,
+            "kind": version.artifact.kind,
+            "version_number": version.version_number,
+            "format": version.format,
+            "size_bytes": version.size_bytes,
+            "sha256": version.sha256,
+            "storage_key": version.storage_key,
+            "source_system": version.source_system,
+            "classification": version.classification,
+        }
+        for version in artifact_versions
+    ]
+    artifact_manifest_hash = hashlib.sha256(
+        json.dumps(artifact_manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    audit_manifest = list(AuditEvent.objects.values_list("id", "payload_hash").order_by("id"))
+    audit_manifest_hash = hashlib.sha256(
+        "\n".join(
+            f"{event_id}:{payload_hash}" for event_id, payload_hash in audit_manifest
+        ).encode()
+    ).hexdigest()
     return {
         "schema_version": "1.0",
         "operations_contract_version": OPERATIONS_CONTRACT_VERSION,
@@ -79,24 +108,12 @@ def release_snapshot_payload() -> dict[str, object]:
             "artifacts": Artifact.objects.count(),
             "artifact_versions": artifact_versions.count(),
             "jobs": Job.objects.count(),
+            "audit_events": len(audit_manifest),
+            "artifact_manifest_sha256": artifact_manifest_hash,
+            "audit_manifest_sha256": audit_manifest_hash,
         },
         "job_recovery": stale_job_snapshot(),
-        "artifact_manifest": [
-            {
-                "artifact_id": str(version.artifact_id),
-                "artifact_version_id": str(version.id),
-                "dataset_id": version.artifact.dataset_id,
-                "kind": version.artifact.kind,
-                "version_number": version.version_number,
-                "format": version.format,
-                "size_bytes": version.size_bytes,
-                "sha256": version.sha256,
-                "storage_key": version.storage_key,
-                "source_system": version.source_system,
-                "classification": version.classification,
-            }
-            for version in artifact_versions
-        ],
+        "artifact_manifest": artifact_manifest,
         "assistant_provider": get_assistant_provider().health().payload(),
         "excluded_sensitive_material": [
             "environment_files",

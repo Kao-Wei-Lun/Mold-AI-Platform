@@ -19,6 +19,7 @@ if (-not (Test-Path -LiteralPath $manifestPath) -or -not (Test-Path -LiteralPath
     throw "Backup manifest or PostgreSQL dump is missing."
 }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$sourceSnapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
 if ($manifest.schema_version -ne "1.0") { throw "Unsupported backup manifest version." }
 if ((Get-DemoFileSha256 -Path $dumpPath) -ne $manifest.database.sha256) {
     throw "PostgreSQL dump checksum mismatch."
@@ -64,6 +65,7 @@ try {
 
     & docker @composeArgs up -d api worker worker-cad
     if ($LASTEXITCODE -ne 0) { throw "Restored application services failed to start." }
+    Wait-DemoApiReady -ComposeArgs $composeArgs
     if ($manifest.artifacts.included) {
         & docker @composeArgs cp "$artifactDir/." "api:/data/artifacts"
         if ($LASTEXITCODE -ne 0) { throw "Artifact restore failed." }
@@ -80,6 +82,17 @@ try {
     $verification = $verificationJson | ConvertFrom-Json
     if (-not $verification.datasets.curated_cad.reconciled) {
         throw "Restored curated dataset is not reconciled."
+    }
+    if ($sourceSnapshot.records.audit_manifest_sha256 -and
+        ($verification.records.audit_events -ne $sourceSnapshot.records.audit_events -or
+         $verification.records.audit_manifest_sha256 -ne $sourceSnapshot.records.audit_manifest_sha256)) {
+        throw "Restored Audit continuity verification failed."
+    }
+    if ($sourceSnapshot.records.artifact_manifest_sha256 -and
+        ($verification.records.artifacts -ne $sourceSnapshot.records.artifacts -or
+         $verification.records.artifact_versions -ne $sourceSnapshot.records.artifact_versions -or
+         $verification.records.artifact_manifest_sha256 -ne $sourceSnapshot.records.artifact_manifest_sha256)) {
+        throw "Restored ArtifactVersion continuity verification failed."
     }
 } finally {
     if ($CleanupAfterVerification) {

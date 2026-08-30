@@ -44,6 +44,7 @@ try {
     & docker @composeArgs up -d --build --wait --wait-timeout 120 `
         db redis qdrant api worker worker-cad
     if ($LASTEXITCODE -ne 0) { throw "Isolated recovery services failed to start." }
+    Wait-DemoApiReady -ComposeArgs $composeArgs
     & docker @composeArgs exec -T api python manage.py seed_demo_data
     if ($LASTEXITCODE -ne 0) { throw "Recovery-drill seed failed." }
     & docker @composeArgs exec -T api python manage.py seed_cad_demo --reindex

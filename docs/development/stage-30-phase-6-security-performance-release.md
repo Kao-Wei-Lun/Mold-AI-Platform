@@ -72,3 +72,18 @@ The Phase 6A gate passed on 2026-08-30:
 
 Runtime evidence belongs below ignored `.runtime/` paths. It must never contain account passwords,
 API keys, tunnel control-plane keys or bearer credentials.
+
+## Phase 6B recovery result
+
+The 2026-08-30 operations drill produced a full secret-free backup with PostgreSQL, 47 artifact
+files and SHA-256 manifests. An isolated restore verified the canonical database, artifact files
+and 16/16 curated CAD index before deleting its temporary containers, networks and volumes. A
+second isolated fault drill observed typed Qdrant degradation, preserved canonical records,
+rebuilt both Knowledge and CAD indexes, retained a CAD task while its worker was stopped and
+completed that task after worker restart.
+
+The first clean-room fault attempt exposed a startup race: Compose considered the development API
+container started while its migration process was still running. Recovery, restore and full-volume
+rebuild scripts now call a shared API-readiness wait before any seed or verification command. The
+entire fault drill passed after this correction. Release snapshots also include deterministic Audit
+and ArtifactVersion manifest hashes, and restore now fails closed if either continuity check differs.
