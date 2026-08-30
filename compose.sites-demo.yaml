@@ -111,7 +111,7 @@ services:
   web-tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: ["tunnel", "--no-autoupdate", "--url", "http://web:8080"]
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://web:8080"]
     depends_on:
       web:
         condition: service_started
