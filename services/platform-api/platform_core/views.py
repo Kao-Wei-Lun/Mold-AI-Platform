@@ -634,10 +634,55 @@ class CADArtifactListCreateView(APIView):
             if request.data.get("mold_revision_id")
             else None
         )
+        artifact_id = (
+            str(request.data.get("artifact_id")).strip()
+            if request.data.get("artifact_id")
+            else None
+        )
+        target_artifact = None
+        if artifact_id:
+            try:
+                uuid.UUID(artifact_id)
+            except ValueError:
+                return _error_response(
+                    "VALIDATION_ARTIFACT",
+                    "The target CAD artifact identifier is invalid.",
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            target_artifact = Artifact.objects.filter(
+                id=artifact_id,
+                kind=Artifact.Kind.CAD_SOURCE,
+                classification__in=_allowed_classifications(request),
+            ).first()
+            if target_artifact is None:
+                return _error_response(
+                    "VALIDATION_ARTIFACT",
+                    "The target CAD artifact is unavailable.",
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            inherited_revision_id = (
+                str(target_artifact.mold_revision_id) if target_artifact.mold_revision_id else None
+            )
+            if mold_revision_id and mold_revision_id != inherited_revision_id:
+                return _error_response(
+                    "VALIDATION_MOLD_REVISION",
+                    "A new CAD version must keep the artifact's mold revision.",
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            mold_revision_id = inherited_revision_id
         requested_ingestion_mode = str(request.data.get("ingestion_mode", "")).strip()
         ingestion_mode = requested_ingestion_mode or (
             "governed_archive" if mold_revision_id else "quick_analysis"
         )
+        inherited_mode = "governed_archive" if mold_revision_id else "quick_analysis"
+        if artifact_id and requested_ingestion_mode and requested_ingestion_mode != inherited_mode:
+            return _error_response(
+                "VALIDATION_INGESTION_MODE",
+                "A new version must keep the artifact's original governance mode.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if artifact_id:
+            ingestion_mode = inherited_mode
         if ingestion_mode not in {"quick_analysis", "governed_archive"}:
             return _error_response(
                 "VALIDATION_INGESTION_MODE",
@@ -667,8 +712,10 @@ class CADArtifactListCreateView(APIView):
                 material_code=str(request.data.get("material_code", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
                 mold_revision_id=mold_revision_id,
+                artifact_id=artifact_id,
                 source_context={
                     "type": "manual_upload",
+                    "version_action": "new_version" if artifact_id else "new_artifact",
                     "ingestion_mode": ingestion_mode,
                     "governance_status": (
                         "governed" if ingestion_mode == "governed_archive" else "unassigned"
@@ -732,6 +779,8 @@ class CADArtifactListCreateView(APIView):
                 "status": "accepted",
                 "artifact_id": str(records.artifact.id),
                 "artifact_version_id": str(records.version.id),
+                "version_number": records.version.version_number,
+                "version_action": "new_version" if artifact_id else "new_artifact",
                 "job_id": str(records.job.id),
                 "ingestion_mode": actual_ingestion_mode,
                 "governance_status": governance_status,

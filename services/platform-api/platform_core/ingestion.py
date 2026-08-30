@@ -114,6 +114,7 @@ def create_upload_records(
     source_system: str = "upload",
     source_context: dict[str, object] | None = None,
     mold_revision_id: str | None = None,
+    artifact_id: str | None = None,
 ) -> UploadRecords:
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
@@ -134,28 +135,54 @@ def create_upload_records(
             raise UploadValidationError(
                 "VALIDATION_MOLD_REVISION", "The selected mold revision does not exist."
             )
-    artifact_id = uuid.uuid4()
+    target_artifact_id = uuid.UUID(artifact_id) if artifact_id else uuid.uuid4()
     version_id = uuid.uuid4()
-    storage_key = f"source/{artifact_id}/{version_id}/source.{cad_format}"
+    storage_key = f"source/{target_artifact_id}/{version_id}/source.{cad_format}"
     stored = False
 
     try:
         with transaction.atomic():
-            artifact = Artifact.objects.create(
-                id=artifact_id,
-                name=(artifact_name.strip() or filename)[:255],
-                kind=Artifact.Kind.CAD_SOURCE,
-                classification="public_demo",
-                dataset_id=(dataset_id.strip() or "public-demo-v1")[:128],
-                product_type=product_type.strip()[:128],
-                material_code=material_code.strip()[:128],
-                mold_revision=mold_revision,
-                quality_status="validated",
-            )
+            if artifact_id:
+                artifact = (
+                    Artifact.objects.select_for_update()
+                    .filter(id=target_artifact_id, kind=Artifact.Kind.CAD_SOURCE)
+                    .first()
+                )
+                if artifact is None:
+                    raise UploadValidationError(
+                        "VALIDATION_ARTIFACT", "The target CAD artifact does not exist."
+                    )
+                if artifact.lifecycle_status == "archived":
+                    raise UploadValidationError(
+                        "VALIDATION_ARTIFACT_ARCHIVED",
+                        "An archived CAD artifact cannot receive a new version.",
+                    )
+                if mold_revision and artifact.mold_revision_id != mold_revision.id:
+                    raise UploadValidationError(
+                        "VALIDATION_MOLD_REVISION",
+                        "A new CAD version must keep the artifact's mold revision.",
+                    )
+                previous = artifact.versions.order_by("-version_number").first()
+                version_number = (previous.version_number if previous else 0) + 1
+            else:
+                artifact = Artifact.objects.create(
+                    id=target_artifact_id,
+                    name=(artifact_name.strip() or filename)[:255],
+                    kind=Artifact.Kind.CAD_SOURCE,
+                    classification="public_demo",
+                    dataset_id=(dataset_id.strip() or "public-demo-v1")[:128],
+                    product_type=product_type.strip()[:128],
+                    material_code=material_code.strip()[:128],
+                    mold_revision=mold_revision,
+                    quality_status="validated",
+                )
+                previous = None
+                version_number = 1
             version = ArtifactVersion.objects.create(
                 id=version_id,
                 artifact=artifact,
-                version_number=1,
+                version_number=version_number,
+                supersedes=previous,
                 original_filename=filename,
                 media_type=MEDIA_TYPES[cad_format],
                 format=cad_format,

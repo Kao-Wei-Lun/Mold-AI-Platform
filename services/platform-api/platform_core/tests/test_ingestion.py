@@ -69,14 +69,67 @@ class CADUploadEndpointTests(TestCase):
             Job.objects.get().input_snapshot["source"],
             {
                 "type": "manual_upload",
+                "version_action": "new_artifact",
                 "ingestion_mode": "quick_analysis",
                 "governance_status": "unassigned",
             },
         )
-
         job_response = self.client.get(payload["links"]["status"])
         self.assertEqual(job_response.status_code, 200)
         self.assertEqual(job_response.json()["state"], "queued")
+
+    @patch("platform_core.views.process_cad_job.apply_async")
+    def test_new_version_preserves_prior_artifact_version_and_results(self, apply_async) -> None:
+        first = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(),
+                "artifact_name": "Versioned mold CAD",
+                "idempotency_key": "cad-version-1",
+            },
+        )
+        artifact_id = first.json()["artifact_id"]
+        first_version_id = first.json()["artifact_version_id"]
+        second = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(name="part-v2.stl"),
+                "artifact_id": artifact_id,
+                "ingestion_mode": "quick_analysis",
+                "idempotency_key": "cad-version-2",
+            },
+        )
+
+        self.assertEqual(second.status_code, 202)
+        self.assertEqual(second.json()["version_action"], "new_version")
+        self.assertEqual(second.json()["version_number"], 2)
+        self.assertEqual(Artifact.objects.count(), 1)
+        self.assertEqual(ArtifactVersion.objects.count(), 2)
+        latest = ArtifactVersion.objects.get(id=second.json()["artifact_version_id"])
+        self.assertEqual(str(latest.supersedes_id), first_version_id)
+        self.assertTrue(ArtifactVersion.objects.filter(id=first_version_id).exists())
+        self.assertEqual(CADModel.objects.count(), 2)
+        self.assertEqual(apply_async.call_count, 2)
+
+    @patch("platform_core.views.process_cad_job.apply_async")
+    def test_new_version_rejects_governance_mode_change(self, apply_async) -> None:
+        first = self.client.post(
+            "/api/v1/cad-artifacts",
+            {"file": self.upload_file(), "idempotency_key": "cad-mode-v1"},
+        )
+        response = self.client.post(
+            "/api/v1/cad-artifacts",
+            {
+                "file": self.upload_file(name="part-v2.stl"),
+                "artifact_id": first.json()["artifact_id"],
+                "ingestion_mode": "governed_archive",
+                "idempotency_key": "cad-mode-v2",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_INGESTION_MODE")
+        self.assertEqual(ArtifactVersion.objects.count(), 1)
 
     @patch("platform_core.views.process_cad_job.apply_async")
     def test_governed_archive_requires_mold_revision(self, apply_async) -> None:

@@ -80,6 +80,8 @@ export type CADUploadAccepted = {
   status: "accepted";
   artifact_id: string;
   artifact_version_id: string;
+  version_number: number;
+  version_action: "new_artifact" | "new_version";
   job_id: string;
   ingestion_mode: "quick_analysis" | "governed_archive";
   governance_status: "unassigned" | "governed";
@@ -168,6 +170,7 @@ export async function uploadCAD(
     materialCode: string;
     uploadMode: "quick_analysis" | "governed_archive";
     moldRevisionId?: string;
+    artifactId?: string;
   },
 ): Promise<CADUploadAccepted> {
   const body = new FormData();
@@ -179,6 +182,7 @@ export async function uploadCAD(
   if (metadata.productType.trim()) body.append("product_type", metadata.productType.trim());
   if (metadata.materialCode.trim()) body.append("material_code", metadata.materialCode.trim());
   if (metadata.moldRevisionId) body.append("mold_revision_id", metadata.moldRevisionId);
+  if (metadata.artifactId) body.append("artifact_id", metadata.artifactId);
 
   const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
     method: "POST",

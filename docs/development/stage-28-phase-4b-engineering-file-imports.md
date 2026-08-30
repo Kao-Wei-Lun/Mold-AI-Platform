@@ -7,7 +7,7 @@
 | CAE Summary | CSV, XLSX, JSON | Complete |
 | Knowledge secure parser | TXT, Markdown, PDF, DOCX | Complete |
 | HMI batch | PNG, JPG | Complete |
-| CAD artifact/version | STEP, STP, STL | Planned |
+| CAD artifact/version | STEP, STP, STL | Complete |
 
 All Phase 4B paths retain immutable source artifacts and use the Phase 3 Ingestion Batch, typed issue, atomic commit, record result, reconciliation, audit, and job recovery contracts.
 
@@ -22,3 +22,7 @@ Knowledge upload now supports TXT, Markdown, PDF, and DOCX. PDF processing rejec
 ## HMI batch upload
 
 `POST /api/v1/hmi-extractions/batch` accepts 1–20 PNG/JPG images. The service decodes and verifies every image before writing the batch, then creates one immutable HMI source Artifact and Extraction per image. The response includes a shared Ingestion Batch, per-image result identities, reconciliation, and a stable import-history deep link. The required idempotency key makes client retries safe and a replay returns the original extraction IDs.
+
+## CAD artifact and version flow
+
+The existing CAD upload API and workspace now require an explicit version action: create a new CAD record or append a version to an existing record. A new version inherits the existing Artifact's dataset, mold revision, and governance mode; conflicting metadata is rejected. Commit obtains a row lock, calculates the next version number, creates an immutable ArtifactVersion with a `supersedes` link, and queues a separate parse job. Prior previews, geometry, feature sets, reviews, and lineage remain attached to their original version.

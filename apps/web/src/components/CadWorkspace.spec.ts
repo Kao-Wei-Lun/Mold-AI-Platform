@@ -180,6 +180,48 @@ describe("CadWorkspace", () => {
     expect(uploadBody.get("mold_revision_id")).toBe("revision-1");
   });
 
+  it("adds a version to an existing CAD record without changing its identity", async () => {
+    const existing = {
+      artifact_id: "artifact-versioned",
+      name: "Versioned housing",
+      kind: "cad_source",
+      classification: "public_demo",
+      dataset_id: "manual-cad-upload-v1",
+      product_type: "housing",
+      material_code: "PC_ABS",
+      mold_revision_id: null,
+      mold_revision: null,
+      lifecycle_status: "active",
+      quality_status: "validated",
+      created_at: "2026-08-30T00:00:00Z",
+      updated_at: "2026-08-30T00:00:00Z",
+      row_version: 1,
+      source: null,
+      jobs: [],
+      versions: [{ artifact_version_id: "version-1" }],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [existing] }))
+      .mockResolvedValueOnce(jsonResponse({ status: "accepted", artifact_id: existing.artifact_id, artifact_version_id: "version-2", version_number: 2, version_action: "new_version", job_id: "job-v2", ingestion_mode: "quick_analysis", governance_status: "unassigned", mold_revision_id: null, idempotent_replay: false, warnings: [], links: {} }, true, 202))
+      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", job_id: "job-v2", capability: "cad.parse@1.0.0", state: "queued", stage: "queued", progress: 0, attempt: 1, artifact_version_id: "version-2", correlation_id: "correlation-v2", error: null, result: null }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
+    await wrapper.get('input[value="new_version"]').setValue(true);
+    await flushPromises();
+    await wrapper.get("select").setValue(existing.artifact_id);
+    const fileInput = wrapper.get('input[type="file"]');
+    Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
+    await fileInput.trigger("change");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const uploadBody = fetchMock.mock.calls[1]?.[1]?.body as FormData;
+    expect(uploadBody.get("artifact_id")).toBe(existing.artifact_id);
+    expect(uploadBody.get("ingestion_mode")).toBe("quick_analysis");
+  });
+
   it("shows a server validation message", async () => {
     vi.stubGlobal(
       "fetch",

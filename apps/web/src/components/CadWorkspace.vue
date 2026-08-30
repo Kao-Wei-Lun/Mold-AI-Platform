@@ -4,6 +4,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from "vue
 import {
   fetchCADJob,
   fetchRecentCAD,
+  type CADArtifactSummary,
   type CADJob,
   type CADModelResult,
   uploadCAD,
@@ -40,6 +41,9 @@ const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
 const uploadMode = ref<"quick_analysis" | "governed_archive">("quick_analysis");
+const artifactTargetMode = ref<"new_artifact" | "new_version">("new_artifact");
+const existingArtifactId = ref("");
+const versionArtifacts = ref<CADArtifactSummary[]>([]);
 const moldRevisionId = ref("");
 const revisions = ref<RegistryRevision[]>([]);
 const uploading = ref(false);
@@ -68,8 +72,17 @@ const missingUploadFields = computed(
   () =>
     Number(!selectedFile.value) +
     Number(!datasetId.value) +
+    Number(artifactTargetMode.value === "new_version" && !existingArtifactId.value) +
     Number(uploadMode.value === "governed_archive" && !moldRevisionId.value),
 );
+
+async function loadVersionArtifacts(): Promise<void> {
+  try {
+    versionArtifacts.value = await fetchRecentCAD();
+  } catch {
+    versionArtifacts.value = [];
+  }
+}
 
 function optionLabel(option: MasterDataOption): string {
   return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
@@ -103,6 +116,21 @@ watch(uploadMode, (mode) => {
   }
   moldRevisionId.value =
     revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
+});
+
+watch(artifactTargetMode, (mode) => {
+  if (mode === "new_version" && !versionArtifacts.value.length) void loadVersionArtifacts();
+  if (mode === "new_artifact") existingArtifactId.value = "";
+});
+
+watch(existingArtifactId, (id) => {
+  const artifact = versionArtifacts.value.find((item) => item.artifact_id === id);
+  if (!artifact) return;
+  uploadMode.value = artifact.mold_revision_id ? "governed_archive" : "quick_analysis";
+  moldRevisionId.value = artifact.mold_revision_id || "";
+  datasetId.value = artifact.dataset_id;
+  productType.value = artifact.product_type;
+  materialCode.value = artifact.material_code;
 });
 
 function chooseFile(event: Event): void {
@@ -153,6 +181,7 @@ async function submit(): Promise<void> {
       materialCode: materialCode.value,
       uploadMode: uploadMode.value,
       moldRevisionId: uploadMode.value === "governed_archive" ? moldRevisionId.value : undefined,
+      artifactId: artifactTargetMode.value === "new_version" ? existingArtifactId.value : undefined,
     });
     warning.value = accepted.warnings.map((message) => t(message)).join(" ") || null;
     job.value = await fetchCADJob(accepted.job_id);
@@ -249,6 +278,25 @@ loadRevisions();
         <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
       </div>
       <fieldset class="cad-upload-purpose form-wide">
+        <legend>{{ t("Version action") }}</legend>
+        <div class="upload-purpose-options">
+          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_artifact' }">
+            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_artifact" />
+            <span><strong>{{ t("Create new CAD record") }}</strong><small>{{ t("Start a separately governed CAD history.") }}</small></span>
+          </label>
+          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_version' }">
+            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_version" />
+            <span><strong>{{ t("Add version to existing CAD") }}</strong><small>{{ t("Keep prior versions and engineering results unchanged.") }}</small></span>
+          </label>
+        </div>
+      </fieldset>
+      <FormField v-if="artifactTargetMode === 'new_version'" v-slot="{ fieldId, describedBy, invalid }" :label="t('Existing CAD record')" required :helper="t('The new file inherits dataset, revision and governance from this record.')">
+        <select :id="fieldId" v-model="existingArtifactId" required :aria-describedby="describedBy" :aria-invalid="invalid">
+          <option value="" disabled>{{ t("Select an existing CAD record") }}</option>
+          <option v-for="artifact in versionArtifacts" :key="artifact.artifact_id" :value="artifact.artifact_id">{{ artifact.name }} · {{ artifact.versions?.length || 0 }} {{ t("versions") }}</option>
+        </select>
+      </FormField>
+      <fieldset v-if="artifactTargetMode === 'new_artifact'" class="cad-upload-purpose form-wide">
         <legend>{{ t("Upload purpose") }}</legend>
         <div class="upload-purpose-options">
           <label class="upload-purpose-option" :class="{ selected: uploadMode === 'quick_analysis' }">
