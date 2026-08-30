@@ -7,7 +7,7 @@
 | Engineering Reference Data | CSV, XLSX, JSON | Complete |
 | Project / Part / Mold / Revision Registry | CSV, XLSX | Complete |
 | Mold Rule Profiles | CSV, XLSX, JSON | Complete |
-| Trial / Process | CSV, XLSX, JSON | Planned |
+| Trial / Process | CSV, XLSX, JSON | Complete |
 
 Each adapter uses the Phase 3 source artifact, mapping, Dry Run, atomic commit, record result, audit, lineage identity, and reconciliation contracts. Domain adapters do not introduce alternate upload or commit paths.
 
@@ -38,3 +38,7 @@ The `registry` adapter treats every source row as a governed hierarchy ending in
 ## Mold Rule Profile adapter
 
 The `rule_profiles` adapter imports one structured rule per row into a governed Draft profile. CSV, XLSX, and JSON share one template and canonical contract. It validates evaluator and operator allowlists, numeric conditions, duplicate rule identities, cross-scope profile conflicts, active applicability references, and existing workflow state. Commit never approves or publishes a profile; normal separation-of-duties workflow remains mandatory. Rule and applicability identities are replay-safe and reconciliation is recorded per imported RuleVersion.
+
+## Trial / Process adapter
+
+The `trials` adapter groups rows by Trial Case and Process Run and treats each row as one canonical process parameter. It accepts CSV, XLSX, and JSON, validates ISO 8601 timestamps, run and numeric values, value kind, duplicate parameter identity, and active Machine, Material, Product Type, and Unit references. Dry Run writes no process records. Atomic Commit creates Draft trial evidence only; closed evidence remains immutable and must use the existing correction workflow. Replayed parameters are skipped and reconciled without duplication.

@@ -63,6 +63,26 @@ TEMPLATE_HEADERS = {
         "material",
         "molding_process",
     ],
+    "trials": [
+        "case_code",
+        "mold_revision_ref",
+        "part_revision_ref",
+        "machine_code",
+        "material_code",
+        "material_lot",
+        "product_type",
+        "purpose",
+        "outcome",
+        "started_at",
+        "run_number",
+        "result",
+        "parameter_code",
+        "parameter_name",
+        "parameter_value",
+        "parameter_unit",
+        "value_kind",
+        "sampling_method",
+    ],
 }
 SUPPORTED_SOURCE_SUFFIXES = {"json", "csv", "xlsx"}
 

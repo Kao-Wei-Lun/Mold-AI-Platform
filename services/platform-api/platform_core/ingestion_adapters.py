@@ -1,21 +1,35 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
+
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from .models import (
     BulkImportBatch,
     MasterDataItem,
     Mold,
     MoldRevision,
+    ProcessParameter,
+    ProcessRun,
     ProductPart,
     Project,
     RuleProfile,
     RuleProfileApplicability,
     RuleVersion,
+    TrialCase,
 )
 
 MAX_BATCH_RECORDS = 10_000
-SUPPORTED_INGESTION_DOMAINS = {"master_data", "projects", "registry", "rule_profiles"}
+SUPPORTED_INGESTION_DOMAINS = {
+    "master_data",
+    "projects",
+    "registry",
+    "rule_profiles",
+    "trials",
+}
 RULE_EVALUATORS = {
     "bbox_dimension",
     "bbox_aspect_ratio",
@@ -68,6 +82,9 @@ def _issue(row: int, code: str, *, field: str = "", value: object = None) -> dic
         "INVALID_POSITIVE_INTEGER": "The value must be a positive integer.",
         "INVALID_RULE": "The rule evaluator, operator, or numeric condition is invalid.",
         "PROFILE_SCOPE_CONFLICT": "This profile identity already belongs to another data scope.",
+        "INVALID_DATETIME": "The timestamp must be an ISO 8601 date and time.",
+        "INVALID_PROCESS_PARAMETER": "Run number, value, or value kind is invalid.",
+        "IMMUTABLE_TRIAL": "Existing closed trial evidence cannot be changed by import.",
     }
     return {
         "row": row,
@@ -207,6 +224,71 @@ def validate_records(
                     issues.append(
                         _issue(index, "REFERENCE_NOT_FOUND", field=field, value=record.get(field))
                     )
+        elif domain == "trials":
+            required = (
+                "case_code",
+                "mold_revision_ref",
+                "machine_code",
+                "material_code",
+                "product_type",
+                "purpose",
+                "started_at",
+                "run_number",
+                "result",
+                "parameter_code",
+                "parameter_value",
+                "parameter_unit",
+                "value_kind",
+            )
+            identity = (
+                str(record.get("case_code", "")).lower(),
+                str(record.get("run_number", "")),
+                str(record.get("parameter_code", "")).lower(),
+                str(record.get("value_kind", "")).lower(),
+            )
+            parsed = parse_datetime(str(record.get("started_at", "")))
+            if parsed is None:
+                issues.append(_issue(index, "INVALID_DATETIME", field="started_at"))
+            else:
+                record["started_at"] = parsed.isoformat()
+            try:
+                record["run_number"] = int(record.get("run_number"))
+                record["parameter_value"] = float(record.get("parameter_value"))
+                if (
+                    record["run_number"] < 1
+                    or record.get("value_kind") not in ProcessParameter.ValueKind.values
+                ):
+                    raise ValueError
+            except (TypeError, ValueError):
+                issues.append(_issue(index, "INVALID_PROCESS_PARAMETER", field="parameter_value"))
+            for field, kind in (
+                ("machine_code", MasterDataItem.Kind.MACHINE),
+                ("material_code", MasterDataItem.Kind.MATERIAL),
+                ("product_type", MasterDataItem.Kind.PRODUCT_TYPE),
+                ("parameter_unit", MasterDataItem.Kind.UNIT),
+            ):
+                if not _active_reference(scope, kind, record.get(field)):
+                    issues.append(
+                        _issue(index, "REFERENCE_NOT_FOUND", field=field, value=record.get(field))
+                    )
+            trial = TrialCase.objects.filter(case_code__iexact=record.get("case_code", "")).first()
+            if trial:
+                if scope.code not in trial.acl_scopes:
+                    issues.append(_issue(index, "PROFILE_SCOPE_CONFLICT", field="case_code"))
+                elif trial.lifecycle_status != TrialCase.LifecycleStatus.DRAFT:
+                    issues.append(_issue(index, "IMMUTABLE_TRIAL", field="case_code"))
+                else:
+                    run = ProcessRun.objects.filter(
+                        trial=trial, run_number=record.get("run_number")
+                    ).first()
+                    if run:
+                        existing += int(
+                            ProcessParameter.objects.filter(
+                                process_run=run,
+                                canonical_code__iexact=record.get("parameter_code", ""),
+                                value_kind=record.get("value_kind", ""),
+                            ).exists()
+                        )
         else:
             raise ValueError(f"Unsupported ingestion domain: {domain}")
 
@@ -378,5 +460,62 @@ def commit_record(batch: BulkImportBatch, record: dict[str, object], actor_id: s
                     match_mode=RuleProfileApplicability.MatchMode.INCLUDE,
                 )
         return CommitResult("rule_version", str(rule.id), created)
+
+    if batch.domain == "trials":
+        source_file = batch.source_files.select_related("artifact_version").first()
+        source_hash = (
+            source_file.sha256
+            if source_file
+            else hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
+        )
+        started_at = parse_datetime(str(record["started_at"]))
+        if started_at and timezone.is_naive(started_at):
+            started_at = timezone.make_aware(started_at)
+        trial, _ = TrialCase.objects.get_or_create(
+            case_code=str(record["case_code"]),
+            defaults={
+                "connector_key": "ingestion",
+                "source_record_id": str(record["case_code"]),
+                "source_version": batch.mapping_version,
+                "source_hash": source_hash,
+                "mapping_version": batch.mapping_version,
+                "classification": batch.classification,
+                "acl_scopes": [batch.scope.code],
+                "mold_revision_ref": str(record["mold_revision_ref"]),
+                "part_revision_ref": str(record.get("part_revision_ref", "")),
+                "machine_code": str(record["machine_code"]),
+                "material_code": str(record["material_code"]),
+                "material_lot": str(record.get("material_lot", "")),
+                "product_type": str(record["product_type"]),
+                "operator_ref": str(record.get("operator_ref") or actor_id),
+                "purpose": str(record["purpose"]),
+                "outcome": str(record.get("outcome", "pending")),
+                "started_at": started_at,
+                "data_quality": {"source": "ingestion", "batch_id": str(batch.id)},
+                "lifecycle_status": TrialCase.LifecycleStatus.DRAFT,
+            },
+        )
+        if trial.lifecycle_status != TrialCase.LifecycleStatus.DRAFT:
+            raise ValueError("Imported process data can only target a draft trial.")
+        run, _ = ProcessRun.objects.get_or_create(
+            trial=trial,
+            run_number=int(record["run_number"]),
+            defaults={
+                "result": str(record["result"]),
+                "data_quality": {"source": "ingestion"},
+            },
+        )
+        parameter, created = ProcessParameter.objects.get_or_create(
+            process_run=run,
+            canonical_code=str(record["parameter_code"]),
+            value_kind=str(record["value_kind"]),
+            defaults={
+                "raw_name": str(record.get("parameter_name") or record["parameter_code"]),
+                "value": float(record["parameter_value"]),
+                "unit": str(record["parameter_unit"]),
+                "sampling_method": str(record.get("sampling_method") or "imported"),
+            },
+        )
+        return CommitResult("process_parameter", str(parameter.id), created)
 
     raise ValueError(f"No commit adapter for {batch.domain}.")
