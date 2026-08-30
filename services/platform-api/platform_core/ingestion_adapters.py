@@ -9,6 +9,9 @@ from django.utils.dateparse import parse_datetime
 
 from .models import (
     BulkImportBatch,
+    CAEResult,
+    CAERun,
+    CAEStudy,
     MasterDataItem,
     Mold,
     MoldRevision,
@@ -29,6 +32,7 @@ SUPPORTED_INGESTION_DOMAINS = {
     "registry",
     "rule_profiles",
     "trials",
+    "cae_results",
 }
 RULE_EVALUATORS = {
     "bbox_dimension",
@@ -85,6 +89,9 @@ def _issue(row: int, code: str, *, field: str = "", value: object = None) -> dic
         "INVALID_DATETIME": "The timestamp must be an ISO 8601 date and time.",
         "INVALID_PROCESS_PARAMETER": "Run number, value, or value kind is invalid.",
         "IMMUTABLE_TRIAL": "Existing closed trial evidence cannot be changed by import.",
+        "INVALID_CAE_RESULT": (
+            "The CAE status, result type, numeric value, or JSON settings are invalid."
+        ),
     }
     return {
         "row": row,
@@ -287,6 +294,64 @@ def validate_records(
                                 process_run=run,
                                 canonical_code__iexact=record.get("parameter_code", ""),
                                 value_kind=record.get("value_kind", ""),
+                            ).exists()
+                        )
+        elif domain == "cae_results":
+            required = (
+                "study_code",
+                "solver_name",
+                "product_ref",
+                "mold_revision_ref",
+                "material_model_code",
+                "mesh_family",
+                "objective",
+                "run_code",
+                "solver_version",
+                "unit_system",
+                "status",
+                "metric_code",
+                "result_type",
+                "value",
+                "unit",
+            )
+            identity = (
+                str(record.get("study_code", "")).lower(),
+                str(record.get("run_code", "")).lower(),
+                str(record.get("metric_code", "")).lower(),
+            )
+            invalid_cae = (
+                record.get("status") not in CAERun.Status.values
+                or record.get("result_type") not in CAEResult.ResultType.values
+            )
+            try:
+                record["value"] = float(record.get("value"))
+                for field in ("boundary_settings", "process_settings", "location", "field_summary"):
+                    value = record.get(field) or {}
+                    if isinstance(value, str):
+                        value = json.loads(value)
+                    if not isinstance(value, dict):
+                        raise ValueError
+                    record[field] = value
+            except (TypeError, ValueError, json.JSONDecodeError):
+                invalid_cae = True
+            if invalid_cae:
+                issues.append(_issue(index, "INVALID_CAE_RESULT", field="value"))
+            if not _active_reference(scope, MasterDataItem.Kind.UNIT, record.get("unit")):
+                issues.append(
+                    _issue(index, "REFERENCE_NOT_FOUND", field="unit", value=record.get("unit"))
+                )
+            study = CAEStudy.objects.filter(study_code__iexact=record.get("study_code", "")).first()
+            if study:
+                if scope.code not in study.acl_scopes:
+                    issues.append(_issue(index, "PROFILE_SCOPE_CONFLICT", field="study_code"))
+                else:
+                    run = CAERun.objects.filter(
+                        study=study, run_code=record.get("run_code", "")
+                    ).first()
+                    if run:
+                        existing += int(
+                            CAEResult.objects.filter(
+                                run=run, metric_code__iexact=record.get("metric_code", "")
                             ).exists()
                         )
         else:
@@ -517,5 +582,67 @@ def commit_record(batch: BulkImportBatch, record: dict[str, object], actor_id: s
             },
         )
         return CommitResult("process_parameter", str(parameter.id), created)
+
+    if batch.domain == "cae_results":
+        source_file = batch.source_files.select_related("artifact_version").first()
+        source_hash = (
+            source_file.sha256
+            if source_file
+            else hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
+        )
+        study, _ = CAEStudy.objects.get_or_create(
+            study_code=str(record["study_code"]),
+            defaults={
+                "connector_key": "ingestion",
+                "integration_level": "summary",
+                "source_record_id": str(record["study_code"]),
+                "source_version": batch.mapping_version,
+                "source_hash": source_hash,
+                "mapping_version": batch.mapping_version,
+                "solver_name": str(record["solver_name"]),
+                "product_ref": str(record["product_ref"]),
+                "mold_revision_ref": str(record["mold_revision_ref"]),
+                "material_model_code": str(record["material_model_code"]),
+                "mesh_family": str(record["mesh_family"]),
+                "objective": str(record["objective"]),
+                "owner": actor_id,
+                "classification": batch.classification,
+                "acl_scopes": [batch.scope.code],
+                "data_quality": {"source": "summary_ingestion"},
+            },
+        )
+        run, _ = CAERun.objects.get_or_create(
+            study=study,
+            run_code=str(record["run_code"]),
+            defaults={
+                "solver_name": str(record["solver_name"]),
+                "solver_version": str(record["solver_version"]),
+                "mesh_artifact_ref": str(record.get("mesh_artifact_ref", "")),
+                "mesh_checksum": str(record.get("mesh_checksum", "")),
+                "material_model_code": str(record["material_model_code"]),
+                "boundary_settings": record.get("boundary_settings", {}),
+                "process_settings": record.get("process_settings", {}),
+                "unit_system": str(record["unit_system"]),
+                "status": str(record["status"]),
+                "input_hash": str(record.get("input_hash") or source_hash),
+                "data_quality": {"source": "summary_ingestion"},
+            },
+        )
+        result, created = CAEResult.objects.get_or_create(
+            run=run,
+            metric_code=str(record["metric_code"]),
+            defaults={
+                "result_type": str(record["result_type"]),
+                "value": float(record["value"]),
+                "unit": str(record["unit"]),
+                "location": record.get("location", {}),
+                "field_summary": record.get("field_summary", {}),
+                "quality_flags": [],
+                "parser_name": "ingestion_summary",
+                "parser_version": batch.mapping_version,
+                "source_locator": {"batch_id": str(batch.id)},
+            },
+        )
+        return CommitResult("cae_result", str(result.id), created)
 
     raise ValueError(f"No commit adapter for {batch.domain}.")
