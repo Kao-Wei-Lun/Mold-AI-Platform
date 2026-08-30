@@ -6,7 +6,7 @@
 |---|---|---|
 | CAE Summary | CSV, XLSX, JSON | Complete |
 | Knowledge secure parser | TXT, Markdown, PDF, DOCX | Complete |
-| HMI batch | PNG, JPG | Planned |
+| HMI batch | PNG, JPG | Complete |
 | CAD artifact/version | STEP, STP, STL | Planned |
 
 All Phase 4B paths retain immutable source artifacts and use the Phase 3 Ingestion Batch, typed issue, atomic commit, record result, reconciliation, audit, and job recovery contracts.
@@ -18,3 +18,7 @@ The `cae_results` adapter maps one source row to a Study, Run, and structured Re
 ## Knowledge secure parser
 
 Knowledge upload now supports TXT, Markdown, PDF, and DOCX. PDF processing rejects encryption, active actions, JavaScript, embedded files, malformed documents, and excessive page count. DOCX processing rejects malformed ZIP containers, unsafe entry count or expansion ratio, macros, and external relationships. Every format must yield text, passes the existing malware signature screen, and is scanned for prompt-injection patterns before indexing. Suspicious documents remain quarantined and cannot become retrieval evidence.
+
+## HMI batch upload
+
+`POST /api/v1/hmi-extractions/batch` accepts 1–20 PNG/JPG images. The service decodes and verifies every image before writing the batch, then creates one immutable HMI source Artifact and Extraction per image. The response includes a shared Ingestion Batch, per-image result identities, reconciliation, and a stable import-history deep link. The required idempotency key makes client retries safe and a replay returns the original extraction IDs.

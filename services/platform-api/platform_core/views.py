@@ -1,11 +1,15 @@
+import hashlib
+import json
 import uuid
 from datetime import date
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
@@ -44,6 +48,7 @@ from .design_review import (
 from .health import collect_readiness
 from .hmi import (
     HMIValidationError,
+    _validate_image,
     create_demo_hmi_png,
     create_hmi_extraction,
     export_hmi_workbook,
@@ -66,15 +71,19 @@ from .knowledge import (
 from .models import (
     Artifact,
     ArtifactVersion,
+    BulkImportBatch,
     CAEComparison,
     CAERun,
     CAEStudy,
     DataScope,
     HMIExtraction,
+    IngestionRecordResult,
+    IngestionSourceFile,
     Job,
     KnowledgeDocument,
     KnowledgeSearch,
     ProcessCaseSearch,
+    ReconciliationReport,
     ReviewFinding,
     ReviewRun,
     SimilaritySearch,
@@ -282,6 +291,152 @@ class HMIExtractionListCreateView(APIView):
             return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
         extraction = _hmi_extraction_queryset().get(pk=extraction.id)
         return Response(extraction_payload(extraction), status=status.HTTP_201_CREATED)
+
+
+class HMIExtractionBatchCreateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request: Request) -> Response:
+        uploads = request.FILES.getlist("files")
+        if not 1 <= len(uploads) <= 20:
+            return _error_response(
+                "VALIDATION_FILE_COUNT",
+                "HMI batch upload requires 1 to 20 images.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        idempotency_key = str(
+            request.data.get("idempotency_key") or request.headers.get("Idempotency-Key") or ""
+        ).strip()
+        if not idempotency_key or len(idempotency_key) > 255:
+            return _error_response(
+                "VALIDATION_IDEMPOTENCY_KEY",
+                "A batch idempotency key of at most 255 characters is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        existing = BulkImportBatch.objects.filter(idempotency_key=idempotency_key).first()
+        if existing:
+            if existing.domain != "hmi_images":
+                return _error_response(
+                    "IDEMPOTENCY_SCOPE_CONFLICT",
+                    "The idempotency key belongs to another import domain.",
+                    status.HTTP_409_CONFLICT,
+                )
+            extraction_ids = list(
+                existing.record_results.order_by("row_number").values_list("entity_id", flat=True)
+            )
+            return Response(
+                {
+                    "schema_version": "1.0",
+                    "batch_id": str(existing.id),
+                    "status": existing.status,
+                    "idempotent_replay": True,
+                    "extraction_ids": extraction_ids,
+                    "deep_link": f"/data/imports/{existing.id}",
+                }
+            )
+        try:
+            for upload in uploads:
+                _validate_image(upload.read(), upload.name)
+                upload.seek(0)
+        except HMIValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+
+        profile = str(request.data.get("profile", "demo-generic-injection@1.0"))
+        scope = DataScope.objects.get(code="public-demo")
+        actor = str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+        stored_keys: list[str] = []
+        try:
+            with transaction.atomic():
+                batch = BulkImportBatch.objects.create(
+                    scope=scope,
+                    domain="hmi_images",
+                    source_name=f"HMI batch ({len(uploads)} images)",
+                    idempotency_key=idempotency_key,
+                    schema_version="1.0",
+                    classification=scope.classification,
+                    records=[{"file_name": upload.name, "profile": profile} for upload in uploads],
+                    validation_result={
+                        "valid": True,
+                        "record_count": len(uploads),
+                        "valid_count": len(uploads),
+                        "existing_count": 0,
+                        "issues": [],
+                    },
+                    status=BulkImportBatch.Status.COMMITTING,
+                    created_by=actor,
+                )
+                extraction_ids = []
+                for index, upload in enumerate(uploads, start=1):
+                    extraction = create_hmi_extraction(upload, profile=profile)
+                    version = extraction.image_artifact_version
+                    stored_keys.append(version.storage_key)
+                    extraction_ids.append(str(extraction.id))
+                    IngestionSourceFile.objects.create(
+                        batch=batch,
+                        artifact_version=version,
+                        file_name=version.original_filename,
+                        sha256=version.sha256,
+                        mime_type=version.media_type,
+                        size_bytes=version.size_bytes,
+                        screening={"image": "decoded", "signature": "verified"},
+                    )
+                    IngestionRecordResult.objects.create(
+                        batch=batch,
+                        row_number=index,
+                        outcome=IngestionRecordResult.Outcome.CREATED,
+                        entity_type="hmi_extraction",
+                        entity_id=str(extraction.id),
+                    )
+                reconciliation = {
+                    "source_count": len(uploads),
+                    "created_count": len(uploads),
+                    "updated_count": 0,
+                    "skipped_existing_count": 0,
+                    "error_count": 0,
+                    "balanced": True,
+                    "scope": scope.code,
+                }
+                report_hash = hashlib.sha256(
+                    json.dumps(reconciliation, sort_keys=True).encode()
+                ).hexdigest()
+                ReconciliationReport.objects.create(
+                    batch=batch,
+                    source_count=len(uploads),
+                    created_count=len(uploads),
+                    balanced=True,
+                    report_hash=report_hash,
+                )
+                batch.reconciliation = {**reconciliation, "report_hash": report_hash}
+                batch.status = BulkImportBatch.Status.COMMITTED
+                batch.committed_by = actor
+                batch.committed_at = timezone.now()
+                batch.save(
+                    update_fields=["reconciliation", "status", "committed_by", "committed_at"]
+                )
+        except HMIValidationError as exc:
+            for key in stored_keys:
+                default_storage.delete(key)
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        audit_identity_event(
+            "ingestion.hmi_batch_committed.v1",
+            actor_id=actor,
+            target_refs=[f"ingestion:{batch.id}", *[f"hmi:{item}" for item in extraction_ids]],
+            detail={"count": len(extraction_ids), "profile": profile},
+        )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "batch_id": str(batch.id),
+                "status": batch.status,
+                "idempotent_replay": False,
+                "extraction_ids": extraction_ids,
+                "reconciliation": batch.reconciliation,
+                "deep_link": f"/data/imports/{batch.id}",
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class HMIExtractionDetailView(APIView):

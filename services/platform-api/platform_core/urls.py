@@ -85,6 +85,7 @@ from .views import (
     DesignReviewListCreateView,
     EngineeringCapabilitiesView,
     HMIDemoFixtureView,
+    HMIExtractionBatchCreateView,
     HMIExtractionDetailView,
     HMIExtractionExportView,
     HMIExtractionListCreateView,
@@ -170,6 +171,11 @@ urlpatterns = [
         "hmi-extractions",
         HMIExtractionListCreateView.as_view(),
         name="hmi-extraction-list-create",
+    ),
+    path(
+        "hmi-extractions/batch",
+        HMIExtractionBatchCreateView.as_view(),
+        name="hmi-extraction-batch-create",
     ),
     path(
         "hmi-extractions/<uuid:extraction_id>",

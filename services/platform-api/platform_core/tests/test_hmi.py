@@ -7,7 +7,14 @@ from openpyxl import load_workbook
 from PIL import Image
 
 from platform_core.hmi import FIELD_SPECS, create_demo_hmi_png
-from platform_core.models import Artifact, AuditEvent, HMIExport, HMIExtraction
+from platform_core.models import (
+    Artifact,
+    AuditEvent,
+    BulkImportBatch,
+    HMIExport,
+    HMIExtraction,
+    IngestionRecordResult,
+)
 
 
 class HMIExtractionEndpointTests(TestCase):
@@ -32,6 +39,54 @@ class HMIExtractionEndpointTests(TestCase):
         return self.client.post(
             "/api/v1/hmi-extractions",
             {"file": self.upload(low_confidence), "profile": "demo-generic-injection@1.0"},
+        )
+
+    def test_batch_upload_tracks_each_image_and_is_idempotent(self) -> None:
+        response = self.client.post(
+            "/api/v1/hmi-extractions/batch",
+            {
+                "files": [self.upload(False, "hmi-a.png"), self.upload(True, "hmi-b.png")],
+                "profile": "demo-generic-injection@1.0",
+                "idempotency_key": "hmi-batch-test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(len(payload["extraction_ids"]), 2)
+        self.assertTrue(payload["reconciliation"]["balanced"])
+        batch = BulkImportBatch.objects.get(id=payload["batch_id"])
+        self.assertEqual(batch.status, BulkImportBatch.Status.COMMITTED)
+        self.assertEqual(IngestionRecordResult.objects.filter(batch=batch).count(), 2)
+
+        replay = self.client.post(
+            "/api/v1/hmi-extractions/batch",
+            {
+                "files": [self.upload(False, "ignored.png")],
+                "idempotency_key": "hmi-batch-test",
+            },
+        )
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json()["idempotent_replay"])
+        self.assertEqual(replay.json()["extraction_ids"], payload["extraction_ids"])
+        self.assertEqual(HMIExtraction.objects.count(), 2)
+
+    def test_batch_preflight_prevents_partial_image_writes(self) -> None:
+        response = self.client.post(
+            "/api/v1/hmi-extractions/batch",
+            {
+                "files": [
+                    self.upload(False, "valid.png"),
+                    SimpleUploadedFile("invalid.png", b"not-an-image", content_type="image/png"),
+                ],
+                "idempotency_key": "hmi-invalid-batch",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(HMIExtraction.objects.count(), 0)
+        self.assertFalse(
+            BulkImportBatch.objects.filter(idempotency_key="hmi-invalid-batch").exists()
         )
 
     def test_clean_profile_recognizes_all_critical_numeric_fields_exactly(self) -> None:
