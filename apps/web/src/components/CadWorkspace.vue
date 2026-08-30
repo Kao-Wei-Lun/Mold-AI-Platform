@@ -12,9 +12,10 @@ import {
 import { useI18n } from "../i18n";
 import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import { pushToast } from "../toast";
-import { formatFileSize, uploadPolicies, validateUploadFile } from "../fileUpload";
+import { uploadPolicies, validateUploadFile } from "../fileUpload";
 import { fetchRegistry, type RegistryRevision } from "../api/registry";
 import FormField from "./FormField.vue";
+import FileDropZone from "./FileDropZone.vue";
 
 const { locale, t } = useI18n();
 
@@ -134,17 +135,10 @@ watch(existingArtifactId, (id) => {
   materialCode.value = artifact.material_code;
 });
 
-function chooseFile(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const candidate = input.files?.[0] || null;
-  if (!candidate) {
-    selectedFile.value = null;
-    return;
-  }
+function selectFile(candidate: File): void {
   const validation = validateUploadFile(candidate, uploadPolicies.cad);
   if (validation) {
     selectedFile.value = null;
-    input.value = "";
     error.value = validation === "too_large"
       ? t("File size exceeds the {limit} MB limit.", { limit: 200 })
       : t("File type is not supported. Allowed: {formats}.", { formats: "STEP, STP, STL" });
@@ -335,11 +329,16 @@ loadRevisions();
         {{ t("This CAD will be stored as unassigned. Preview and generic analysis remain available; mold-specific rules and formal engineering history require a mold revision.") }}
       </p>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
-        <input :id="fieldId" type="file" accept=".step,.stp,.stl" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="chooseFile" />
-        <div v-if="selectedFile" class="selected-file-summary" aria-live="polite">
-          <strong>{{ selectedFile.name }}</strong>
-          <span>{{ formatFileSize(selectedFile.size) }} · {{ t("Ready to upload") }}</span>
-        </div>
+        <FileDropZone
+          :id="fieldId"
+          accept=".step,.stp,.stl"
+          :prompt="t('Drop STEP, STP or STL here')"
+          :selected-file="selectedFile"
+          :described-by="describedBy"
+          :invalid="invalid"
+          :disabled="uploading"
+          @select="selectFile"
+        />
       </FormField>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Artifact name')" :helper="t('Use a recognizable engineering revision name.')">
         <input :id="fieldId" v-model="artifactName" type="text" maxlength="255" :placeholder="t('Housing revision A')" :aria-describedby="describedBy" :aria-invalid="invalid" />

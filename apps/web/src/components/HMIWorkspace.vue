@@ -14,6 +14,7 @@ import { downloadProtectedArtifact } from "../api/client";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
+import FileDropZone from "./FileDropZone.vue";
 import { formatFileSize, uploadPolicies, validateUploadFile } from "../fileUpload";
 
 const { t } = useI18n();
@@ -48,14 +49,6 @@ function setFile(file: File): void {
   exported.value = null;
   edits.value = {};
   error.value = null;
-}
-
-function onFile(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  setFile(file);
-  if (selectedFile.value !== file) input.value = "";
 }
 
 async function loadDemo(): Promise<void> {
@@ -165,7 +158,16 @@ onBeforeUnmount(() => {
 
     <div class="hmi-input-bar">
       <FormField v-slot="{ fieldId, describedBy, invalid }" class="hmi-file-picker" :label="t('HMI image')" required :helper="t('PNG or JPG · maximum 10 MB')">
-        <input :id="fieldId" type="file" accept="image/png,image/jpeg" :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
+        <FileDropZone
+          :id="fieldId"
+          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+          :prompt="t('Drop PNG or JPG here')"
+          :selected-file="selectedFile"
+          :described-by="describedBy"
+          :invalid="invalid"
+          :disabled="extracting"
+          @select="setFile"
+        />
       </FormField>
       <button type="button" class="secondary-button" :disabled="loadingDemo" :aria-busy="loadingDemo" @click="loadDemo">
         {{ loadingDemo ? t("Loading...") : t("Load low-confidence Demo screen") }}

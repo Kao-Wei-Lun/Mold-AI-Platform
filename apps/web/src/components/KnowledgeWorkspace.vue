@@ -19,8 +19,9 @@ import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
+import FileDropZone from "./FileDropZone.vue";
 import type { LocalAccount } from "../api/identity";
-import { formatFileSize, uploadPolicies, validateUploadFile } from "../fileUpload";
+import { uploadPolicies, validateUploadFile } from "../fileUpload";
 
 const { locale, t } = useI18n();
 
@@ -77,18 +78,11 @@ const queryError = computed(() =>
   searchAttempted.value && !query.value.trim() ? t("Enter an engineering question or terms.") : "",
 );
 
-function onFile(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const candidate = input.files?.[0] || null;
+function selectFile(candidate: File): void {
   fileSelectionError.value = "";
-  if (!candidate) {
-    file.value = null;
-    return;
-  }
   const validation = validateUploadFile(candidate, uploadPolicies.knowledge);
   if (validation) {
     file.value = null;
-    input.value = "";
     fileSelectionError.value = validation === "too_large"
       ? t("File size exceeds the {limit} MB limit.", { limit: 5 })
       : t("File type is not supported. Allowed: {formats}.", { formats: "TXT, MD, PDF, DOCX" });
@@ -281,11 +275,17 @@ onBeforeUnmount(() => {
         </div>
         <form class="knowledge-upload-form" @submit.prevent="submitUpload">
           <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('Knowledge source file')" required :helper="t('TXT, Markdown, PDF or DOCX · maximum 5 MB · security screened')" :error="fileError">
-            <input :id="fieldId" type="file" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required :aria-describedby="describedBy" :aria-invalid="invalid" @change="onFile" />
-            <div v-if="file" class="selected-file-summary" aria-live="polite">
-              <strong>{{ file.name }}</strong>
-              <span>{{ formatFileSize(file.size) }} · {{ t("Ready for security screening") }}</span>
-            </div>
+            <FileDropZone
+              :id="fieldId"
+              accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              :prompt="t('Drop TXT, Markdown, PDF or DOCX here')"
+              :ready-text="t('Ready for security screening')"
+              :selected-file="file"
+              :described-by="describedBy"
+              :invalid="invalid"
+              :disabled="uploading"
+              @select="selectFile"
+            />
           </FormField>
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Title')" required :helper="t('Use at least 3 characters so the source is recognizable.')" :error="titleError">
             <input :id="fieldId" v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" :aria-describedby="describedBy" :aria-invalid="invalid" />
