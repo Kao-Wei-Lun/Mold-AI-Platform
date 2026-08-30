@@ -42,6 +42,12 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "enterprise:read",
     "enterprise:manage",
     "bulk:manage",
+    "ingestion:read",
+    "ingestion:create",
+    "ingestion:validate",
+    "ingestion:commit",
+    "ingestion:cancel",
+    "ingestion:template-manage",
 }
 
 

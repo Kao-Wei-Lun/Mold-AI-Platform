@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from .cad_processing import CADProcessingError, parse_cad_file
 from .design_review import DesignReviewValidationError, evaluate_review
+from .ingestion_center import IngestionError, commit_batch
 from .knowledge import KnowledgeValidationError, index_knowledge_document
 from .models import (
     Artifact,
@@ -32,6 +33,33 @@ TERMINAL_STATES = {Job.State.SUCCEEDED, Job.State.FAILED, Job.State.CANCELLED, J
 @shared_task(name="platform_core.echo")
 def echo(payload: object) -> object:
     return payload
+
+
+@shared_task(name="platform_core.commit_ingestion_job")
+def commit_ingestion_job(job_id: str, batch_id: str, actor_id: str) -> dict[str, object]:
+    update_job(job_id, state=Job.State.RUNNING, stage="committing", progress=10)
+    try:
+        batch = commit_batch(batch_id, actor_id=actor_id)
+    except IngestionError as exc:
+        from .models import BulkImportBatch
+
+        BulkImportBatch.objects.filter(id=batch_id).update(status=BulkImportBatch.Status.FAILED)
+        mark_job_failed(job_id, exc.code, exc.user_message)
+        return {"status": "failed", "error_code": exc.code}
+    except Exception as exc:
+        from .models import BulkImportBatch
+
+        BulkImportBatch.objects.filter(id=batch_id).update(status=BulkImportBatch.Status.FAILED)
+        mark_job_failed(job_id, "INGESTION_COMMIT_FAILED", str(exc))
+        return {"status": "failed", "error_code": "INGESTION_COMMIT_FAILED"}
+    update_job(
+        job_id,
+        state=Job.State.SUCCEEDED,
+        stage="committed",
+        progress=100,
+        result_ref=f"ingestion:{batch.id}",
+    )
+    return {"status": "committed", "batch_id": str(batch.id)}
 
 
 def update_job(

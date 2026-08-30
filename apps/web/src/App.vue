@@ -46,6 +46,7 @@ const accessReady = ref(false);
 const currentAccount = ref<LocalAccount | null>(null);
 const assistantOpen = ref(true);
 const navigationOpen = ref(false);
+const addDataOpen = ref(false);
 const masterDataOptions = ref<MasterDataOptions>(emptyMasterDataOptions());
 const masterDataLoading = ref(false);
 const masterDataError = ref<string | null>(null);
@@ -85,6 +86,10 @@ const activeDeepLink = computed(() => {
 const selectedCadLabel = computed(() =>
   activeCAD.value ? activeCAD.value.artifact_version_id.slice(0, 8) : t("No CAD selected"),
 );
+const canAddData = computed(() => currentAccount.value?.permissions.some((permission) => [
+  "ingestion:create", "bulk:manage", "registry:manage", "engineering-data:manage",
+  "knowledge:author", "rules:author", "public-demo:write",
+].includes(permission)) || false);
 
 const guidedSteps: Array<{ number: string; route: WorkspaceRouteId; title: string; detail: string }> = [
   { number: "01", route: "cad", title: "Prepare CAD", detail: "Select a curated model or process STEP/STL." },
@@ -109,6 +114,7 @@ function navigate(routeId: WorkspaceRouteId): void {
   }
   deepLinkVisible.value = false;
   navigationOpen.value = false;
+  addDataOpen.value = false;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -120,6 +126,7 @@ function navigatePath(path: string): void {
   currentPath.value = `${target.pathname}${target.search}`;
   deepLinkVisible.value = false;
   navigationOpen.value = false;
+  addDataOpen.value = false;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -251,6 +258,18 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           <div class="language-switch" role="group" :aria-label="t('Switch language')">
             <button type="button" :class="{ active: locale === 'en' }" :aria-pressed="locale === 'en'" @click="setLocale('en')">EN</button>
             <button type="button" :class="{ active: locale === 'zh-TW' }" :aria-pressed="locale === 'zh-TW'" @click="setLocale('zh-TW')">中文</button>
+          </div>
+          <div v-if="accessReady && canAddData" class="global-add-menu">
+            <button type="button" :aria-expanded="addDataOpen" @click="addDataOpen = !addDataOpen">＋ {{ t("Add data") }}</button>
+            <div v-if="addDataOpen" class="global-add-popover">
+              <strong>{{ t("What do you want to add?") }}</strong>
+              <button type="button" @click="navigatePath('/data/imports')">{{ t("Batch import") }}</button>
+              <button type="button" @click="navigate('cad')">{{ t("CAD file") }}</button>
+              <button type="button" @click="navigate('mold_registry')">{{ t("Project / part / mold") }}</button>
+              <button type="button" @click="navigate('engineering_data')">{{ t("Trial / CAE / HMI") }}</button>
+              <button type="button" @click="navigate('knowledge')">{{ t("Knowledge document") }}</button>
+              <button type="button" @click="navigate('rules')">{{ t("Mold rules") }}</button>
+            </div>
           </div>
           <button type="button" class="assistant-toggle" @click="assistantOpen = !assistantOpen">
             {{ assistantOpen ? t("Hide assistant") : t("Open assistant") }}

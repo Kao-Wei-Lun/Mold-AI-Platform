@@ -138,6 +138,7 @@ class Artifact(models.Model):
         KNOWLEDGE_SOURCE = "knowledge_source", "Knowledge source"
         HMI_SOURCE = "hmi_source", "HMI source image"
         HMI_EXPORT = "hmi_export", "HMI spreadsheet export"
+        IMPORT_SOURCE = "import_source", "Ingestion source file"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -810,24 +811,43 @@ class EnterpriseDataPolicy(models.Model):
 
 class BulkImportBatch(models.Model):
     class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        UPLOADED = "uploaded", "Uploaded"
+        MAPPING_REQUIRED = "mapping_required", "Mapping required"
+        VALIDATING = "validating", "Validating"
+        VALIDATION_FAILED = "validation_failed", "Validation failed"
         VALIDATED = "validated", "Validated"
+        QUEUED = "queued", "Queued"
+        COMMITTING = "committing", "Committing"
         COMMITTED = "committed", "Committed"
         FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     scope = models.ForeignKey("DataScope", related_name="import_batches", on_delete=models.PROTECT)
     domain = models.CharField(max_length=32)
     source_name = models.CharField(max_length=255)
     idempotency_key = models.CharField(max_length=255, unique=True)
+    schema_version = models.CharField(max_length=32, default="1.0")
+    classification = models.CharField(max_length=32, default="public_demo")
+    mapping_version = models.CharField(max_length=32, default="1.0")
     records = models.JSONField(default=list)
     field_mapping = models.JSONField(default=dict)
     validation_result = models.JSONField(default=dict)
     reconciliation = models.JSONField(default=dict)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.VALIDATED)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.DRAFT)
+    job = models.OneToOneField(
+        Job,
+        related_name="ingestion_batch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
     created_by = models.CharField(max_length=128)
     committed_by = models.CharField(max_length=128, blank=True)
     committed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -837,6 +857,117 @@ class BulkImportBatch(models.Model):
 
     def __str__(self) -> str:
         return f"{self.domain}:{self.id} [{self.status}]"
+
+
+class IngestionSourceFile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        BulkImportBatch, related_name="source_files", on_delete=models.CASCADE
+    )
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, related_name="ingestion_sources", on_delete=models.PROTECT
+    )
+    file_name = models.CharField(max_length=255)
+    sha256 = models.CharField(max_length=64)
+    mime_type = models.CharField(max_length=128)
+    size_bytes = models.PositiveBigIntegerField()
+    screening = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.batch_id}:{self.file_name}"
+
+
+class MappingProfile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.ForeignKey(
+        "DataScope", related_name="mapping_profiles", on_delete=models.PROTECT
+    )
+    domain = models.CharField(max_length=32)
+    name = models.CharField(max_length=128)
+    version = models.CharField(max_length=32, default="1.0")
+    field_mapping = models.JSONField(default=dict)
+    is_active = models.BooleanField(default=True)
+    created_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "domain", "name", "version"],
+                name="unique_ingestion_mapping_version",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope_id}:{self.domain}:{self.name}@{self.version}"
+
+
+class IngestionIssue(models.Model):
+    class Severity(models.TextChoices):
+        BLOCKING = "blocking", "Blocking"
+        WARNING = "warning", "Warning"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(BulkImportBatch, related_name="issues", on_delete=models.CASCADE)
+    row_number = models.PositiveIntegerField(null=True, blank=True)
+    field_name = models.CharField(max_length=128, blank=True)
+    code = models.CharField(max_length=128)
+    message = models.CharField(max_length=512)
+    raw_value = models.JSONField(null=True, blank=True)
+    suggestion = models.CharField(max_length=512, blank=True)
+    severity = models.CharField(max_length=16, choices=Severity.choices, default=Severity.BLOCKING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.batch_id}:{self.row_number or 0}:{self.code}"
+
+
+class IngestionRecordResult(models.Model):
+    class Outcome(models.TextChoices):
+        CREATED = "created", "Created"
+        UPDATED = "updated", "Updated"
+        SKIPPED = "skipped", "Skipped"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        BulkImportBatch, related_name="record_results", on_delete=models.CASCADE
+    )
+    row_number = models.PositiveIntegerField()
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    entity_type = models.CharField(max_length=64)
+    entity_id = models.CharField(max_length=128, blank=True)
+    detail = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "row_number"], name="unique_ingestion_row_result"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.batch_id}:{self.row_number}:{self.outcome}"
+
+
+class ReconciliationReport(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.OneToOneField(
+        BulkImportBatch, related_name="reconciliation_report", on_delete=models.CASCADE
+    )
+    source_count = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    balanced = models.BooleanField(default=False)
+    report_hash = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.batch_id}:{'balanced' if self.balanced else 'unbalanced'}"
 
 
 class BulkArchiveOperation(models.Model):

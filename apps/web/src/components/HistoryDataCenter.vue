@@ -9,6 +9,7 @@ import DetailDrawer from "./DetailDrawer.vue";
 import EngineeringHistoryWorkspace from "./EngineeringHistoryWorkspace.vue";
 import EnterpriseHistoryWorkspace from "./EnterpriseHistoryWorkspace.vue";
 import GovernanceHistoryWorkspace from "./GovernanceHistoryWorkspace.vue";
+import IngestionWorkspace from "./IngestionWorkspace.vue";
 import OperationalHistoryWorkspace from "./OperationalHistoryWorkspace.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RegistryCadHistoryWorkspace from "./RegistryCadHistoryWorkspace.vue";
@@ -43,6 +44,7 @@ const domains: HistoryDomain[] = [
   { slug: "jobs", title: "Jobs & queue", description: "Processing attempts, event timelines, failures, retry and cancel controls.", stage: "H6", permission: "public-demo:read" },
   { slug: "audit-lineage", title: "Audit & lineage", description: "Actor decisions, changes, source evidence and derived relationships.", stage: "H6", permission: "public-demo:read" },
   { slug: "enterprise", title: "Enterprise controls", description: "Bulk import, retention, legal hold, DLP, SIEM and connector isolation.", stage: "H7", permission: "enterprise:read" },
+  { slug: "imports", title: "Data import center", description: "Upload, map, dry run, commit and reconcile governed source data.", stage: "I1", permission: "ingestion:read" },
 ];
 
 const currentSlug = computed(() => {
@@ -125,6 +127,12 @@ function openDomain(domain: HistoryDomain): void {
       :path="path"
       :current-account="currentAccount"
       @navigate="emit('navigate', $event)"
+    />
+
+    <IngestionWorkspace
+      v-else-if="currentSlug === 'imports'"
+      :path="path"
+      :current-account="currentAccount"
     />
 
     <template v-else-if="currentDomain">

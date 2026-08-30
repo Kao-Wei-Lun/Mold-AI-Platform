@@ -9,7 +9,15 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AuditEvent, CADModel, Job, JobEvent, KnowledgeDocument, ReviewRun
+from .models import (
+    AuditEvent,
+    BulkImportBatch,
+    CADModel,
+    Job,
+    JobEvent,
+    KnowledgeDocument,
+    ReviewRun,
+)
 from .tasks import update_job
 
 TASK_NAMES = {
@@ -17,7 +25,17 @@ TASK_NAMES = {
     "knowledge.ingest": "platform_core.process_knowledge_job",
     "mold.design_review": "platform_core.run_design_review_job",
     "mold.similarity_search": "platform_core.run_similarity_job",
+    "data.ingestion.commit": "platform_core.commit_ingestion_job",
 }
+
+
+def _task_args(job: Job) -> list[str]:
+    if job.capability_id == "data.ingestion.commit":
+        batch = BulkImportBatch.objects.filter(job=job).first()
+        if batch is None:
+            return [str(job.id), "", "recovery"]
+        return [str(job.id), str(batch.id), batch.created_by]
+    return [str(job.id)]
 
 
 def _stale_jobs(cutoff, limit: int):
@@ -76,6 +94,8 @@ def _synchronize_failed_domain(job: Job, error_code: str) -> None:
         )
     elif job.capability_id == "mold.design_review":
         ReviewRun.objects.filter(job_id=job.id).update(review_status=ReviewRun.Status.FAILED)
+    elif job.capability_id == "data.ingestion.commit":
+        BulkImportBatch.objects.filter(job_id=job.id).update(status=BulkImportBatch.Status.FAILED)
 
 
 def _fail_job(job: Job, code: str, message: str) -> None:
@@ -162,7 +182,7 @@ def recover_stale_jobs(
             _requeue_job(job)
 
         try:
-            current_app.send_task(task_name, args=[str(job_id)], queue=queue)
+            current_app.send_task(task_name, args=_task_args(job), queue=queue)
             actions["requeued"] += 1
         except Exception:
             with transaction.atomic():

@@ -47,6 +47,18 @@ from .identity_views import (
     LocalLogoutView,
     RoleAssignmentCreateRevokeView,
 )
+from .ingestion_views import (
+    ImportTemplateView,
+    IngestionCancelView,
+    IngestionCommitView,
+    IngestionDetailView,
+    IngestionFileView,
+    IngestionIssuesView,
+    IngestionListCreateView,
+    IngestionMappingView,
+    IngestionReconciliationView,
+    IngestionValidateView,
+)
 from .master_data_views import MasterDataDetailView, MasterDataListCreateView, MasterDataOptionsView
 from .registry_views import (
     ArtifactGovernanceView,
@@ -337,6 +349,34 @@ urlpatterns = [
         RuleProfileImpactPreviewView.as_view(),
         name="rule-profile-impact-preview",
     ),
+    path("ingestions", IngestionListCreateView.as_view(), name="ingestion-list-create"),
+    path("ingestions/<uuid:batch_id>", IngestionDetailView.as_view(), name="ingestion-detail"),
+    path("ingestions/<uuid:batch_id>/files", IngestionFileView.as_view(), name="ingestion-files"),
+    path(
+        "ingestions/<uuid:batch_id>/mapping",
+        IngestionMappingView.as_view(),
+        name="ingestion-mapping",
+    ),
+    path(
+        "ingestions/<uuid:batch_id>/validate",
+        IngestionValidateView.as_view(),
+        name="ingestion-validate",
+    ),
+    path(
+        "ingestions/<uuid:batch_id>/issues", IngestionIssuesView.as_view(), name="ingestion-issues"
+    ),
+    path(
+        "ingestions/<uuid:batch_id>/commit", IngestionCommitView.as_view(), name="ingestion-commit"
+    ),
+    path(
+        "ingestions/<uuid:batch_id>/cancel", IngestionCancelView.as_view(), name="ingestion-cancel"
+    ),
+    path(
+        "ingestions/<uuid:batch_id>/reconciliation",
+        IngestionReconciliationView.as_view(),
+        name="ingestion-reconciliation",
+    ),
+    path("import-templates/<str:domain>", ImportTemplateView.as_view(), name="import-template"),
     path(
         "design-reviews",
         DesignReviewListCreateView.as_view(),
