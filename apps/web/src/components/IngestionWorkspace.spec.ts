@@ -18,7 +18,7 @@ function batch(overrides: Record<string, unknown> = {}) {
     status: "draft", mapping_version: "1.0", validation: {}, reconciliation: {}, job_id: null,
     created_by: "account-1", created_at: "2026-08-30T00:00:00Z", updated_at: "2026-08-30T00:00:00Z",
     deep_link: "/data/imports/11111111-1111-4111-8111-111111111111", request_id: "request-1",
-    correlation_id: null, field_mapping: {}, records: [], source_files: [], issues: [], ...overrides,
+    correlation_id: null, field_mapping: {}, records: [], source_files: [], issues: [], record_results: [], ...overrides,
   };
 }
 
@@ -60,5 +60,23 @@ describe("IngestionWorkspace", () => {
     expect(wrapper.text()).toContain("REQUIRED_FIELDS");
     expect(wrapper.text()).toContain("name_en is required");
     expect(wrapper.text()).toContain("Source rows");
+  });
+
+  it("uses stable deep links for history selection and related evidence", async () => {
+    const committed = batch({ status: "committed", job_id: "job-1", record_results: [{ row_number: 1, outcome: "created", entity_type: "project", entity_id: "project-1", detail: {} }] });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes(committed.batch_id)
+      ? { ok: true, status: 200, json: async () => committed }
+      : { ok: true, status: 200, json: async () => ({ items: [committed] }) }));
+    const wrapper = mount(IngestionWorkspace, { props: { path: "/data/imports", currentAccount: account } });
+    await flushPromises();
+    await wrapper.get("tbody tr").trigger("click");
+    expect(wrapper.emitted("navigate")?.[0]).toEqual([committed.deep_link]);
+
+    await wrapper.setProps({ path: committed.deep_link });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Imported records");
+    const actions = wrapper.findAll(".ingestion-evidence-links button");
+    await actions[0].trigger("click");
+    expect(wrapper.emitted("navigate")?.some((event) => event[0] === "/data/jobs/job-1")).toBe(true);
   });
 });

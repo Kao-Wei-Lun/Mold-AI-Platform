@@ -53,6 +53,8 @@ const currentSlug = computed(() => {
   return segments[0] === "data" && segments[1] ? segments[1] : "overview";
 });
 const currentDomain = computed(() => domains.find((domain) => domain.slug === currentSlug.value) || null);
+const availableDomains = computed(() => domains.filter((domain) => !props.currentAccount || props.currentAccount.permissions.includes(domain.permission)));
+const hasDomainAccess = computed(() => !currentDomain.value || availableDomains.value.includes(currentDomain.value));
 
 function openDomain(domain: HistoryDomain): void {
   emit("navigate", `/data/${domain.slug}`);
@@ -63,21 +65,21 @@ function openDomain(domain: HistoryDomain): void {
   <section class="history-data-center">
     <nav class="history-domain-nav" :aria-label="t('Historical data domains')">
       <button type="button" :class="{ active: currentSlug === 'overview' }" @click="emit('navigate', '/data/overview')">{{ t("Overview") }}</button>
-      <button v-for="domain in domains" :key="domain.slug" type="button" :class="{ active: currentSlug === domain.slug }" @click="openDomain(domain)">{{ t(domain.title) }}</button>
+      <button v-for="domain in availableDomains" :key="domain.slug" type="button" :class="{ active: currentSlug === domain.slug }" @click="openDomain(domain)">{{ t(domain.title) }}</button>
     </nav>
 
     <template v-if="currentSlug === 'overview'">
       <section class="history-overview-hero">
         <div>
-          <p class="eyebrow">{{ t("Historical data center") }}</p>
+          <p class="eyebrow">{{ t("Data library") }}</p>
           <h2>{{ t("Find complete engineering evidence") }}</h2>
           <p>{{ t("Browse complete records here while engineering workspaces remain focused on creating and analyzing data.") }}</p>
         </div>
-        <div class="history-overview-stat"><strong>{{ domains.length }}</strong><span>{{ t("governed domains") }}</span></div>
+        <div class="history-overview-stat"><strong>{{ availableDomains.length }}</strong><span>{{ t("governed domains") }}</span></div>
       </section>
 
       <div class="history-domain-grid">
-        <article v-for="domain in domains" :key="domain.slug">
+        <article v-for="domain in availableDomains" :key="domain.slug">
           <div class="history-domain-card-heading"><span>{{ domain.stage }}</span><small>{{ domain.permission }}</small></div>
           <h3>{{ t(domain.title) }}</h3>
           <p>{{ t(domain.description) }}</p>
@@ -88,6 +90,12 @@ function openDomain(domain: HistoryDomain): void {
         </article>
       </div>
     </template>
+
+    <section v-else-if="currentDomain && !hasDomainAccess" class="workspace-state error-state" role="alert">
+      <strong>{{ t("Permission required") }}</strong>
+      <span>{{ t("Your account cannot open this data domain.") }}</span>
+      <button type="button" @click="emit('navigate', '/data/overview')">{{ t("Return to data library") }}</button>
+    </section>
 
     <EngineeringHistoryWorkspace
       v-else-if="currentSlug === 'trials' || currentSlug === 'cae' || currentSlug === 'hmi'"
@@ -133,6 +141,7 @@ function openDomain(domain: HistoryDomain): void {
       v-else-if="currentSlug === 'imports'"
       :path="path"
       :current-account="currentAccount"
+      @navigate="emit('navigate', $event)"
     />
 
     <template v-else-if="currentDomain">

@@ -4543,6 +4543,11 @@ button:not(:disabled):active { transform: translateY(0); }
 .ingestion-issue-list { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
 .ingestion-issue-list article { display: grid; grid-template-columns: 170px 80px 1fr; gap: 0.6rem; border-left: 4px solid #c84545; border-radius: 9px; padding: 0.65rem; background: #fff1f1; }
 .ingestion-history h3 { margin-top: 0; }
+.ingestion-result-list { display: grid; gap: 0.55rem; margin-top: 1rem; }
+.ingestion-result-list h4 { margin: 0; }
+.ingestion-result-list article { display: grid; grid-template-columns: 7rem 1fr auto; gap: 0.75rem; align-items: center; border: 1px solid #d8e3ee; border-radius: 11px; padding: 0.7rem 0.8rem; background: #f8fbff; }
+.ingestion-result-list article > span { color: #6c7e93; font-size: 0.72rem; }
+.ingestion-evidence-links { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1rem; border-top: 1px solid #e0e8f0; padding-top: 1rem; }
 
 @media (prefers-reduced-motion: no-preference) {
   .page-header,
@@ -4634,6 +4639,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .history-mutation-grid { grid-template-columns: 1fr; }
   .history-mutation-grid .form-wide { grid-column: auto; }
   .history-diff span { transform: rotate(90deg); text-align: center; }
+  .ingestion-result-list article { grid-template-columns: 1fr; }
   .detail-drawer { width: 100vw; }
   .property-grid > div { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; }

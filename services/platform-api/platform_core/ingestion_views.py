@@ -214,6 +214,16 @@ def _batch_payload(
                     }
                     for item in batch.issues.all()
                 ],
+                "record_results": [
+                    {
+                        "row_number": item.row_number,
+                        "outcome": item.outcome,
+                        "entity_type": item.entity_type,
+                        "entity_id": item.entity_id,
+                        "detail": item.detail,
+                    }
+                    for item in batch.record_results.all()
+                ],
             }
         )
     return payload

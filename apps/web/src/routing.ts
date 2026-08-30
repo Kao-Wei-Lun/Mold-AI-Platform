@@ -132,10 +132,10 @@ export const workspaceRoutes: WorkspaceRoute[] = [
   {
     id: "history_data",
     path: "/data/overview",
-    label: "Historical data",
+    label: "Data library",
     group: "Governance",
-    eyebrow: "Governance / Historical data",
-    title: "Browse governed engineering history",
+    eyebrow: "Governance / Data library",
+    title: "Browse governed engineering data",
     description: "Open complete records, versions, relationships, lineage and audit evidence without overwriting history.",
   },
   {

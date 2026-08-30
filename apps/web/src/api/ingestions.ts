@@ -34,6 +34,7 @@ export type IngestionBatch = {
   records?: Array<Record<string, unknown>>;
   source_files?: Array<{ source_file_id: string; artifact_version_id: string; file_name: string; sha256: string; mime_type: string; size_bytes: number; screening: Record<string, unknown> }>;
   issues?: IngestionIssue[];
+  record_results?: Array<{ row_number: number; outcome: string; entity_type: string; entity_id: string; detail: Record<string, unknown> }>;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
