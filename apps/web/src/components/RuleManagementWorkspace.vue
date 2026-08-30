@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 
 import type { LocalAccount } from "../api/identity";
+import type { DeepLinkContext } from "../deepLinks";
 import { emptyMasterDataOptions, fetchMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import {
   createRuleProfile,
@@ -23,7 +24,10 @@ import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
 
 const { t } = useI18n();
-const props = defineProps<{ currentAccount?: LocalAccount | null }>();
+const props = defineProps<{
+  currentAccount?: LocalAccount | null;
+  deepLink?: DeepLinkContext | null;
+}>();
 
 const profiles = ref<RuleProfile[]>([]);
 const selectedProfileId = ref("");
@@ -167,7 +171,15 @@ function optionsFor(dimension: RuleApplicability["dimension"]): Array<{ code: st
 }
 function addApplicability(): void { const first = masterData.value.mold_type[0]?.code; if (first) draftApplicability.value.push({ dimension: "mold_type", value_code: first, match_mode: "include" }); }
 
-onMounted(loadProfiles);
+onMounted(() => loadProfiles(props.deepLink?.refs.profile_id || ""));
+watch(
+  () => props.deepLink?.refs.profile_id,
+  (profileId) => {
+    if (profileId && profiles.value.some((item) => item.profile_id === profileId)) {
+      selectedProfileId.value = profileId;
+    }
+  },
+);
 </script>
 
 <template>

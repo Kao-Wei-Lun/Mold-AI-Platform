@@ -8,7 +8,9 @@ export type DeepLinkTarget =
   | 'knowledge'
   | 'process_trial'
   | 'cae'
-  | 'hmi';
+  | 'hmi'
+  | 'rule_profile'
+  | 'ingestion_batch';
 
 export type DeepLinkContext = {
   deep_link_version: typeof DEEP_LINK_VERSION;
@@ -30,6 +32,8 @@ const targetRefs: Record<DeepLinkTarget, { required: string[]; optional: string[
   process_trial: { required: ['process_search_id'], optional: ['case_id'] },
   cae: { required: ['cae_comparison_id'], optional: ['metric_code'] },
   hmi: { required: ['hmi_extraction_id'], optional: [] },
+  rule_profile: { required: ['profile_id'], optional: [] },
+  ingestion_batch: { required: ['batch_id'], optional: [] },
 };
 
 const uuidRefs = new Set([
@@ -44,6 +48,8 @@ const uuidRefs = new Set([
   'case_id',
   'cae_comparison_id',
   'hmi_extraction_id',
+  'profile_id',
+  'batch_id',
 ]);
 
 const forbiddenFields = new Set([
@@ -136,5 +142,7 @@ export function deepLinkTitle(target: DeepLinkTarget): string {
     process_trial: 'Process / Trial evidence',
     cae: 'CAE comparison',
     hmi: 'HMI extraction',
+    rule_profile: 'Mold rule profile',
+    ingestion_batch: 'Data import job',
   }[target];
 }

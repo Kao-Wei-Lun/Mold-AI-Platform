@@ -87,3 +87,21 @@ container started while its migration process was still running. Recovery, resto
 rebuild scripts now call a shared API-readiness wait before any seed or verification command. The
 entire fault drill passed after this correction. Release snapshots also include deterministic Audit
 and ArtifactVersion manifest hashes, and restore now fails closed if either continuity check differs.
+
+## Phase 6C governed-record deep links
+
+The final UAT-RDI-11 gap is closed by extending Deep Link Contract 1.0 without accepting arbitrary
+paths or URLs:
+
+- `rule_profile` requires one canonical `profile_id` and opens the rules workspace with that exact
+  profile selected after authorization;
+- `ingestion_batch` requires one canonical `batch_id` and resolves to the exact Data Import Center
+  detail path;
+- the Python builder, MCP launcher schema, Sites dispatcher and Engineering Web parser use the same
+  target/reference allow-list and canonical UUID rules;
+- typed identifiers locate records only. Local-session authentication and API scope checks still
+  determine whether content may be read.
+
+Automated coverage verifies both new targets in the backend, MCP launcher, Sites parser, Web parser,
+route resolver and rule-profile component. The existing forbidden-field and duplicate-parameter
+security tests remain unchanged.

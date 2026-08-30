@@ -97,6 +97,29 @@ describe("RuleManagementWorkspace", () => {
     expect(wrapper.get("button").text()).toContain("Try again");
   });
 
+  it("selects the exact profile referenced by a governed deep link", async () => {
+    const linkedProfile = { ...profile, profile_id: "44444444-4444-4444-8444-444444444444", version: "2.0" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("master-data/options")
+      ? { ok: true, status: 200, json: async () => ({ results: {} }) }
+      : { ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [profile, linkedProfile] }) }));
+
+    const wrapper = mount(RuleManagementWorkspace, {
+      props: {
+        deepLink: {
+          deep_link_version: "1.0",
+          target: "rule_profile",
+          refs: { profile_id: linkedProfile.profile_id },
+          correlation_id: "correlation-1",
+        },
+      },
+    });
+    await flushPromises();
+
+    expect((wrapper.get(".rule-catalog-toolbar select").element as HTMLSelectElement).value)
+      .toBe(linkedProfile.profile_id);
+    expect(wrapper.text()).toContain("demo-general-design @ 2.0");
+  });
+
   it("offers controlled version cloning to authorized rule authors", async () => {
     const draft = { ...profile, version: "2.0", workflow_status: "draft" };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {

@@ -34,6 +34,8 @@ WEB_TARGET_TITLES = {
     "process_trial": "Process and trial evidence",
     "cae": "CAE comparison",
     "hmi": "HMI extraction",
+    "rule_profile": "Mold rule profile",
+    "ingestion_batch": "Data import job",
 }
 
 
@@ -334,6 +336,8 @@ async def open_mold_ai_web(
         "process_trial",
         "cae",
         "hmi",
+        "rule_profile",
+        "ingestion_batch",
     ] = "home",
     job_id: str | None = None,
     search_id: str | None = None,
@@ -347,6 +351,8 @@ async def open_mold_ai_web(
     cae_comparison_id: str | None = None,
     metric_code: str | None = None,
     hmi_extraction_id: str | None = None,
+    profile_id: str | None = None,
+    batch_id: str | None = None,
 ) -> ToolResponse:
     client = _client()
     refs = {
@@ -364,6 +370,8 @@ async def open_mold_ai_web(
             "cae_comparison_id": cae_comparison_id,
             "metric_code": metric_code,
             "hmi_extraction_id": hmi_extraction_id,
+            "profile_id": profile_id,
+            "batch_id": batch_id,
         }.items()
         if value is not None
     }

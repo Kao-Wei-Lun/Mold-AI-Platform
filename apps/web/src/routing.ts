@@ -1,4 +1,4 @@
-import type { DeepLinkTarget } from "./deepLinks";
+import type { DeepLinkContext, DeepLinkTarget } from "./deepLinks";
 
 export type WorkspaceRouteId =
   | "home"
@@ -194,9 +194,18 @@ const deepLinkRoutes: Record<DeepLinkTarget, WorkspaceRouteId> = {
   process_trial: "process_trial",
   cae: "cae",
   hmi: "hmi",
+  rule_profile: "rules",
+  ingestion_batch: "history_data",
 };
 
 export function routeForDeepLink(target: DeepLinkTarget): WorkspaceRoute {
   const routeId = deepLinkRoutes[target];
   return workspaceRoutes.find((route) => route.id === routeId) || workspaceRoutes[0];
+}
+
+export function pathForDeepLink(context: DeepLinkContext): string {
+  if (context.target === "ingestion_batch") {
+    return `/data/imports/${context.refs.batch_id}`;
+  }
+  return routeForDeepLink(context.target).path;
 }

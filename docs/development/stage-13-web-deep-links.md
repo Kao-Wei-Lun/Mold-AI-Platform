@@ -31,10 +31,12 @@ defined for that target. Identifiers are canonical lowercase UUIDs.
 | `process_trial` | `process_search_id` | `case_id` |
 | `cae` | `cae_comparison_id` | `metric_code` |
 | `hmi` | `hmi_extraction_id` | — |
+| `rule_profile` | `profile_id` | — |
+| `ingestion_batch` | `batch_id` | — |
 
 Tokens, keys, Tunnel IDs, arbitrary return URLs, permission claims and serialized domain results
-are rejected. The Demo bearer token stays in Sites `sessionStorage`, crosses to Engineering Web in
-the URL fragment, and is removed from browser history immediately after consumption.
+are rejected. Sites stores only the current public Quick Tunnel origin in session storage; Web
+authorization is established independently through the user's local Demo account session.
 
 ## Configuration
 
@@ -58,22 +60,21 @@ cd C:\project\Mold-AI-Platform
 .\scripts\sites-demo-status.ps1
 ```
 
-The start command does not print the bearer token into ordinary logs. Use
-`sites-demo-status.ps1 -ShowToken` only in the private operator terminal when entering it into
-Sites. If a token may have been exposed, rotate it and recreate the protected services with:
-
-```powershell
-.\scripts\sites-demo-start.ps1 -NoBuild -RotateDemoToken
-```
+The start command does not print the local account password, MCP service token or Tunnel
+control-plane credential. Secrets remain in the private Windows environment and ignored env file.
 
 When ChatGPT returns a link:
 
 1. Open it while signed in to the owner account for the private Site.
-2. Confirm or replace the current Quick Tunnel URL and Demo token.
-3. Select **驗證連線**. Sites performs an authenticated `system/info` identity check.
+2. Confirm or replace the current Quick Tunnel URL.
+3. Select **驗證連線**. Sites verifies the external-demo preflight and local-account readiness.
 4. Select **開啟指定內容**.
-5. Engineering Web reloads the record with GET and selects the requested child evidence only when
-   it belongs to the referenced parent result.
+5. Sign in with the personal Demo account if needed. Engineering Web reloads the record with GET
+   and selects the requested child evidence only when it belongs to the referenced parent result.
+
+`rule_profile` opens the rule workspace with the referenced governed profile selected.
+`ingestion_batch` opens `/data/imports/<batch_id>` so the import detail, validation issues,
+reconciliation, job, Audit and Lineage evidence are loaded rather than only the import list.
 
 An invalid version, target, UUID, duplicate field, unexpected field or cross-parent child is
 rejected. A deep link never creates a new search, review, decision or machine action.

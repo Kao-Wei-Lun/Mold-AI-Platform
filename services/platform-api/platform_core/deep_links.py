@@ -15,6 +15,8 @@ TARGET_REFS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "process_trial": (frozenset({"process_search_id"}), frozenset({"case_id"})),
     "cae": (frozenset({"cae_comparison_id"}), frozenset({"metric_code"})),
     "hmi": (frozenset({"hmi_extraction_id"}), frozenset()),
+    "rule_profile": (frozenset({"profile_id"}), frozenset()),
+    "ingestion_batch": (frozenset({"batch_id"}), frozenset()),
 }
 
 UUID_REFS = frozenset(
@@ -30,6 +32,8 @@ UUID_REFS = frozenset(
         "case_id",
         "cae_comparison_id",
         "hmi_extraction_id",
+        "profile_id",
+        "batch_id",
     }
 )
 

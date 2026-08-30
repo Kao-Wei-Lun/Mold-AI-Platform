@@ -32,6 +32,8 @@ SEARCH_ID = "33333333-3333-4333-8333-333333333333"
 CANDIDATE_A_ID = "44444444-4444-4444-8444-444444444444"
 CANDIDATE_B_ID = "55555555-5555-4555-8555-555555555555"
 PROCESS_SEARCH_ID = "66666666-6666-4666-8666-666666666666"
+PROFILE_ID = "77777777-7777-4777-8777-777777777777"
+BATCH_ID = "88888888-8888-4888-8888-888888888888"
 
 
 class MCPGatewayTests(SimpleTestCase):
@@ -54,6 +56,12 @@ class MCPGatewayTests(SimpleTestCase):
         with patch("platform_core.mcp_gateway._client", return_value=client):
             home = asyncio.run(open_mold_ai_web())
             similarity = asyncio.run(open_mold_ai_web(target="similarity", search_id=SEARCH_ID))
+            rule_profile = asyncio.run(
+                open_mold_ai_web(target="rule_profile", profile_id=PROFILE_ID)
+            )
+            ingestion_batch = asyncio.run(
+                open_mold_ai_web(target="ingestion_batch", batch_id=BATCH_ID)
+            )
             with self.assertRaisesRegex(ValueError, "do not match"):
                 asyncio.run(open_mold_ai_web(target="home", job_id=JOB_ID))
 
@@ -62,6 +70,8 @@ class MCPGatewayTests(SimpleTestCase):
             "https://mold-ai.example.test/open?deep_link_version=1.0&target=home",
         )
         self.assertIn(f"search_id={SEARCH_ID}", similarity.links["ui"])
+        self.assertIn(f"profile_id={PROFILE_ID}", rule_profile.links["ui"])
+        self.assertIn(f"batch_id={BATCH_ID}", ingestion_batch.links["ui"])
         self.assertEqual(similarity.domain_result["authentication"], "personal_mold_ai_session")
 
     def test_plugin_ui_restricts_external_open_to_the_configured_sites_origin(self) -> None:

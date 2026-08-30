@@ -90,7 +90,7 @@ Platform API <---------- Engineering Web via HTTPS Quick Tunnel
 https://<stable-sites-origin>/open?deep_link_version=1.0&target=<target>&<typed-ref>=<uuid>
 ```
 
-支援 target：`home`、`job`、`similarity`、`design_review`、`knowledge`、`process_trial`、`cae`、`hmi`。每一 target 的 required/optional refs 由 server 與 Sites 共用等價 allowlist 驗證。
+支援 target：`home`、`job`、`similarity`、`design_review`、`knowledge`、`process_trial`、`cae`、`hmi`、`rule_profile`、`ingestion_batch`。其中 `rule_profile` 使用 `profile_id`，`ingestion_batch` 使用 `batch_id`；每一 target 的 required/optional refs 由 server、Sites 與 Engineering Web 共用等價 allowlist 驗證。
 
 禁止欄位：`token`、`api_key`、`tunnel_id`、`workspace_url`、`return_url`、`javascript`、`permission`。識別碼只定位內容，不授權存取；Engineering Web 必須重新向 API 讀取並執行權限檢查。
 

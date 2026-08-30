@@ -9,6 +9,8 @@ from platform_core.deep_links import (
 
 SEARCH_ID = "11111111-1111-4111-8111-111111111111"
 CANDIDATE_ID = "22222222-2222-4222-8222-222222222222"
+PROFILE_ID = "33333333-3333-4333-8333-333333333333"
+BATCH_ID = "44444444-4444-4444-8444-444444444444"
 
 
 class DeepLinkBuilderTests(SimpleTestCase):
@@ -36,6 +38,18 @@ class DeepLinkBuilderTests(SimpleTestCase):
         ):
             with self.subTest(value=value), self.assertRaises(DeepLinkConfigurationError):
                 DeepLinkBuilder(value)
+
+    def test_builds_governed_profile_and_import_batch_links(self) -> None:
+        builder = DeepLinkBuilder("https://mold-ai.example.test")
+
+        self.assertIn(
+            f"target=rule_profile&profile_id={PROFILE_ID}",
+            builder.build("rule_profile", profile_id=PROFILE_ID),
+        )
+        self.assertIn(
+            f"target=ingestion_batch&batch_id={BATCH_ID}",
+            builder.build("ingestion_batch", batch_id=BATCH_ID),
+        )
 
     def test_rejects_unknown_targets_refs_sensitive_fields_and_non_uuid_ids(self) -> None:
         builder = DeepLinkBuilder("https://mold-ai.example.test")

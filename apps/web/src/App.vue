@@ -29,6 +29,7 @@ import { parseDeepLink } from "./deepLinks";
 import { useI18n } from "./i18n";
 import {
   resolveWorkspaceRoute,
+  pathForDeepLink,
   routeForDeepLink,
   workspaceRoutes,
   type WorkspaceRoute,
@@ -55,8 +56,11 @@ const deepLinkVisible = ref(Boolean(deepLinkState.context || deepLinkState.error
 const initialRoute = deepLinkState.context
   ? routeForDeepLink(deepLinkState.context.target)
   : resolveWorkspaceRoute(window.location.pathname);
+const initialPath = deepLinkState.context
+  ? pathForDeepLink(deepLinkState.context)
+  : window.location.pathname;
 const currentRoute = ref<WorkspaceRoute>(initialRoute);
-const currentPath = ref(`${window.location.pathname}${window.location.search}`);
+const currentPath = ref(`${initialPath}${window.location.search}`);
 const assistantContext = ref<AssistantContext>({
   context_version: "1.0",
   page: "engineering_workspace",
@@ -193,11 +197,11 @@ watch(
 );
 
 onMounted(() => {
-  if (deepLinkState.context && window.location.pathname !== initialRoute.path) {
+  if (deepLinkState.context && window.location.pathname !== initialPath) {
     window.history.replaceState(
       null,
       "",
-      `${initialRoute.path}${window.location.search}${window.location.hash}`,
+      `${initialPath}${window.location.search}${window.location.hash}`,
     );
   }
   window.addEventListener("popstate", onPopState);
@@ -386,7 +390,11 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         />
         <CAEWorkspace v-else-if="currentRoute.id === 'cae' && accessReady" @context-change="assistantContext = $event" />
         <HMIWorkspace v-else-if="currentRoute.id === 'hmi' && accessReady" />
-        <RuleManagementWorkspace v-else-if="currentRoute.id === 'rules' && accessReady" :current-account="currentAccount" />
+        <RuleManagementWorkspace
+          v-else-if="currentRoute.id === 'rules' && accessReady"
+          :current-account="currentAccount"
+          :deep-link="activeDeepLink"
+        />
         <MasterDataWorkspace
           v-else-if="currentRoute.id === 'master_data' && accessReady"
           :current-account="currentAccount"
