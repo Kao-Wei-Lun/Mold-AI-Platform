@@ -1502,6 +1502,23 @@ button[aria-busy="true"]::before {
   pointer-events: none;
 }
 
+.upload-progress-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  border: 1px solid #c8d8ed;
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  background: #f4f8fe;
+}
+
+.upload-progress-panel > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #27486f;
+}
+
 .document-list,
 .knowledge-result-list {
   display: grid;

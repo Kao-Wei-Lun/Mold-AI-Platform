@@ -130,6 +130,8 @@ describe("HMIWorkspace", () => {
 
     await button(wrapper, "Extract four").trigger("click");
     await flushPromises();
+    expect(wrapper.text()).toContain("demo-hmi-low-confidence.png");
+    expect(wrapper.find(".file-drop-zone .selected-file-summary").exists()).toBe(false);
     expect(wrapper.text()).toContain("1 field requires review");
     expect(wrapper.text()).toContain("76.4%");
     expect(wrapper.text()).toContain("Region A");

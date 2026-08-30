@@ -3,6 +3,7 @@ import {
   clearDemoAccessToken,
   clearCsrfToken,
   consumeDemoAccessBootstrap,
+  configureApiXHR,
   downloadProtectedArtifact,
   setCsrfToken,
   setDemoAccessToken,
@@ -76,6 +77,22 @@ describe("authenticated API client", () => {
     expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get("X-CSRFToken")).toBe(
       "csrf-session-token",
     );
+  });
+
+  it("applies the same bearer, cookie and CSRF boundary to XHR uploads", () => {
+    setDemoAccessToken("xhr-demo-token");
+    setCsrfToken("xhr-csrf-token");
+    const headers = new Map<string, string>();
+    const xhr = {
+      withCredentials: false,
+      setRequestHeader: (key: string, value: string) => headers.set(key, value),
+    } as unknown as XMLHttpRequest;
+
+    configureApiXHR(xhr, "POST");
+
+    expect(xhr.withCredentials).toBe(true);
+    expect(headers.get("Authorization")).toBe("Bearer xhr-demo-token");
+    expect(headers.get("X-CSRFToken")).toBe("xhr-csrf-token");
   });
 
   it("downloads protected artifacts through the authenticated request path", async () => {

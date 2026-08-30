@@ -170,4 +170,35 @@ describe("KnowledgeWorkspace", () => {
     expect(wrapper.text()).not.toContain("Ready for security screening");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("clears only file-related fields after ingestion is accepted", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [indexedDocument] }))
+      .mockResolvedValueOnce(jsonResponse({
+        status: "accepted", artifact_id: "artifact-2", artifact_version_id: "version-2",
+        document_id: "document-2", job_id: "job-2", idempotent_replay: false,
+      }, 202))
+      .mockResolvedValueOnce(jsonResponse({
+        schema_version: "1.0", job_id: "job-2", capability: "knowledge.ingest@1.0.0",
+        state: "queued", stage: "queued", progress: 0, attempt: 1,
+        artifact_version_id: "version-2", correlation_id: "correlation-2", result: null, error: null,
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(KnowledgeWorkspace);
+    await flushPromises();
+    const input = wrapper.get('.knowledge-upload-form input[type="file"]');
+    const file = new File(["guide"], "repeatable-guide.md", { type: "text/markdown" });
+    Object.defineProperty(input.element, "files", { value: [file] });
+    await input.trigger("change");
+    await wrapper.get(".knowledge-upload-form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.find(".file-drop-zone .selected-file-summary").exists()).toBe(false);
+    expect((wrapper.get('.knowledge-upload-form input[type="text"]').element as HTMLInputElement).value)
+      .toBe("");
+    const selects = wrapper.findAll(".knowledge-upload-form select");
+    expect((selects[0].element as HTMLSelectElement).value).toBe("design_guideline");
+    expect((selects[1].element as HTMLSelectElement).value).toBe("demo");
+    expect((selects[2].element as HTMLSelectElement).value).toBe("en");
+  });
 });

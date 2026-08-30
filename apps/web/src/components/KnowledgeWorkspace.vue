@@ -134,6 +134,9 @@ async function submitUpload(): Promise<void> {
     });
     job.value = await fetchKnowledgeJob(accepted.job_id);
     uploadAttempted.value = false;
+    file.value = null;
+    title.value = "";
+    fileSelectionError.value = "";
     schedulePoll();
     pushToast(t("Document ingestion started."), "success");
   } catch (caught) {

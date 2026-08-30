@@ -8,6 +8,46 @@ const stlFile = new File(["solid test\nfacet normal 0 0 1\nendsolid test"], "par
   type: "model/stl",
 });
 
+class FetchBackedXMLHttpRequest {
+  upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+  withCredentials = false;
+  status = 0;
+  responseText = "";
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  private method = "POST";
+  private url = "";
+  private headers: Record<string, string> = {};
+
+  open(method: string, url: string): void {
+    this.method = method;
+    this.url = url;
+  }
+
+  setRequestHeader(key: string, value: string): void {
+    this.headers[key] = value;
+  }
+
+  async send(body: FormData): Promise<void> {
+    const file = body.get("file") as File;
+    this.upload.onprogress?.({
+      lengthComputable: true,
+      loaded: Math.max(1, Math.floor(file.size / 2)),
+      total: file.size,
+    } as ProgressEvent);
+    const response = await fetch(this.url, { method: this.method, headers: this.headers, body });
+    this.status = response.status;
+    this.responseText = JSON.stringify(await response.json());
+    this.upload.onprogress?.({
+      lengthComputable: true,
+      loaded: file.size,
+      total: file.size,
+    } as ProgressEvent);
+    this.onload?.();
+  }
+}
+
 function jsonResponse(payload: object, ok = true, status = 200): Response {
   return {
     ok,
@@ -18,6 +58,7 @@ function jsonResponse(payload: object, ok = true, status = 200): Response {
 
 describe("CadWorkspace", () => {
   beforeEach(() => {
+    vi.stubGlobal("XMLHttpRequest", FetchBackedXMLHttpRequest);
     vi.spyOn(registryApi, "fetchRegistry").mockResolvedValue({
       projects: [],
       parts: [],
@@ -42,6 +83,7 @@ describe("CadWorkspace", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("uploads a CAD artifact and renders the completed geometry result", async () => {
@@ -123,6 +165,10 @@ describe("CadWorkspace", () => {
     expect(wrapper.text()).toContain("1.00 x 1.00 x 1.00");
     expect(wrapper.text()).toContain("4 / 6");
     expect(wrapper.text()).toContain("UNIT_UNCERTAIN");
+    expect(wrapper.get('[role="progressbar"]').attributes("aria-valuenow")).toBe("100");
+    expect(wrapper.find(".file-drop-zone .selected-file-summary").exists()).toBe(false);
+    expect((wrapper.get('input[placeholder="Housing revision A"]').element as HTMLInputElement).value)
+      .toBe("");
   });
 
   it("requires and submits a mold revision for governed archiving", async () => {

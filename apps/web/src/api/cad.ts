@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, configureApiXHR, notifyApiUnauthorized } from "./client";
 
 export type ArtifactVersion = {
   artifact_version_id: string;
@@ -91,6 +91,12 @@ export type CADUploadAccepted = {
   links: { artifact: string; status: string; ui: string };
 };
 
+export type CADUploadProgress = {
+  loaded: number;
+  total: number;
+  percent: number;
+};
+
 export type CADArtifactSummary = {
   artifact_id: string;
   name: string;
@@ -160,6 +166,15 @@ async function errorMessage(response: Response): Promise<string> {
   }
 }
 
+function xhrErrorMessage(xhr: XMLHttpRequest): string {
+  try {
+    const payload = JSON.parse(xhr.responseText) as { error?: { message?: string; code?: string } };
+    return payload.error?.message || payload.error?.code || `HTTP ${xhr.status}`;
+  } catch {
+    return `HTTP ${xhr.status || 0}`;
+  }
+}
+
 export async function uploadCAD(
   file: File,
   artifactName: string,
@@ -172,6 +187,7 @@ export async function uploadCAD(
     moldRevisionId?: string;
     artifactId?: string;
   },
+  options: { onProgress?: (progress: CADUploadProgress) => void } = {},
 ): Promise<CADUploadAccepted> {
   const body = new FormData();
   body.append("file", file);
@@ -184,12 +200,36 @@ export async function uploadCAD(
   if (metadata.moldRevisionId) body.append("mold_revision_id", metadata.moldRevisionId);
   if (metadata.artifactId) body.append("artifact_id", metadata.artifactId);
 
-  const response = await apiFetch(`${apiBaseUrl}/api/v1/cad-artifacts`, {
-    method: "POST",
-    body,
+  return await new Promise<CADUploadAccepted>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBaseUrl}/api/v1/cad-artifacts`);
+    configureApiXHR(xhr, "POST");
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      options.onProgress?.({
+        loaded: event.loaded,
+        total: event.total,
+        percent: Math.min(100, Math.round((event.loaded / event.total) * 100)),
+      });
+    };
+    xhr.onerror = () => reject(new Error("CAD upload network error."));
+    xhr.onabort = () => reject(new Error("CAD upload was cancelled."));
+    xhr.onload = () => {
+      notifyApiUnauthorized(xhr.status);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(xhrErrorMessage(xhr)));
+        return;
+      }
+      try {
+        options.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+        resolve(JSON.parse(xhr.responseText) as CADUploadAccepted);
+      } catch {
+        reject(new Error("CAD upload returned an invalid response."));
+      }
+    };
+    xhr.send(body);
   });
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return (await response.json()) as CADUploadAccepted;
 }
 
 export async function fetchCADJob(jobId: string): Promise<CADJob> {

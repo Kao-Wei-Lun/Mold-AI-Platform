@@ -7,6 +7,7 @@ import {
   type CADArtifactSummary,
   type CADJob,
   type CADModelResult,
+  type CADUploadProgress,
   uploadCAD,
 } from "../api/cad";
 import { useI18n } from "../i18n";
@@ -49,6 +50,7 @@ const versionArtifacts = ref<CADArtifactSummary[]>([]);
 const moldRevisionId = ref("");
 const revisions = ref<RegistryRevision[]>([]);
 const uploading = ref(false);
+const uploadProgress = ref<CADUploadProgress | null>(null);
 const error = ref<string | null>(null);
 const warning = ref<string | null>(null);
 const job = ref<CADJob | null>(null);
@@ -136,6 +138,7 @@ watch(existingArtifactId, (id) => {
 });
 
 function selectFile(candidate: File): void {
+  uploadProgress.value = null;
   const validation = validateUploadFile(candidate, uploadPolicies.cad);
   if (validation) {
     selectedFile.value = null;
@@ -177,6 +180,7 @@ async function submit(): Promise<void> {
   }
 
   uploading.value = true;
+  uploadProgress.value = { loaded: 0, total: selectedFile.value.size, percent: 0 };
   error.value = null;
   warning.value = null;
   job.value = null;
@@ -185,20 +189,29 @@ async function submit(): Promise<void> {
 
   try {
     const idempotencyKey = `web-${Date.now()}-${selectedFile.value.name}-${selectedFile.value.size}`;
-    const accepted = await uploadCAD(selectedFile.value, artifactName.value, idempotencyKey, {
-      datasetId: datasetId.value,
-      productType: productType.value,
-      materialCode: materialCode.value,
-      uploadMode: uploadMode.value,
-      moldRevisionId: uploadMode.value === "governed_archive" ? moldRevisionId.value : undefined,
-      artifactId: artifactTargetMode.value === "new_version" ? existingArtifactId.value : undefined,
-    });
+    const accepted = await uploadCAD(
+      selectedFile.value,
+      artifactName.value,
+      idempotencyKey,
+      {
+        datasetId: datasetId.value,
+        productType: productType.value,
+        materialCode: materialCode.value,
+        uploadMode: uploadMode.value,
+        moldRevisionId: uploadMode.value === "governed_archive" ? moldRevisionId.value : undefined,
+        artifactId: artifactTargetMode.value === "new_version" ? existingArtifactId.value : undefined,
+      },
+      { onProgress: (progress) => { uploadProgress.value = progress; } },
+    );
     warning.value = accepted.warnings.map((message) => t(message)).join(" ") || null;
     job.value = await fetchCADJob(accepted.job_id);
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
+    selectedFile.value = null;
+    artifactName.value = "";
     pushToast(t("CAD processing started."), "success");
   } catch (caught) {
+    uploadProgress.value = null;
     error.value = caught instanceof Error ? caught.message : t("CAD upload failed.");
     pushToast(error.value, "error");
   } finally {
@@ -380,6 +393,23 @@ loadRevisions();
         {{ uploading ? t("Submitting...") : t("Upload and process") }}
       </button>
     </form>
+
+    <div v-if="uploadProgress" class="upload-progress-panel" aria-live="polite">
+      <div>
+        <strong>{{ uploadProgress.percent >= 100 ? t("Upload complete") : t("Uploading CAD file") }}</strong>
+        <span>{{ uploadProgress.percent }}%</span>
+      </div>
+      <div
+        class="progress-track"
+        role="progressbar"
+        :aria-label="t('CAD network upload progress')"
+        :aria-valuenow="uploadProgress.percent"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <span :style="{ width: `${uploadProgress.percent}%` }"></span>
+      </div>
+    </div>
 
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <p v-if="warning" class="warning-message">{{ warning }}</p>

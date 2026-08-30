@@ -21,6 +21,8 @@ const { t } = useI18n();
 
 const selectedFile = ref<File | null>(null);
 const previewUrl = ref("");
+const previewFileName = ref("");
+const previewFileSize = ref(0);
 const extraction = ref<HMIExtraction | null>(null);
 const exported = ref<HMIExport | null>(null);
 const edits = ref<Record<string, string>>({});
@@ -45,6 +47,8 @@ function setFile(file: File): void {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   selectedFile.value = file;
   previewUrl.value = URL.createObjectURL(file);
+  previewFileName.value = file.name;
+  previewFileSize.value = file.size;
   extraction.value = null;
   exported.value = null;
   edits.value = {};
@@ -77,6 +81,7 @@ async function extract(): Promise<void> {
     edits.value = Object.fromEntries(
       extraction.value.fields.map((field) => [field.field_id, String(field.effective_value ?? "")]),
     );
+    selectedFile.value = null;
     pushToast(t("HMI extraction completed."), "success");
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("HMI extraction failed.");
@@ -180,8 +185,8 @@ onBeforeUnmount(() => {
     <div v-if="previewUrl" class="hmi-preview-card">
       <img :src="previewUrl" :alt="t('Selected injection molding machine HMI screen')" />
       <div>
-        <strong>{{ selectedFile?.name }}</strong>
-        <span>{{ formatFileSize(selectedFile?.size || 0) }} · {{ t("Local preview · content is sent only to this platform API") }}</span>
+        <strong>{{ previewFileName }}</strong>
+        <span>{{ formatFileSize(previewFileSize) }} · {{ t("Local preview · content is sent only to this platform API") }}</span>
       </div>
     </div>
 

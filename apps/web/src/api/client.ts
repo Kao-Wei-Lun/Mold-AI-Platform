@@ -22,6 +22,21 @@ export function clearCsrfToken(): void {
   csrfToken = "";
 }
 
+export function configureApiXHR(xhr: XMLHttpRequest, method: string): void {
+  xhr.withCredentials = true;
+  const token = getDemoAccessToken();
+  if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+  if (!SAFE_METHODS.has(method.toUpperCase()) && csrfToken) {
+    xhr.setRequestHeader("X-CSRFToken", csrfToken);
+  }
+}
+
+export function notifyApiUnauthorized(status: number): void {
+  if (status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("mold-ai:unauthorized"));
+  }
+}
+
 export function consumeDemoAccessBootstrap(): boolean {
   if (typeof window === "undefined" || !window.location.hash.startsWith("#mold-ai-bootstrap=")) {
     return false;
@@ -47,9 +62,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     credentials: init.credentials || "include",
     headers,
   });
-  if (response.status === 401 && typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("mold-ai:unauthorized"));
-  }
+  notifyApiUnauthorized(response.status);
   return response;
 }
 
