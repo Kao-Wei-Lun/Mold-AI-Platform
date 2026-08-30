@@ -6,7 +6,7 @@
 |---|---|---|
 | Engineering Reference Data | CSV, XLSX, JSON | Complete |
 | Project / Part / Mold / Revision Registry | CSV, XLSX | Complete |
-| Mold Rule Profiles | CSV, XLSX, JSON | Planned |
+| Mold Rule Profiles | CSV, XLSX, JSON | Complete |
 | Trial / Process | CSV, XLSX, JSON | Planned |
 
 Each adapter uses the Phase 3 source artifact, mapping, Dry Run, atomic commit, record result, audit, lineage identity, and reconciliation contracts. Domain adapters do not introduce alternate upload or commit paths.
@@ -34,3 +34,7 @@ The `registry` adapter treats every source row as a governed hierarchy ending in
 - No Project, Part, Mold, or Revision is written before Commit.
 - Atomic Commit creates the hierarchy in dependency order and returns a row-level `mold_revision` result.
 - Reconciliation balances source rows against created or existing revision outcomes.
+
+## Mold Rule Profile adapter
+
+The `rule_profiles` adapter imports one structured rule per row into a governed Draft profile. CSV, XLSX, and JSON share one template and canonical contract. It validates evaluator and operator allowlists, numeric conditions, duplicate rule identities, cross-scope profile conflicts, active applicability references, and existing workflow state. Commit never approves or publishes a profile; normal separation-of-duties workflow remains mandatory. Rule and applicability identities are replay-safe and reconciliation is recorded per imported RuleVersion.

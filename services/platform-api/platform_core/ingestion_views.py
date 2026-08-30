@@ -42,6 +42,27 @@ TEMPLATE_HEADERS = {
         "revision_code",
         "change_summary",
     ],
+    "rule_profiles": [
+        "profile_key",
+        "version",
+        "rule_id",
+        "title",
+        "description",
+        "evaluator",
+        "operator",
+        "limit_value",
+        "unit",
+        "tolerance",
+        "severity",
+        "risk_type",
+        "recommendation",
+        "reference_document",
+        "reference_revision",
+        "mold_type",
+        "product_type",
+        "material",
+        "molding_process",
+    ],
 }
 SUPPORTED_SOURCE_SUFFIXES = {"json", "csv", "xlsx"}
 

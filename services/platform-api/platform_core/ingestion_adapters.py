@@ -9,10 +9,24 @@ from .models import (
     MoldRevision,
     ProductPart,
     Project,
+    RuleProfile,
+    RuleProfileApplicability,
+    RuleVersion,
 )
 
 MAX_BATCH_RECORDS = 10_000
-SUPPORTED_INGESTION_DOMAINS = {"master_data", "projects", "registry"}
+SUPPORTED_INGESTION_DOMAINS = {"master_data", "projects", "registry", "rule_profiles"}
+RULE_EVALUATORS = {
+    "bbox_dimension",
+    "bbox_aspect_ratio",
+    "cad_scalar",
+    "edge_face_ratio",
+    "quality_flag_absent",
+    "unit_known",
+    "surface_share",
+    "context_ratio",
+    "context_value",
+}
 
 
 @dataclass(frozen=True)
@@ -52,6 +66,8 @@ def _issue(row: int, code: str, *, field: str = "", value: object = None) -> dic
         "DUPLICATE_IN_BATCH": "The canonical identity is duplicated in this batch.",
         "REFERENCE_NOT_FOUND": "The referenced engineering code is not active in this scope.",
         "INVALID_POSITIVE_INTEGER": "The value must be a positive integer.",
+        "INVALID_RULE": "The rule evaluator, operator, or numeric condition is invalid.",
+        "PROFILE_SCOPE_CONFLICT": "This profile identity already belongs to another data scope.",
     }
     return {
         "row": row,
@@ -135,6 +151,62 @@ def validate_records(
                         revision_code__iexact=record.get("revision_code", ""),
                     ).exists()
                 )
+        elif domain == "rule_profiles":
+            required = (
+                "profile_key",
+                "version",
+                "rule_id",
+                "title",
+                "evaluator",
+                "operator",
+                "severity",
+            )
+            identity = (
+                str(record.get("profile_key", "")).lower(),
+                str(record.get("version", "")).lower(),
+                str(record.get("rule_id", "")).lower(),
+            )
+            invalid_condition = str(record.get("evaluator", "")) not in RULE_EVALUATORS or str(
+                record.get("operator", "")
+            ) not in {"lte", "gte", "eq"}
+            for field in ("limit_value", "tolerance"):
+                try:
+                    record[field] = float(record.get(field) or 0)
+                except (TypeError, ValueError):
+                    invalid_condition = True
+            if invalid_condition:
+                issues.append(_issue(index, "INVALID_RULE", field="condition"))
+            cross_scope = RuleProfile.objects.filter(
+                profile_key__iexact=record.get("profile_key", ""),
+                version=record.get("version", ""),
+            ).exclude(scope=scope)
+            if cross_scope.exists():
+                issues.append(_issue(index, "PROFILE_SCOPE_CONFLICT", field="profile_key"))
+            profile = RuleProfile.objects.filter(
+                scope=scope,
+                profile_key__iexact=record.get("profile_key", ""),
+                version=record.get("version", ""),
+            ).first()
+            if profile:
+                existing += int(
+                    RuleVersion.objects.filter(
+                        profile=profile,
+                        rule_id__iexact=record.get("rule_id", ""),
+                        rule_version=record.get("version", ""),
+                    ).exists()
+                )
+                if profile.workflow_status != RuleProfile.WorkflowStatus.DRAFT:
+                    issues.append(_issue(index, "INVALID_RULE", field="workflow_status"))
+            for field, kind in (
+                ("mold_type", MasterDataItem.Kind.MOLD_TYPE),
+                ("product_type", MasterDataItem.Kind.PRODUCT_TYPE),
+                ("material", MasterDataItem.Kind.MATERIAL),
+                ("molding_process", MasterDataItem.Kind.MOLDING_PROCESS),
+            ):
+                if not _active_reference(scope, kind, record.get(field)):
+                    issues.append(
+                        _issue(index, "REFERENCE_NOT_FOUND", field=field, value=record.get(field))
+                    )
         else:
             raise ValueError(f"Unsupported ingestion domain: {domain}")
 
@@ -248,5 +320,63 @@ def commit_record(batch: BulkImportBatch, record: dict[str, object], actor_id: s
             str(revision.id),
             project_created or part_created or mold_created or revision_created,
         )
+
+    if batch.domain == "rule_profiles":
+        profile, _ = RuleProfile.objects.get_or_create(
+            scope=batch.scope,
+            profile_key=str(record["profile_key"]),
+            version=str(record["version"]),
+            defaults={
+                "status": "draft",
+                "workflow_status": RuleProfile.WorkflowStatus.DRAFT,
+                "classification": batch.classification,
+                "owner": actor_id,
+                "approved_by": "",
+                "ruleset_checksum": "",
+                "change_summary": str(record.get("change_summary", "Imported draft")),
+            },
+        )
+        if profile.workflow_status != RuleProfile.WorkflowStatus.DRAFT:
+            raise ValueError("Imported rules can only target a draft profile.")
+        rule, created = RuleVersion.objects.get_or_create(
+            profile=profile,
+            rule_id=str(record["rule_id"]),
+            rule_version=str(record["version"]),
+            defaults={
+                "title": str(record["title"]),
+                "description": str(record.get("description", "")),
+                "evaluator": str(record["evaluator"]),
+                "applicability": {},
+                "parameters": {},
+                "operator": str(record["operator"]),
+                "limit_value": float(record.get("limit_value") or 0),
+                "unit": str(record.get("unit", "")),
+                "tolerance": float(record.get("tolerance") or 0),
+                "severity": str(record["severity"]),
+                "risk_type": str(record.get("risk_type", "general")),
+                "recommendation": str(record.get("recommendation", "")),
+                "reference": {
+                    "document": str(record.get("reference_document", "")),
+                    "revision": str(record.get("reference_revision", "")),
+                    "ingestion_batch": str(batch.id),
+                },
+            },
+        )
+        dimension_fields = {
+            "mold_type": "mold_type",
+            "product_type": "product_type",
+            "material": "material",
+            "molding_process": "molding_process",
+        }
+        for field, dimension in dimension_fields.items():
+            value = str(record.get(field, "")).strip()
+            if value:
+                RuleProfileApplicability.objects.get_or_create(
+                    profile=profile,
+                    dimension=dimension,
+                    value_code=value,
+                    match_mode=RuleProfileApplicability.MatchMode.INCLUDE,
+                )
+        return CommitResult("rule_version", str(rule.id), created)
 
     raise ValueError(f"No commit adapter for {batch.domain}.")
