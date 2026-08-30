@@ -196,7 +196,7 @@ class IngestionCenterTests(TestCase):
             return actual_create(**kwargs)
 
         with patch(
-            "platform_core.ingestion_center.MasterDataItem.objects.create",
+            "platform_core.ingestion_adapters.MasterDataItem.objects.create",
             side_effect=fail_second_create,
         ):
             result = commit_ingestion_job.run(

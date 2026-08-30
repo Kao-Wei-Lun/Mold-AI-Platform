@@ -38,9 +38,11 @@ const detailId = computed(() => {
   const segments = new URL(props.path, window.location.origin).pathname.split("/").filter(Boolean);
   return segments[0] === "data" && segments[1] === "imports" ? segments[2] || "" : "";
 });
-const mappingFields = computed(() => form.value.domain === "master_data"
-  ? [{ canonical: "kind", label: t("Type") }, { canonical: "code", label: t("Code") }, { canonical: "name_en", label: t("English name") }, { canonical: "name_zh_tw", label: t("Traditional Chinese name") }]
-  : [{ canonical: "code", label: t("Project code") }, { canonical: "name", label: t("Project name") }, { canonical: "description", label: t("Description") }]);
+const mappingFields = computed(() => {
+  if (form.value.domain === "master_data") return [{ canonical: "kind", label: t("Type") }, { canonical: "code", label: t("Code") }, { canonical: "name_en", label: t("English name") }, { canonical: "name_zh_tw", label: t("Traditional Chinese name") }];
+  if (form.value.domain === "registry") return ["project_code", "project_name", "part_number", "part_name", "product_type", "material_code", "mold_code", "mold_name", "mold_type", "cavity_count", "revision_code", "change_summary"].map((canonical) => ({ canonical, label: t(canonical.replaceAll("_", " ")) }));
+  return [{ canonical: "code", label: t("Project code") }, { canonical: "name", label: t("Project name") }, { canonical: "description", label: t("Description") }];
+});
 const sourceColumns = computed(() => Object.keys(selected.value?.records?.[0] || {}));
 const jobPending = computed(() => ["queued", "committing"].includes(selected.value?.status || ""));
 
@@ -105,7 +107,7 @@ onMounted(load);
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <section v-if="canCreate" class="ingestion-create-panel">
       <div class="section-heading"><div><h3>{{ t("New import batch") }}</h3><p>{{ t("JSON, CSV and XLSX sources are screened and preserved as immutable artifacts.") }}</p></div><a :href="importTemplateUrl(form.domain)">{{ t("Download template") }}</a></div>
-      <form class="ingestion-create-grid" @submit.prevent="startImport"><FormField v-slot="{ fieldId }" :label="t('Data type')" required><select :id="fieldId" v-model="form.domain"><option value="master_data">{{ t("Engineering reference data") }}</option><option value="projects">{{ t("Projects") }}</option></select></FormField><FormField v-slot="{ fieldId }" :label="t('Source name')"><input :id="fieldId" v-model="form.sourceName" /></FormField><FormField v-slot="{ fieldId }" :label="t('Idempotency key')" required><input :id="fieldId" v-model="form.idempotencyKey" required /></FormField><FormField v-slot="{ fieldId }" :label="t('Source file')" required hint="JSON · CSV · XLSX"><input :id="fieldId" type="file" accept=".json,.csv,.xlsx" required @change="onFile" /></FormField><button type="submit" :disabled="busy">{{ t("Upload and screen") }}</button></form>
+      <form class="ingestion-create-grid" @submit.prevent="startImport"><FormField v-slot="{ fieldId }" :label="t('Data type')" required><select :id="fieldId" v-model="form.domain"><option value="master_data">{{ t("Engineering reference data") }}</option><option value="projects">{{ t("Projects") }}</option><option value="registry">{{ t("Project, part, mold and revision registry") }}</option></select></FormField><FormField v-slot="{ fieldId }" :label="t('Source name')"><input :id="fieldId" v-model="form.sourceName" /></FormField><FormField v-slot="{ fieldId }" :label="t('Idempotency key')" required><input :id="fieldId" v-model="form.idempotencyKey" required /></FormField><FormField v-slot="{ fieldId }" :label="t('Source file')" required hint="JSON · CSV · XLSX"><input :id="fieldId" type="file" accept=".json,.csv,.xlsx" required @change="onFile" /></FormField><button type="submit" :disabled="busy">{{ t("Upload and screen") }}</button></form>
     </section>
     <section v-if="selected" class="ingestion-detail-panel">
       <div class="record-header"><div><span>{{ selected.canonical_id }}</span><h3>{{ selected.source_name }}</h3><p>{{ selected.domain }} · {{ selected.scope }} · {{ selected.classification }}</p></div><span class="governance-state">{{ t(selected.status) }}</span></div>

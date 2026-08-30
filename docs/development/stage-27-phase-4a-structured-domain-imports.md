@@ -5,7 +5,7 @@
 | Adapter | Formats | Status |
 |---|---|---|
 | Engineering Reference Data | CSV, XLSX, JSON | Complete |
-| Project / Part / Mold / Revision Registry | CSV, XLSX | In progress |
+| Project / Part / Mold / Revision Registry | CSV, XLSX | Complete |
 | Mold Rule Profiles | CSV, XLSX, JSON | Planned |
 | Trial / Process | CSV, XLSX, JSON | Planned |
 
@@ -24,3 +24,13 @@ The `master_data` adapter supports all governed reference kinds, including Mold 
 - Commit creates immutable canonical codes and records row outcomes plus reconciliation evidence.
 
 Automated adapter tests cover all three formats, versioned template download, invalid canonical kinds, row-level blocking issues, and zero domain writes before commit.
+
+## Project / Part / Mold / Revision Registry adapter
+
+The `registry` adapter treats every source row as a governed hierarchy ending in one mold revision. Project and mold identity are mandatory; part identity is optional. Existing nodes are preserved and a replay reports the revision as skipped instead of creating duplicates.
+
+- CSV and XLSX use the same canonical hierarchy fields and versioned template.
+- Dry Run checks required hierarchy fields, duplicate revision identities, positive cavity count, and active Mold Type, Product Type, and Material references.
+- No Project, Part, Mold, or Revision is written before Commit.
+- Atomic Commit creates the hierarchy in dependency order and returns a row-level `mold_revision` result.
+- Reconciliation balances source rows against created or existing revision outcomes.

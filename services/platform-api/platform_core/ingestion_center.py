@@ -10,6 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .identity import audit_identity_event
+from .ingestion_adapters import commit_record, validate_records
 from .master_data import invalidate_master_data_cache
 from .models import (
     Artifact,
@@ -18,8 +19,6 @@ from .models import (
     IngestionIssue,
     IngestionRecordResult,
     IngestionSourceFile,
-    MasterDataItem,
-    Project,
     ReconciliationReport,
 )
 
@@ -119,11 +118,9 @@ def ensure_inline_source(batch: BulkImportBatch) -> ArtifactVersion:
 
 
 def persist_validation(batch: BulkImportBatch) -> dict[str, object]:
-    from .enterprise_views import _validate_records
-
     batch.status = BulkImportBatch.Status.VALIDATING
     batch.save(update_fields=["status", "updated_at"])
-    normalized, result = _validate_records(
+    normalized, result = validate_records(
         batch.domain, batch.records, batch.field_mapping, batch.scope
     )
     with transaction.atomic():
@@ -176,44 +173,9 @@ def commit_batch(batch_id: str, *, actor_id: str) -> BulkImportBatch:
         locked.status = BulkImportBatch.Status.COMMITTING
         locked.save(update_fields=["status", "updated_at"])
         for row_number, record in enumerate(locked.records, start=1):
-            if locked.domain == "master_data":
-                entity = MasterDataItem.objects.filter(
-                    scope=locked.scope,
-                    kind=record["kind"],
-                    code__iexact=str(record["code"]),
-                ).first()
-                was_created = entity is None
-                if entity is None:
-                    entity = MasterDataItem.objects.create(
-                        scope=locked.scope,
-                        kind=record["kind"],
-                        code=str(record["code"]),
-                        name_en=str(record["name_en"]),
-                        name_zh_tw=str(record.get("name_zh_tw") or record["name_en"]),
-                        source_system="ingestion",
-                        source_refs=[f"ingestion:{locked.id}"],
-                        classification=locked.classification,
-                        created_by=actor_id,
-                        updated_by=actor_id,
-                    )
-                entity_type = "master_data"
-            elif locked.domain == "projects":
-                entity, was_created = Project.objects.get_or_create(
-                    scope=locked.scope,
-                    code=str(record["code"]),
-                    defaults={
-                        "name": str(record["name"]),
-                        "description": str(record.get("description", "")),
-                        "classification": locked.classification,
-                        "created_by": actor_id,
-                        "updated_by": actor_id,
-                    },
-                )
-                entity_type = "project"
-            else:
-                raise IngestionError(
-                    "IMPORT_DOMAIN_UNSUPPORTED", f"No commit adapter for {locked.domain}."
-                )
+            commit = commit_record(locked, record, actor_id)
+            entity_type = commit.entity_type
+            was_created = commit.created
             outcome = (
                 IngestionRecordResult.Outcome.CREATED
                 if was_created
@@ -227,7 +189,7 @@ def commit_batch(batch_id: str, *, actor_id: str) -> BulkImportBatch:
                     row_number=row_number,
                     outcome=outcome,
                     entity_type=entity_type,
-                    entity_id=str(entity.id),
+                    entity_id=commit.entity_id,
                 )
             )
         IngestionRecordResult.objects.bulk_create(results)

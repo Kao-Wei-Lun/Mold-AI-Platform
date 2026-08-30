@@ -13,8 +13,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .enterprise_views import MAX_BATCH_RECORDS, SUPPORTED_IMPORT_DOMAINS
 from .identity import audit_identity_event
+from .ingestion_adapters import MAX_BATCH_RECORDS, SUPPORTED_INGESTION_DOMAINS
 from .ingestion_center import (
     IngestionError,
     attach_source_bytes,
@@ -28,6 +28,20 @@ from .tasks import commit_ingestion_job
 TEMPLATE_HEADERS = {
     "master_data": ["kind", "code", "name_en", "name_zh_tw"],
     "projects": ["code", "name", "description"],
+    "registry": [
+        "project_code",
+        "project_name",
+        "part_number",
+        "part_name",
+        "product_type",
+        "material_code",
+        "mold_code",
+        "mold_name",
+        "mold_type",
+        "cavity_count",
+        "revision_code",
+        "change_summary",
+    ],
 }
 SUPPORTED_SOURCE_SUFFIXES = {"json", "csv", "xlsx"}
 
@@ -214,7 +228,7 @@ class IngestionListCreateView(APIView):
         if invalid:
             return invalid
         domain = str(request.data.get("domain", ""))
-        if domain not in SUPPORTED_IMPORT_DOMAINS:
+        if domain not in SUPPORTED_INGESTION_DOMAINS:
             return _error(request, "IMPORT_DOMAIN_UNSUPPORTED", "Unsupported import domain.", 400)
         key = str(request.data.get("idempotency_key", "")).strip()
         if not key:
