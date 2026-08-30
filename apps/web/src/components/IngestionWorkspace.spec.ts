@@ -62,6 +62,25 @@ describe("IngestionWorkspace", () => {
     expect(wrapper.text()).toContain("Source rows");
   });
 
+  it("renders untrusted issue text as text instead of executable markup", async () => {
+    const hostile = '<img src=x onerror="window.__ingestionXss=true">';
+    const invalid = batch({
+      status: "validation_failed",
+      validation: { valid: false, record_count: 1, valid_count: 0, existing_count: 0 },
+      issues: [{ issue_id: "issue-xss", row_number: 1, field_name: "name_en", code: "SOURCE_ERROR", message: hostile, raw_value: hostile, suggestion: "", severity: "blocking" }],
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes(invalid.batch_id)
+      ? { ok: true, status: 200, json: async () => invalid }
+      : { ok: true, status: 200, json: async () => ({ items: [invalid] }) }));
+
+    const wrapper = mount(IngestionWorkspace, { props: { path: `/data/imports/${invalid.batch_id}`, currentAccount: account } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(hostile);
+    expect(wrapper.find(".ingestion-issue-list img").exists()).toBe(false);
+    expect(wrapper.html()).toContain("&lt;img");
+  });
+
   it("uses stable deep links for history selection and related evidence", async () => {
     const committed = batch({ status: "committed", job_id: "job-1", record_results: [{ row_number: 1, outcome: "created", entity_type: "project", entity_id: "project-1", detail: {} }] });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes(committed.batch_id)

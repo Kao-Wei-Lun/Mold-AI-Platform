@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .identity import audit_identity_event
-from .ingestion_adapters import commit_record, validate_records
+from .ingestion_adapters import CommitResult, commit_record, validate_records
 from .master_data import invalidate_master_data_cache
 from .models import (
     Artifact,
@@ -19,6 +19,7 @@ from .models import (
     IngestionIssue,
     IngestionRecordResult,
     IngestionSourceFile,
+    MasterDataItem,
     ReconciliationReport,
 )
 
@@ -172,8 +173,48 @@ def commit_batch(batch_id: str, *, actor_id: str) -> BulkImportBatch:
             return locked
         locked.status = BulkImportBatch.Status.COMMITTING
         locked.save(update_fields=["status", "updated_at"])
+        bulk_master_results: list[CommitResult] | None = None
+        if locked.domain == "master_data" and len(locked.records) >= 500:
+            current = {
+                (item.kind.lower(), item.code.lower()): item
+                for item in MasterDataItem.objects.filter(scope=locked.scope)
+            }
+            pending: list[MasterDataItem] = []
+            for record in locked.records:
+                identity = (str(record["kind"]).lower(), str(record["code"]).lower())
+                if identity in current:
+                    continue
+                entity = MasterDataItem(
+                    scope=locked.scope,
+                    kind=str(record["kind"]),
+                    code=str(record["code"]),
+                    name_en=str(record["name_en"]),
+                    name_zh_tw=str(record.get("name_zh_tw") or record["name_en"]),
+                    source_system="ingestion",
+                    source_refs=[f"ingestion:{locked.id}"],
+                    classification=locked.classification,
+                    created_by=actor_id,
+                    updated_by=actor_id,
+                )
+                current[identity] = entity
+                pending.append(entity)
+            MasterDataItem.objects.bulk_create(pending, batch_size=1_000)
+            pending_ids = {item.id for item in pending}
+            bulk_master_results = [
+                CommitResult(
+                    "master_data",
+                    str(current[(str(record["kind"]).lower(), str(record["code"]).lower())].id),
+                    current[(str(record["kind"]).lower(), str(record["code"]).lower())].id
+                    in pending_ids,
+                )
+                for record in locked.records
+            ]
         for row_number, record in enumerate(locked.records, start=1):
-            commit = commit_record(locked, record, actor_id)
+            commit = (
+                bulk_master_results[row_number - 1]
+                if bulk_master_results is not None
+                else commit_record(locked, record, actor_id)
+            )
             entity_type = commit.entity_type
             was_created = commit.created
             outcome = (

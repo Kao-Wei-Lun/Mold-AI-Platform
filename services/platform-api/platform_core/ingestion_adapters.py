@@ -113,6 +113,14 @@ def validate_records(
     seen: set[tuple[str, ...]] = set()
     existing = 0
     valid_kinds = {item.value for item in MasterDataItem.Kind}
+    existing_master_data = {
+        (str(kind).lower(), str(code).lower())
+        for kind, code in MasterDataItem.objects.filter(scope=scope).values_list("kind", "code")
+    }
+    existing_projects = {
+        str(code).lower()
+        for code in Project.objects.filter(scope=scope).values_list("code", flat=True)
+    }
 
     for index, record in enumerate(normalized, start=1):
         if domain == "master_data":
@@ -120,19 +128,11 @@ def validate_records(
             identity = (str(record.get("kind", "")).lower(), str(record.get("code", "")).lower())
             if record.get("kind") not in valid_kinds:
                 issues.append(_issue(index, "INVALID_KIND", field="kind", value=record.get("kind")))
-            existing += int(
-                MasterDataItem.objects.filter(
-                    scope=scope,
-                    kind=record.get("kind", ""),
-                    code__iexact=record.get("code", ""),
-                ).exists()
-            )
+            existing += int(identity in existing_master_data)
         elif domain == "projects":
             required = ("code", "name")
             identity = (str(record.get("code", "")).lower(),)
-            existing += int(
-                Project.objects.filter(scope=scope, code__iexact=record.get("code", "")).exists()
-            )
+            existing += int(identity[0] in existing_projects)
         elif domain == "registry":
             required = ("project_code", "project_name", "mold_code", "mold_name", "revision_code")
             identity = (

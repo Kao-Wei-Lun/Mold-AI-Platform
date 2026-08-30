@@ -336,3 +336,15 @@ Stage 24 Phase 1 extends Engineering reference data with Mold Type, Molding Proc
 Category, adds deterministic Rule Profile applicability resolution and stores immutable Design
 Review resolution evidence. See
 [`stage-24-phase-1-rule-resolution-foundation.md`](stage-24-phase-1-rule-resolution-foundation.md).
+
+Stages 25–29 complete structured Rule Profile management, the common ingestion foundation,
+domain-specific imports, secure engineering-file adapters and the unified Data Library experience.
+See [`stage-25-phase-2-structured-rule-management.md`](stage-25-phase-2-structured-rule-management.md),
+[`stage-26-phase-3-ingestion-foundation.md`](stage-26-phase-3-ingestion-foundation.md),
+[`stage-27-phase-4a-structured-domain-imports.md`](stage-27-phase-4a-structured-domain-imports.md),
+[`stage-28-phase-4b-engineering-file-imports.md`](stage-28-phase-4b-engineering-file-imports.md) and
+[`stage-29-phase-5-data-library-ux.md`](stage-29-phase-5-data-library-ux.md).
+
+Stage 30 adds formula/MIME/archive security screening, CSRF/XSS regression coverage, a 10,000-row
+Dry Run and atomic Commit gate, and the final recovery/external release sequence. See
+[`stage-30-phase-6-security-performance-release.md`](stage-30-phase-6-security-performance-release.md).

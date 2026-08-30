@@ -3,10 +3,14 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
+import zipfile
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.request import Request
@@ -108,6 +112,71 @@ TEMPLATE_HEADERS = {
     ],
 }
 SUPPORTED_SOURCE_SUFFIXES = {"json", "csv", "xlsx"}
+SOURCE_MIME_TYPES = {
+    "json": {"application/json", "text/json", "text/plain", "application/octet-stream"},
+    "csv": {"text/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"},
+    "xlsx": {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+        "application/octet-stream",
+    },
+}
+SPREADSHEET_DANGEROUS_PREFIXES = ("=", "+", "@", "\t", "\r", "\n")
+SAFE_NEGATIVE_NUMBER = re.compile(r"^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
+MAX_XLSX_ARCHIVE_ENTRIES = 2_000
+MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+
+
+def _reject_formula_values(records: list[dict[str, object]]) -> None:
+    for row_number, record in enumerate(records, start=1):
+        for field, value in record.items():
+            if not isinstance(value, str):
+                continue
+            candidate = value.lstrip(" ")
+            dangerous = candidate.startswith(SPREADSHEET_DANGEROUS_PREFIXES) or (
+                candidate.startswith("-") and not SAFE_NEGATIVE_NUMBER.fullmatch(candidate)
+            )
+            if dangerous:
+                raise IngestionError(
+                    "IMPORT_FORMULA_INJECTION",
+                    f"Row {row_number}, field '{field}' contains a spreadsheet formula prefix.",
+                )
+
+
+def _screen_xlsx_archive(content: bytes) -> None:
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        entries = archive.infolist()
+        total_size = sum(item.file_size for item in entries)
+        if len(entries) > MAX_XLSX_ARCHIVE_ENTRIES or total_size > MAX_XLSX_UNCOMPRESSED_BYTES:
+            raise IngestionError(
+                "IMPORT_ARCHIVE_LIMIT",
+                "The XLSX archive exceeds the safe extraction boundary.",
+            )
+        for item in entries:
+            normalized = item.filename.replace("\\", "/").lower()
+            if item.file_size > max(item.compress_size, 1) * 100:
+                raise IngestionError(
+                    "IMPORT_ARCHIVE_LIMIT",
+                    "The XLSX archive has an unsafe compression ratio.",
+                )
+            if normalized.endswith("vbaproject.bin") or any(
+                segment in normalized
+                for segment in ("/externallinks/", "/embeddings/", "/oleobjects/")
+            ):
+                raise IngestionError(
+                    "IMPORT_XLSX_ACTIVE_CONTENT",
+                    "XLSX macros, external links, and embedded active content are not accepted.",
+                )
+
+
+def _validate_source_mime(file_name: str, mime_type: str) -> None:
+    suffix = file_name.rsplit(".", maxsplit=1)[-1].lower() if "." in file_name else ""
+    normalized = mime_type.split(";", maxsplit=1)[0].strip().lower()
+    if suffix in SOURCE_MIME_TYPES and normalized not in SOURCE_MIME_TYPES[suffix]:
+        raise IngestionError(
+            "IMPORT_MIME_MISMATCH",
+            f"The declared MIME type is not valid for a .{suffix} source.",
+        )
 
 
 def _error(request: Request, code: str, message: str, status: int) -> Response:
@@ -245,16 +314,46 @@ def _parse_source(file_name: str, content: bytes) -> list[dict[str, object]]:
         elif suffix == "csv":
             records = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
         else:
-            workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-            sheet = workbook.active
-            rows = list(sheet.iter_rows(values_only=True))
-            headers = [str(value or "").strip() for value in (rows[0] if rows else [])]
-            records = [
-                {headers[index]: value for index, value in enumerate(row) if headers[index]}
-                for row in rows[1:]
-                if any(value is not None for value in row)
-            ]
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            _screen_xlsx_archive(content)
+            workbook = load_workbook(
+                io.BytesIO(content), read_only=True, data_only=False, keep_links=False
+            )
+            try:
+                if any(sheet.sheet_state != "visible" for sheet in workbook.worksheets):
+                    raise IngestionError(
+                        "IMPORT_XLSX_HIDDEN_CONTENT",
+                        "Hidden XLSX worksheets are not accepted.",
+                    )
+                sheet = workbook.active
+                rows = list(sheet.iter_rows(values_only=False))
+                headers = [str(cell.value or "").strip() for cell in (rows[0] if rows else [])]
+                records = []
+                for row in rows[1:]:
+                    if not any(cell.value is not None for cell in row):
+                        continue
+                    if any(cell.data_type == "f" for cell in row):
+                        raise IngestionError(
+                            "IMPORT_FORMULA_INJECTION",
+                            "XLSX formulas are not accepted as ingestion values.",
+                        )
+                    records.append(
+                        {
+                            headers[index]: cell.value
+                            for index, cell in enumerate(row)
+                            if index < len(headers) and headers[index]
+                        }
+                    )
+            finally:
+                workbook.close()
+    except IngestionError:
+        raise
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        zipfile.BadZipFile,
+        InvalidFileException,
+    ) as exc:
         raise IngestionError("IMPORT_SOURCE_PARSE_FAILED", str(exc)) from exc
     if not all(isinstance(item, dict) for item in records):
         raise IngestionError("IMPORT_SOURCE_SCHEMA_INVALID", "Every source row must be an object.")
@@ -262,6 +361,7 @@ def _parse_source(file_name: str, content: bytes) -> list[dict[str, object]]:
         raise IngestionError(
             "IMPORT_BATCH_SIZE", f"A source must contain 1–{MAX_BATCH_RECORDS} records."
         )
+    _reject_formula_values(records)
     return records
 
 
@@ -389,8 +489,14 @@ class IngestionFileView(APIView):
         upload = request.FILES.get("file")
         if upload is None:
             return _error(request, "VALIDATION_FILE_REQUIRED", "A source file is required.", 400)
-        content = upload.read()
         try:
+            if upload.size > settings.MAX_INGESTION_UPLOAD_BYTES:
+                max_mb = settings.MAX_INGESTION_UPLOAD_BYTES // (1024 * 1024)
+                raise IngestionError(
+                    "IMPORT_FILE_TOO_LARGE", f"The ingestion source exceeds {max_mb} MB."
+                )
+            _validate_source_mime(upload.name, upload.content_type or "application/octet-stream")
+            content = upload.read()
             records = _parse_source(upload.name, content)
             attach_source_bytes(
                 batch,
