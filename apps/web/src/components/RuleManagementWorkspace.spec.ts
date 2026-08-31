@@ -162,6 +162,57 @@ describe("RuleManagementWorkspace", () => {
     );
   });
 
+  it("offers a direct governed editing path from published applicability to a cloned draft", async () => {
+    const published = {
+      ...profile,
+      applicability: [{ dimension: "mold_type", value_code: "two_plate", match_mode: "include" }],
+    };
+    const draft = { ...published, profile_id: "66666666-6666-4666-8666-666666666666", version: "1.1", workflow_status: "draft" };
+    let cloned = false;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("master-data/options")) {
+        return { ok: true, status: 200, json: async () => ({ results: { mold_type: [{ code: "two_plate", name_en: "Two plate", name_zh_tw: "二板模" }] } }) };
+      }
+      if (init?.method === "POST") {
+        cloned = true;
+        return { ok: true, status: 201, json: async () => draft };
+      }
+      return { ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: cloned ? [published, draft] : [published] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(RuleManagementWorkspace, {
+      props: { currentAccount: {
+        id: "owner-1", username: "owner", email: "owner@example.test", display_name: "Owner",
+        status: "active", locale: "en", timezone: "Asia/Taipei", row_version: 1,
+        roles: ["rule_owner"], permissions: ["rules:read", "rules:author"], data_scopes: ["public-demo"],
+        role_assignments: [], last_login_at: null, created_at: "2026-08-29T00:00:00Z",
+      } },
+    });
+    await flushPromises();
+
+    const applicabilityTab = wrapper.findAll(".rule-detail-tabs button").find((button) => button.text() === "Applicability");
+    await applicabilityTab!.trigger("click");
+    expect(wrapper.text()).toContain("How applicability works");
+    expect(wrapper.text()).toContain("Read-only version");
+    expect(wrapper.get(".applicability-row select").attributes("disabled")).toBeDefined();
+
+    const editButton = wrapper.findAll("button").find((button) => button.text() === "Create editable draft");
+    await editButton!.trigger("click");
+    expect((wrapper.get('.applicability-draft-form input[pattern]').element as HTMLInputElement).value).toBe("1.1");
+    await wrapper.get(".applicability-draft-form").trigger("submit");
+    await flushPromises();
+
+    const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+      action: "clone",
+      source_profile_id: published.profile_id,
+      version: "1.1",
+    });
+    expect(wrapper.text()).toContain("Editable draft");
+    expect(wrapper.get(".applicability-row select").attributes("disabled")).toBeUndefined();
+    expect(wrapper.text()).toContain("Save draft");
+  });
+
   it("uses structured fields instead of exposing raw JSON to rule authors", async () => {
     const draft = { ...profile, workflow_status: "draft" };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("master-data/options")

@@ -353,3 +353,7 @@ Stage 31 adds the context-driven Mold Planning workspace, deterministic standard
 comparison, immutable planning records and requirements, downstream engineering handoffs,
 authorized manual selection, Assistant/MCP integration and the final external single-image Demo
 release gate. See [`stage-31-mold-planning-release.md`](stage-31-mold-planning-release.md).
+
+Stage 32 clarifies Rule Profile applicability and adds a direct, governed editing path from an
+immutable version to a cloned draft. See
+[`stage-32-applicability-editing-ux.md`](stage-32-applicability-editing-ux.md).

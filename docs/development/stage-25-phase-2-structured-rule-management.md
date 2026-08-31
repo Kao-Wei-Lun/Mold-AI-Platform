@@ -50,6 +50,8 @@ The existing profile detail, patch, diff, and lifecycle action endpoints remain 
 
 The Mold Rules workspace is organized into Overview, Applicability, Rules, Version diff, Workflow, and Usage tabs. Responsive layouts collapse structured editors to one column on narrow screens, and a sticky save action makes unsaved draft state explicit. All new user-facing strings have Traditional Chinese translations.
 
+The Applicability tab is presented to Traditional Chinese users as **適用範圍與選用條件** so that its effect is explicit: it controls when a rule set may be selected for a mold, product, material, molding process, or location. Each row exposes labelled Condition type, Condition value, and Selection behavior fields. Governed versions are disabled and visibly read-only. An authorized rule author can use **Create editable draft** directly from the tab, enter the next version and change summary, clone the selected immutable version, and continue editing on the newly selected draft. Saving still uses optimistic locking and the normal validation, review, approval, and publication workflow.
+
 ## Verification gate
 
 Phase 2 is accepted only when:

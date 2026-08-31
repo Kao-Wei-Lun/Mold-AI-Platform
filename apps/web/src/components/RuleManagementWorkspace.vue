@@ -5,6 +5,7 @@ import type { LocalAccount } from "../api/identity";
 import type { DeepLinkContext } from "../deepLinks";
 import { emptyMasterDataOptions, fetchMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import {
+  cloneRuleProfile,
   createRuleProfile,
   fetchRuleProfileDiff,
   fetchRuleProfiles,
@@ -46,6 +47,9 @@ const impact = ref<RuleImpact | null>(null);
 const diff = ref<RuleProfileDiff | null>(null);
 const baselineId = ref("");
 const showCreate = ref(false);
+const showApplicabilityDraft = ref(false);
+const applicabilityDraftVersion = ref("");
+const applicabilityChangeSummary = ref("");
 const catalogQuery = ref("");
 const catalogStatus = ref("all");
 const createForm = ref({ mode: "clone" as "blank" | "template" | "clone", profileKey: "", sourceId: "", version: "2.0", changeSummary: "" });
@@ -90,7 +94,10 @@ function copyProfileToEditor(): void {
   baselineId.value = baselineProfiles.value[0]?.profile_id || "";
 }
 
-watch(profile, copyProfileToEditor);
+watch(profile, () => {
+  copyProfileToEditor();
+  showApplicabilityDraft.value = false;
+});
 
 function conditionLabel(rule: RuleDefinition): string {
   const operator = { lte: "≤", gte: "≥", eq: "=" }[rule.condition.operator];
@@ -181,6 +188,46 @@ function optionsFor(dimension: RuleApplicability["dimension"]): Array<{ code: st
 }
 function addApplicability(): void { const first = masterData.value.mold_type[0]?.code; if (first) draftApplicability.value.push({ dimension: "mold_type", value_code: first, match_mode: "include" }); }
 
+function suggestDraftVersion(): string {
+  const versions = profiles.value
+    .filter((item) => item.profile_key === profile.value?.profile_key)
+    .map((item) => /^(\d+)(?:\.(\d+))?/.exec(item.version))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .map((match) => ({ major: Number(match[1]), minor: Number(match[2] || 0) }))
+    .sort((left, right) => right.major - left.major || right.minor - left.minor);
+  const latest = versions[0] || { major: 1, minor: 0 };
+  return `${latest.major}.${latest.minor + 1}`;
+}
+
+function openApplicabilityDraft(): void {
+  if (!profile.value) return;
+  applicabilityDraftVersion.value = suggestDraftVersion();
+  applicabilityChangeSummary.value = `Update applicability based on ${profile.value.profile_key} ${profile.value.version}`;
+  showApplicabilityDraft.value = true;
+}
+
+async function createApplicabilityDraft(): Promise<void> {
+  if (!profile.value || !applicabilityDraftVersion.value.trim() || !reason.value.trim()) return;
+  busy.value = true;
+  error.value = null;
+  try {
+    const created = await cloneRuleProfile(profile.value, {
+      version: applicabilityDraftVersion.value.trim(),
+      changeSummary: applicabilityChangeSummary.value.trim(),
+      reason: reason.value,
+    });
+    showApplicabilityDraft.value = false;
+    activeTab.value = "applicability";
+    await loadProfiles(created.profile_id);
+    pushToast(t("Editable applicability draft created."), "success");
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Rule workflow failed.");
+    pushToast(error.value, "error");
+  } finally {
+    busy.value = false;
+  }
+}
+
 onMounted(() => loadProfiles(props.deepLink?.refs.profile_id || ""));
 watch(
   () => props.deepLink?.refs.profile_id,
@@ -244,7 +291,28 @@ watch(
 
       <section v-else-if="activeTab === 'applicability'" class="rule-tab-panel">
         <div class="section-heading"><div><h3>{{ t("Applicability editor") }}</h3><p>{{ t("Choose governed dimensions that include or exclude this profile during automatic resolution.") }}</p></div><button v-if="canAuthor && isDraft" type="button" @click="addApplicability">{{ t("Add condition") }}</button></div>
-        <div v-if="draftApplicability.length" class="applicability-editor"><div v-for="(item, index) in draftApplicability" :key="index" class="applicability-row"><select v-model="item.dimension"><option value="mold_type">{{ t("Mold type") }}</option><option value="product_type">{{ t("Product type") }}</option><option value="material">{{ t("Material") }}</option><option value="molding_process">{{ t("Molding process") }}</option><option value="location">{{ t("Location") }}</option></select><select v-model="item.value_code"><option v-for="option in optionsFor(item.dimension)" :key="option.code" :value="option.code">{{ option.name_zh_tw || option.name_en }} ({{ option.code }})</option></select><select v-model="item.match_mode"><option value="include">{{ t("Include") }}</option><option value="exclude">{{ t("Exclude") }}</option></select><button v-if="canAuthor && isDraft" type="button" class="danger-button" @click="draftApplicability.splice(index, 1)">{{ t("Remove") }}</button></div></div>
+        <aside class="applicability-help">
+          <div><strong>{{ t("How applicability works") }}</strong><p>{{ t("These conditions determine when the system may automatically select this review rule set. Include allows matching contexts; Exclude prevents selection.") }}</p></div>
+          <span v-if="isDraft" class="editable-state">{{ t("Editable draft") }}</span>
+          <span v-else class="readonly-state">{{ t("Read-only version") }}</span>
+        </aside>
+        <aside v-if="canAuthor && !isDraft" class="applicability-draft-callout">
+          <div><strong>{{ t("Need to change these conditions?") }}</strong><p>{{ t("Published and governed versions keep their history unchanged. Create a new draft, edit it, then validate and publish the new version.") }}</p></div>
+          <button v-if="!showApplicabilityDraft" type="button" @click="openApplicabilityDraft">{{ t("Create editable draft") }}</button>
+        </aside>
+        <form v-if="canAuthor && !isDraft && showApplicabilityDraft" class="applicability-draft-form" @submit.prevent="createApplicabilityDraft">
+          <FormField v-slot="{ fieldId }" :label="t('New version')" required><input :id="fieldId" v-model="applicabilityDraftVersion" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Change summary')"><input :id="fieldId" v-model="applicabilityChangeSummary" /></FormField>
+          <div class="applicability-draft-actions"><button type="button" class="secondary-button" @click="showApplicabilityDraft = false">{{ t("Cancel") }}</button><button type="submit" :disabled="busy">{{ t("Create draft and edit") }}</button></div>
+        </form>
+        <div v-if="draftApplicability.length" class="applicability-editor">
+          <div v-for="(item, index) in draftApplicability" :key="index" class="applicability-row">
+            <FormField v-slot="{ fieldId }" :label="t('Condition type')"><select :id="fieldId" v-model="item.dimension" :disabled="!canAuthor || !isDraft"><option value="mold_type">{{ t("Mold type") }}</option><option value="product_type">{{ t("Product type") }}</option><option value="material">{{ t("Material") }}</option><option value="molding_process">{{ t("Molding process") }}</option><option value="location">{{ t("Location") }}</option></select></FormField>
+            <FormField v-slot="{ fieldId }" :label="t('Condition value')"><select :id="fieldId" v-model="item.value_code" :disabled="!canAuthor || !isDraft"><option v-for="option in optionsFor(item.dimension)" :key="option.code" :value="option.code">{{ option.name_zh_tw || option.name_en }} ({{ option.code }})</option></select></FormField>
+            <FormField v-slot="{ fieldId }" :label="t('Selection behavior')"><select :id="fieldId" v-model="item.match_mode" :disabled="!canAuthor || !isDraft"><option value="include">{{ t("Include") }}</option><option value="exclude">{{ t("Exclude") }}</option></select></FormField>
+            <button v-if="canAuthor && isDraft" type="button" class="danger-button" @click="draftApplicability.splice(index, 1)">{{ t("Remove") }}</button>
+          </div>
+        </div>
         <p v-else class="workspace-state">{{ t("No applicability conditions. This profile can only resolve as a controlled default.") }}</p>
       </section>
 

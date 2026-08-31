@@ -5138,8 +5138,22 @@ button:not(:disabled):active { transform: translateY(0); }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .section-heading h3, .section-heading p { margin: 0; }
 .section-heading p { margin-top: 0.25rem; color: var(--color-text-muted); font-size: 0.76rem; }
+.applicability-help,
+.applicability-draft-callout { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; border: 1px solid #cfe0f5; border-radius: 14px; padding: 0.9rem 1rem; background: linear-gradient(135deg, #f7faff, #eef5ff); }
+.applicability-help strong,
+.applicability-draft-callout strong { color: #173f75; }
+.applicability-help p,
+.applicability-draft-callout p { margin: 0.25rem 0 0; color: var(--color-text-muted); font-size: 0.75rem; line-height: 1.55; }
+.applicability-help > span { flex: 0 0 auto; border-radius: 999px; padding: 0.32rem 0.65rem; font-size: 0.66rem; font-weight: 850; }
+.editable-state { color: #12613f; background: #dff5e9; }
+.readonly-state { color: #725314; background: #fff2c9; }
+.applicability-draft-callout { border-color: #ead59a; background: #fffaf0; }
+.applicability-draft-form { display: grid; grid-template-columns: minmax(150px, 0.35fr) minmax(260px, 1fr) auto; gap: 0.75rem; align-items: end; margin-top: 0.75rem; border: 1px solid #d8e3ef; border-radius: 14px; padding: 0.9rem; background: #fff; }
+.applicability-draft-form .form-field,
+.applicability-row .form-field { margin: 0; }
+.applicability-draft-actions { display: flex; gap: 0.45rem; }
 .applicability-editor { display: grid; gap: 0.65rem; margin-top: 1rem; }
-.applicability-row { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr) minmax(130px, 0.7fr) auto; gap: 0.65rem; border: 1px solid #dce5ef; border-radius: 12px; padding: 0.75rem; background: #f9fbfd; }
+.applicability-row { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr) minmax(130px, 0.7fr) auto; align-items: end; gap: 0.65rem; border: 1px solid #dce5ef; border-radius: 12px; padding: 0.75rem; background: #f9fbfd; }
 .structured-rule-list { display: grid; gap: 0.9rem; margin-top: 1rem; }
 .structured-rule-card { border: 1px solid #d6e1ed; border-radius: 14px; padding: 1rem; background: #fff; }
 .structured-rule-card > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.8rem; }
@@ -5513,6 +5527,8 @@ button:not(:disabled):active { transform: translateY(0); }
   .registry-layout { grid-template-columns: 1fr; }
   .registry-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rule-workflow-form { grid-template-columns: 1fr; }
+  .applicability-draft-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .applicability-draft-actions { grid-column: 1 / -1; justify-content: flex-end; }
   .rule-create-wizard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rule-create-wizard > div:first-child { grid-column: 1 / -1; }
   .structured-rule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -5559,7 +5575,11 @@ button:not(:disabled):active { transform: translateY(0); }
   .structured-rule-grid .form-wide { grid-column: auto; }
   .rule-profile-header,
   .section-heading,
+  .applicability-help,
+  .applicability-draft-callout,
   .rule-sticky-actions { align-items: stretch; flex-direction: column; }
+  .applicability-draft-form { grid-template-columns: 1fr; }
+  .applicability-draft-actions { grid-column: auto; }
   .knowledge-management-summary,
   .knowledge-document-toolbar,
   .knowledge-document-grid,
