@@ -1,7 +1,7 @@
 name: mold-ai-platform-sites-demo
 
 x-unified-app-image: &unified-app-image
-  image: mold-ai-platform-app:${APP_VERSION:-0.14.1-demo}
+  image: mold-ai-platform-app:${APP_VERSION:-0.14.2-demo}
   build:
     context: .
     dockerfile: Dockerfile
@@ -37,7 +37,7 @@ services:
       retries: 12
     environment:
       APP_ENV: external-demo
-      APP_VERSION: ${APP_VERSION:-0.14.1-demo}
+      APP_VERSION: ${APP_VERSION:-0.14.2-demo}
       DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY}
       DJANGO_ALLOWED_HOSTS: .trycloudflare.com,api,localhost,127.0.0.1

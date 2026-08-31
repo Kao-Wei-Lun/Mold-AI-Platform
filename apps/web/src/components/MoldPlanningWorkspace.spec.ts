@@ -87,6 +87,29 @@ describe("MoldPlanningWorkspace", () => {
     });
   });
 
+  it("makes the new-plan action visibly navigate to and focus the existing creation form", async () => {
+    const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Select applicable standards and create engineering requirements");
+    expect(wrapper.text()).toContain("Creating a new mold plan");
+    const action = wrapper.get(".plan-catalog-actions button");
+    expect(action.text()).toContain("Go to new plan form");
+
+    const editor = wrapper.get(".planning-work-grid").element as HTMLElement;
+    const nameInput = wrapper.get('input[required]').element as HTMLInputElement;
+    const scrollIntoView = vi.fn();
+    const focus = vi.spyOn(nameInput, "focus");
+    editor.scrollIntoView = scrollIntoView;
+    await wrapper.get('input[required]').setValue("Unsaved plan");
+    await action.trigger("click");
+    await flushPromises();
+
+    expect(nameInput.value).toBe("");
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
   it("resolves and explains the recommended review rule set", async () => {
     const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
     await flushPromises();

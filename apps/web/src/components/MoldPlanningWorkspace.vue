@@ -71,6 +71,8 @@ const hydratingPlan = ref(false);
 const comparing = ref(false);
 const selectedCandidateIds = ref<string[]>([]);
 const comparison = ref<MoldPlanningCandidateComparison | null>(null);
+const planningEditor = ref<HTMLElement | null>(null);
+const planNameInput = ref<HTMLInputElement | null>(null);
 
 const selectedMold = computed(() => molds.value.find((item) => item.id === selectedMoldId.value) || null);
 const selectedRevision = computed(() => revisions.value.find((item) => item.id === selectedRevisionId.value) || null);
@@ -169,12 +171,17 @@ async function load(): Promise<void> {
   }
 }
 
-function newPlan(): void {
+async function newPlan(): Promise<void> {
   storedPlan.value = null;
   planName.value = "";
   preview.value = null;
   comparison.value = null;
   error.value = null;
+  errorCode.value = "";
+  selectedCandidateIds.value = [];
+  await nextTick();
+  planningEditor.value?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  planNameInput.value?.focus();
 }
 
 async function openPlan(planId: string): Promise<void> {
@@ -417,12 +424,12 @@ watch(
 <template>
   <section class="mold-planning-workspace" aria-labelledby="mold-planning-title">
     <header class="planning-intro">
-      <div><p class="eyebrow">{{ t("Context-driven planning") }}</p><h2 id="mold-planning-title">{{ t("Plan the mold before selecting a review rule set") }}</h2><p>{{ t("Describe the engineering context first. The platform will resolve the applicable governed standard and preserve the reason for later review.") }}</p></div>
+      <div><p class="eyebrow">{{ t("Context-driven planning") }}</p><h2 id="mold-planning-title">{{ t("Plan the mold before selecting a review rule set") }}</h2><p class="planning-purpose-subtitle">{{ t("Select applicable standards and create engineering requirements") }}</p><p>{{ t("Describe the engineering context first. The platform will resolve the applicable governed standard and preserve the reason for later review.") }}</p></div>
       <button type="button" class="secondary-button" @click="emit('navigate', '/governance/rules')">{{ t("Browse review rule sets") }}</button>
     </header>
 
     <section class="mold-plan-catalog" aria-labelledby="mold-plan-catalog-title">
-      <div class="section-heading"><div><p class="eyebrow">{{ t("Saved planning records") }}</p><h3 id="mold-plan-catalog-title">{{ t("Mold plans") }}</h3></div><div class="plan-catalog-actions"><select v-model="planStatusFilter" :aria-label="t('Filter plans by status')" @change="loadPlans"><option value="">{{ t("All statuses") }}</option><option v-for="status in ['draft', 'ready', 'completed', 'archived']" :key="status" :value="status">{{ t(status) }}</option></select><button type="button" class="secondary-button" @click="newPlan">＋ {{ t("New plan") }}</button></div></div>
+      <div class="section-heading"><div><p class="eyebrow">{{ t("Saved planning records") }}</p><h3 id="mold-plan-catalog-title">{{ t("Mold plans") }}</h3></div><div class="plan-catalog-actions"><select v-model="planStatusFilter" :aria-label="t('Filter plans by status')" @change="loadPlans"><option value="">{{ t("All statuses") }}</option><option v-for="status in ['draft', 'ready', 'completed', 'archived']" :key="status" :value="status">{{ t(status) }}</option></select><button type="button" class="secondary-button" @click="newPlan">{{ storedPlan ? `＋ ${t("New plan")}` : `↓ ${t("Go to new plan form")}` }}</button></div></div>
       <div v-if="plans.length" class="mold-plan-card-list">
         <button v-for="plan in plans" :key="plan.plan_id" type="button" :class="{ active: storedPlan?.plan_id === plan.plan_id }" @click="openPlan(plan.plan_id)"><span><strong>{{ plan.name }}</strong><small>{{ plan.plan_code }} · {{ plan.mold_code }}@{{ plan.mold_revision }}</small></span><em :class="`status-${plan.status}`">{{ t(plan.status) }}</em><small>{{ plan.latest_resolution?.selected_profile_key || t("Not resolved") }}</small></button>
       </div>
@@ -430,11 +437,12 @@ watch(
     </section>
 
     <div v-if="loading" class="workspace-state" role="status">{{ t("Loading mold planning context…") }}</div>
-    <div v-else class="planning-work-grid">
+    <div v-else ref="planningEditor" class="planning-work-grid" :class="{ 'new-plan-mode': !storedPlan }">
       <form class="planning-context-panel" @submit.prevent="resolveStandard">
+        <div v-if="!storedPlan" class="new-plan-banner" role="status"><span>＋</span><div><strong>{{ t("Creating a new mold plan") }}</strong><p>{{ t("Start with a plan name, confirm the engineering context, then resolve the applicable standard.") }}</p></div></div>
         <div class="section-heading"><div><span class="step-badge">1–2</span><h3>{{ t("Planning target and engineering context") }}</h3><p>{{ t("Choose a governed mold revision, then confirm the canonical conditions used for standard resolution.") }}</p></div></div>
         <div class="planning-form-grid">
-          <FormField v-slot="{ fieldId }" class="form-wide" :label="t('Plan name')" required :hint="t('Use a name that identifies the product, mold and planning purpose.')"><input :id="fieldId" v-model="planName" minlength="3" maxlength="120" required :disabled="storedPlan?.status !== undefined && storedPlan.status !== 'draft'" /></FormField>
+          <FormField v-slot="{ fieldId }" class="form-wide" :label="t('Plan name')" required :hint="t('Use a name that identifies the product, mold and planning purpose.')"><input :id="fieldId" ref="planNameInput" v-model="planName" minlength="3" maxlength="120" required :disabled="storedPlan?.status !== undefined && storedPlan.status !== 'draft'" /></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Mold')" required><select :id="fieldId" v-model="selectedMoldId" required><option v-for="item in molds" :key="item.id" :value="item.id">{{ item.mold_code }} · {{ item.name }}</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Mold revision')" required><select :id="fieldId" v-model="selectedRevisionId" required><option v-for="item in availableRevisions" :key="item.id" :value="item.id">{{ item.mold_code }}@{{ item.revision_code }} · {{ t(item.status) }}</option></select></FormField>
           <FormField v-slot="{ fieldId }" :label="t('Planning purpose')" required><select :id="fieldId" v-model="purpose"><option value="new_mold">{{ t("New mold") }}</option><option value="modification">{{ t("Mold modification") }}</option><option value="design_change">{{ t("Design change") }}</option><option value="trial_improvement">{{ t("Trial improvement") }}</option></select></FormField>

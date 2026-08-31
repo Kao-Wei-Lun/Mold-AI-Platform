@@ -99,6 +99,18 @@ AI session; ChatGPT MCP uses the separate Secure MCP Tunnel and internal service
 - production SSO/OAuth, company connectors, electronic approval and report templates remain
   Enterprise work.
 
+## Post-release new-plan interaction clarification
+
+The workspace subtitle now states **Select applicable standards and create engineering
+requirements**, making its boundary from Design Review explicit. The saved-plan catalog action no
+longer implies that it reveals a hidden form: when no saved plan is selected it reads **Go to new
+plan form**. Activating it clears unsaved plan state, scrolls to the existing creation workspace,
+focuses Plan name, and exposes a visible **Creating a new mold plan** banner. When a saved plan is
+open, the same action retains the **New plan** label and switches back to the creation state.
+
+This is intentionally a client-side interaction correction. It does not change Mold Plan,
+Resolution, Requirement, Handoff, permission, audit, or lineage contracts.
+
 ## Verification evidence
 
 The Phase 6 release gate passed on 2026-08-31:
