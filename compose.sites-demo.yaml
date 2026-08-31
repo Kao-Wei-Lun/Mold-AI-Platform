@@ -1,7 +1,7 @@
 name: mold-ai-platform-sites-demo
 
 x-unified-app-image: &unified-app-image
-  image: mold-ai-platform-app:${APP_VERSION:-0.13.0-demo}
+  image: mold-ai-platform-app:${APP_VERSION:-0.14.0-demo}
   build:
     context: .
     dockerfile: Dockerfile
@@ -37,7 +37,7 @@ services:
       retries: 12
     environment:
       APP_ENV: external-demo
-      APP_VERSION: ${APP_VERSION:-0.13.0-demo}
+      APP_VERSION: ${APP_VERSION:-0.14.0-demo}
       DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY}
       DJANGO_ALLOWED_HOSTS: .trycloudflare.com,api,localhost,127.0.0.1
@@ -47,7 +47,7 @@ services:
       DEMO_API_TOKEN_SCOPES: public-demo:read,public-demo:write
       DEMO_API_ACTOR_ID: legacy-controlled-sites-demo-user
       PLATFORM_SERVICE_TOKEN: ${MCP_PLATFORM_SERVICE_TOKEN:?Set MCP_PLATFORM_SERVICE_TOKEN}
-      PLATFORM_SERVICE_TOKEN_SCOPES: public-demo:read,public-demo:write
+      PLATFORM_SERVICE_TOKEN_SCOPES: public-demo:read,public-demo:write,mold-planning:read,registry:read,rules:read
       PLATFORM_SERVICE_ACTOR_ID: mcp-gateway-service
       PLATFORM_SERVICE_CLIENTS: mcp-gateway
       TRUST_PROXY_HEADERS: "true"

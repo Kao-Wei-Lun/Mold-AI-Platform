@@ -64,6 +64,10 @@ Stage 16 Phase C adds the backup-first canonical dataset reset, a double-confirm
 full-volume rebuild, and automated isolated Qdrant/CAD-worker fault-recovery evidence. See
 [`docs/development/stage-16-operations-uat-phase-c.md`](docs/development/stage-16-operations-uat-phase-c.md).
 
+The context-driven Mold Planning workspace and its complete Phase 0–6 release contract are
+documented in
+[`docs/development/stage-31-mold-planning-release.md`](docs/development/stage-31-mold-planning-release.md).
+
 Stage 17 Phase A replaces the single scrolling page with a route-based Engineering Workspace,
 Guided Demo home, persistent CAD context, responsive navigation and a governed Mold Rule catalog.
 See [`docs/development/stage-17-ui-phase-a.md`](docs/development/stage-17-ui-phase-a.md).

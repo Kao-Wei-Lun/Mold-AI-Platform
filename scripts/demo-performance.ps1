@@ -33,11 +33,12 @@ function Get-Percentile([double[]]$Values, [double]$Percentile) {
 }
 
 $endpointDefinitions = @(
-    [ordered]@{ name = "health_ready"; path = "/api/v1/health/ready"; authenticated = $false },
-    [ordered]@{ name = "demo_status"; path = "/api/v1/demo/status"; authenticated = $true },
-    [ordered]@{ name = "cad_artifacts"; path = "/api/v1/cad-artifacts"; authenticated = $true },
-    [ordered]@{ name = "trial_cases"; path = "/api/v1/trial-cases"; authenticated = $true },
-    [ordered]@{ name = "cae_studies"; path = "/api/v1/cae-studies"; authenticated = $true }
+    [ordered]@{ name = "health_ready"; path = "/api/v1/health/ready"; authenticated = $false; max_p95_ms = $MaxP95Ms },
+    [ordered]@{ name = "demo_status"; path = "/api/v1/demo/status"; authenticated = $true; max_p95_ms = $MaxP95Ms },
+    [ordered]@{ name = "cad_artifacts"; path = "/api/v1/cad-artifacts"; authenticated = $true; max_p95_ms = $MaxP95Ms },
+    [ordered]@{ name = "trial_cases"; path = "/api/v1/trial-cases"; authenticated = $true; max_p95_ms = $MaxP95Ms },
+    [ordered]@{ name = "cae_studies"; path = "/api/v1/cae-studies"; authenticated = $true; max_p95_ms = $MaxP95Ms },
+    [ordered]@{ name = "mold_plans"; path = "/api/v1/mold-plans?page=1&page_size=25"; authenticated = $true; max_p95_ms = 1000 }
 )
 $metrics = @()
 foreach ($definition in $endpointDefinitions) {
@@ -58,6 +59,7 @@ foreach ($definition in $endpointDefinitions) {
         p50_ms = Get-Percentile $durations 0.50
         p95_ms = Get-Percentile $durations 0.95
         max_ms = [Math]::Round(($durations | Measure-Object -Maximum).Maximum, 2)
+        gate_p95_ms = $definition.max_p95_ms
     }
 }
 
@@ -92,7 +94,7 @@ $queueJson = @($queueRaw -split "`r?`n" | Where-Object { $_.Trim().StartsWith("{
 if (-not $queueJson) { throw "The five-job queue baseline did not return its JSON result." }
 $queue = $queueJson | ConvertFrom-Json
 
-$failedMetrics = @($metrics | Where-Object { $_.errors -gt 0 -or $_.p95_ms -gt $MaxP95Ms })
+$failedMetrics = @($metrics | Where-Object { $_.errors -gt 0 -or $_.p95_ms -gt $_.gate_p95_ms })
 $passed = $failedMetrics.Count -eq 0 -and $concurrentSuccess -eq 3 -and $queue.success
 $gpu = @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
 $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
@@ -140,7 +142,7 @@ $resolvedOutputPath = if ([IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } 
 if ($Json) { Write-Output ($result | ConvertTo-Json -Depth 10) }
 else {
     Write-Host "Demo performance baseline: $($result.status)"
-    foreach ($metric in $metrics) { Write-Host "  $($metric.name): p50=$($metric.p50_ms)ms p95=$($metric.p95_ms)ms errors=$($metric.errors)" }
+    foreach ($metric in $metrics) { Write-Host "  $($metric.name): p50=$($metric.p50_ms)ms p95=$($metric.p95_ms)ms gate=$($metric.gate_p95_ms)ms errors=$($metric.errors)" }
     Write-Host "  Concurrent sessions: $concurrentSuccess/3 in $($result.concurrent_sessions.duration_ms)ms"
     Write-Host "  Queued jobs: $($result.queued_jobs.succeeded)/5 in $($result.queued_jobs.duration_ms)ms"
     Write-Host "  Sanitized evidence: $resolvedOutputPath"

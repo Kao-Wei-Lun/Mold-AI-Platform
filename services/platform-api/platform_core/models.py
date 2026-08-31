@@ -1917,9 +1917,7 @@ class MoldPlanResolution(models.Model):
             ]
             if changed:
                 message = f"Immutable fields cannot change: {', '.join(changed)}"
-                raise ValidationError(
-                    {"mold_plan_resolution": message}
-                )
+                raise ValidationError({"mold_plan_resolution": message})
         super().save(*args, **kwargs)
 
 

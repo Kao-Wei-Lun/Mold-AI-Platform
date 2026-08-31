@@ -564,9 +564,7 @@ def _mold_plan_answer(
     insufficient = [item for item in requirements if item.planning_status == "insufficient_data"]
     manual = [item for item in requirements if item.planning_status == "manual_confirmation"]
     high_risk = [
-        item
-        for item in requirements
-        if item.rule_version.severity in {"high", "critical"}
+        item for item in requirements if item.rule_version.severity in {"high", "critical"}
     ]
     answer = {
         "summary": (

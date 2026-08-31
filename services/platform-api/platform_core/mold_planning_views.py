@@ -180,12 +180,9 @@ def _resolution_payload(resolution: MoldPlanResolution) -> dict[str, object]:
         "manual_confirmation": sum(
             item["requirement_type"] == "manual_confirmation" for item in requirements
         ),
-        "high_risk": sum(
-            item["severity"] in {"high", "critical"} for item in requirements
-        ),
+        "high_risk": sum(item["severity"] in {"high", "critical"} for item in requirements),
         "cad_evidence": sum(
-            item["evidence_requirement"]["kind"] == "cad_geometry"
-            for item in requirements
+            item["evidence_requirement"]["kind"] == "cad_geometry" for item in requirements
         ),
         "cae_evidence": sum(
             item["evidence_requirement"]["kind"] == "cae_or_engineering_evidence"
@@ -536,9 +533,7 @@ class MoldPlanningCandidateComparisonView(APIView):
                 "schema_version": "1.0",
                 "context": preview.data["context"],
                 "baseline_profile_id": str(baseline.id),
-                "items": [
-                    _comparison_profile_payload(profile, baseline) for profile in profiles
-                ],
+                "items": [_comparison_profile_payload(profile, baseline) for profile in profiles],
             }
         )
 
@@ -635,14 +630,12 @@ class MoldPlanListCreateView(APIView):
                         source_ref=preview.data["sources"][dimension]["source_ref"],
                         confirmed_by=(
                             actor
-                            if preview.data["sources"][dimension]["source_type"]
-                            == "user_confirmed"
+                            if preview.data["sources"][dimension]["source_type"] == "user_confirmed"
                             else ""
                         ),
                         confirmed_at=(
                             timezone.now()
-                            if preview.data["sources"][dimension]["source_type"]
-                            == "user_confirmed"
+                            if preview.data["sources"][dimension]["source_type"] == "user_confirmed"
                             else None
                         ),
                     )
@@ -675,11 +668,14 @@ class MoldPlanDetailView(APIView):
         if denied := _require(request, "mold-planning:create"):
             return denied
         with transaction.atomic():
-            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            plan = (
+                mold_plan_queryset(request)
+                .select_for_update(of=("self",))
+                .filter(id=plan_id)
+                .first()
+            )
             if plan is None:
-                return _error(
-                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
-                )
+                return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
             if plan.status != MoldPlan.Status.DRAFT:
                 return _error(
                     request,
@@ -736,11 +732,14 @@ class MoldPlanResolveView(APIView):
         if denied := _require(request, "mold-planning:create"):
             return denied
         with transaction.atomic():
-            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            plan = (
+                mold_plan_queryset(request)
+                .select_for_update(of=("self",))
+                .filter(id=plan_id)
+                .first()
+            )
             if plan is None:
-                return _error(
-                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
-                )
+                return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
             if plan.status in {MoldPlan.Status.COMPLETED, MoldPlan.Status.ARCHIVED}:
                 return _error(
                     request,
@@ -794,9 +793,7 @@ class MoldPlanResolveView(APIView):
                     "selection_mode": record.selection_mode,
                 },
             )
-        return Response(
-            mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True)
-        )
+        return Response(mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True))
 
 
 class MoldPlanHandoffView(APIView):
@@ -974,11 +971,14 @@ class MoldPlanProfileSelectionView(APIView):
                 400,
             )
         with transaction.atomic():
-            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            plan = (
+                mold_plan_queryset(request)
+                .select_for_update(of=("self",))
+                .filter(id=plan_id)
+                .first()
+            )
             if plan is None:
-                return _error(
-                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
-                )
+                return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
             if int(request.data.get("row_version", 0)) != plan.row_version:
                 return _error(
                     request,
@@ -1051,9 +1051,7 @@ class MoldPlanProfileSelectionView(APIView):
                     "automatic_profile_id": str(automatic.profile.id),
                 },
             )
-        return Response(
-            mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True)
-        )
+        return Response(mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True))
 
 
 class MoldPlanActionView(APIView):
@@ -1063,9 +1061,7 @@ class MoldPlanActionView(APIView):
     def post(self, request: Request, plan_id: uuid.UUID) -> Response:
         action = str(request.data.get("action", ""))
         permission = (
-            "mold-planning:manage"
-            if action in {"reopen", "archive"}
-            else "mold-planning:complete"
+            "mold-planning:manage" if action in {"reopen", "archive"} else "mold-planning:complete"
         )
         if denied := _require(request, permission):
             return denied
@@ -1087,11 +1083,14 @@ class MoldPlanActionView(APIView):
             MoldPlan.Status.ARCHIVED: {"reopen": MoldPlan.Status.DRAFT},
         }
         with transaction.atomic():
-            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            plan = (
+                mold_plan_queryset(request)
+                .select_for_update(of=("self",))
+                .filter(id=plan_id)
+                .first()
+            )
             if plan is None:
-                return _error(
-                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
-                )
+                return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
             if int(request.data.get("row_version", 0)) != plan.row_version:
                 return _error(
                     request,

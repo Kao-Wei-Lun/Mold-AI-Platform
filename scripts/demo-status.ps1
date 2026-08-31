@@ -99,7 +99,7 @@ $coreReady = $containersReady `
     -and $curated `
     -and $curated.reconciled `
     -and $mcp `
-    -and $mcp.tool_count -eq 10
+    -and $mcp.tool_count -eq 13
 $externalReady = $LocalDevelopment -or (
     $entryConfigured -and $tunnelKnown -and $mcp.deep_links.ready -and $mcp.plugin_ui.ready `
         -and $mcp.connection.secure_tunnel_configured `
@@ -116,7 +116,7 @@ $nextActions = @()
 if (-not $containersReady) { $nextActions += "Run scripts/demo-start.ps1 and inspect missing services." }
 if (-not $workersReady) { $nextActions += "Restore both Celery workers before creating asynchronous jobs." }
 if (-not $curated -or -not $curated.reconciled) { $nextActions += "Run seed_cad_demo and repair Qdrant before UAT." }
-if (-not $mcp -or $mcp.tool_count -ne 10) { $nextActions += "Restore the local MCP gateway and verify its preflight." }
+if (-not $mcp -or $mcp.tool_count -ne 13) { $nextActions += "Restore the local MCP gateway and verify its 13-tool contract." }
 if (-not $LocalDevelopment -and -not $entryConfigured) { $nextActions += "Configure a stable private Sites HTTPS entry." }
 if (-not $LocalDevelopment -and -not $tunnelKnown) { $nextActions += "Start the Web Quick Tunnel." }
 if (-not $LocalDevelopment -and $mcp -and -not $mcp.connection.secure_tunnel_configured) {

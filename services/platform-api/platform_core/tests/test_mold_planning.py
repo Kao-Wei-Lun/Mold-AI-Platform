@@ -186,9 +186,7 @@ class MoldPlanningPersistenceTests(TestCase):
         self.assertIn("target=design_review", handoff["contract"]["ui_path"])
         self.assertEqual(MoldPlanHandoff.objects.count(), 1)
 
-        review = self.client.get(
-            f"/api/v1/design-reviews/{handoff['review_id']}"
-        )
+        review = self.client.get(f"/api/v1/design-reviews/{handoff['review_id']}")
         self.assertEqual(review.status_code, 200)
         self.assertEqual(review.json()["source_mold_plan"]["plan_id"], created["plan_id"])
         self.assertEqual(
@@ -212,9 +210,7 @@ class MoldPlanningPersistenceTests(TestCase):
             {},
             content_type="application/json",
         ).json()
-        type(self.profile).objects.filter(id=self.profile.id).update(
-            ruleset_checksum="f" * 64
-        )
+        type(self.profile).objects.filter(id=self.profile.id).update(ruleset_checksum="f" * 64)
         response = self.client.post(
             f"/api/v1/mold-plans/{created['plan_id']}/handoffs/design_review",
             {"row_version": resolved["row_version"]},
@@ -270,9 +266,7 @@ class MoldPlanningPersistenceTests(TestCase):
             {},
             content_type="application/json",
         ).json()
-        self.assertEqual(
-            resolved["latest_resolution"]["selected_profile_id"], str(specific.id)
-        )
+        self.assertEqual(resolved["latest_resolution"]["selected_profile_id"], str(specific.id))
 
         response = self.client.post(
             f"/api/v1/mold-plans/{created['plan_id']}/select-profile",
@@ -336,9 +330,7 @@ class MoldPlanningPersistenceTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(rejected.status_code, 409)
-        self.assertEqual(
-            rejected.json()["error"]["code"], "RULE_PROFILE_OVERRIDE_NOT_ELIGIBLE"
-        )
+        self.assertEqual(rejected.json()["error"]["code"], "RULE_PROFILE_OVERRIDE_NOT_ELIGIBLE")
 
     def test_mold_plan_assistant_ignores_prompt_injection_and_uses_snapshot(self) -> None:
         created = self.create_plan()

@@ -348,3 +348,8 @@ See [`stage-25-phase-2-structured-rule-management.md`](stage-25-phase-2-structur
 Stage 30 adds formula/MIME/archive security screening, CSRF/XSS regression coverage, a 10,000-row
 Dry Run and atomic Commit gate, and the final recovery/external release sequence. See
 [`stage-30-phase-6-security-performance-release.md`](stage-30-phase-6-security-performance-release.md).
+
+Stage 31 adds the context-driven Mold Planning workspace, deterministic standard preview and
+comparison, immutable planning records and requirements, downstream engineering handoffs,
+authorized manual selection, Assistant/MCP integration and the final external single-image Demo
+release gate. See [`stage-31-mold-planning-release.md`](stage-31-mold-planning-release.md).

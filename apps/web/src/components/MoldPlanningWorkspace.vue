@@ -389,7 +389,7 @@ async function compareCandidates(): Promise<void> {
 onMounted(load);
 
 watch(
-  () => [storedPlan.value?.plan_id, storedPlan.value?.latest_resolution?.resolution_id],
+  () => [storedPlan.value?.plan_id, storedPlan.value?.latest_resolution?.resolution_id, locale.value],
   () => {
     emit("contextChange", {
       context_version: "1.0",

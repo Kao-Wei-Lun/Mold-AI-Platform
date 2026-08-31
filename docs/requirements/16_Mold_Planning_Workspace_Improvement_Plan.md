@@ -1,8 +1,11 @@
 # 模具規劃工作區與規則選用體驗改善規劃
 
-版本：1.0 Draft  
-日期：2026-08-31  
-狀態：待實作基線  
+版本：1.1 Implemented Baseline
+
+日期：2026-08-31
+
+狀態：Phase 0–6 已實作；Demo Release Gate 受持續驗證
+
 適用範圍：Mold AI Platform Demo 與未來 Enterprise 版本
 
 ## 1. 文件目的
@@ -632,6 +635,19 @@ MCP 預設只讀；建立、改選、完成或封存需要明確工具、授權�
 ## 16. 分階段實作計畫
 
 每個 Phase 必須獨立測試，測試通過後建立一筆 Git Commit；不得將未通過 Gate 的下一 Phase 混入同一 Commit。
+
+### 16.0 實作追蹤
+
+| Phase | 狀態 | Git Commit | 主要結果 |
+|---|---|---|---|
+| 文件基線 | 完成 | `dce2812` | 建立本需求、資料契約、測試與分段 Git Gate |
+| Phase 0 | 完成 | `62a1baa` | 工程端模具規劃 Route、導覽、雙語空間與治理端責任分離 |
+| Phase 1 | 完成 | `783ed5c` | 工程 Context、來源標示、伺服器規則解析預覽與 typed states |
+| Phase 2 | 完成 | `ad67674` | 候選目錄、2–3 組比較與治理端可搜尋規則組目錄 |
+| Phase 3 | 完成 | `4fee152` | MoldPlan、Context、Resolution、Requirement 持久化與生命週期 |
+| Phase 4 | 完成 | `4feeb05` | 不可變規劃要求、Design Review Handoff、Audit 與 Lineage |
+| Phase 5 | 完成 | `7f91201` | 受權限人工改選、Assistant Context、13-tool MCP 與 Deep Link |
+| Phase 6 | 完成 | 見本階段發布 Commit | 效能、安全、Golden Scenario、外網與單一 Docker 發布 Gate |
 
 ### Phase 0：資訊架構與命名基線
 

@@ -39,7 +39,7 @@ if (-not $AllowDirtyWorkingTree -and -not $status.git.clean) {
 if ($status.api.readiness -ne "ok" -or -not $status.datasets.curated_cad.reconciled) {
     throw "Core API or curated dataset is not ready for acceptance."
 }
-if ($status.mcp.tool_count -ne 10) { throw "MCP tool count is not the expected 10." }
+if ($status.mcp.tool_count -ne 13) { throw "MCP tool count is not the expected 13." }
 if (-not $status.mcp.plugin_ui_ready) { throw "MCP Plugin UI launcher is not ready." }
 
 $testResult = [ordered]@{ status = "skipped"; command = "scripts/test.ps1" }

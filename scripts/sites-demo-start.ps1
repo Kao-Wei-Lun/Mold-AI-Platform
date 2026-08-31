@@ -94,11 +94,16 @@ if (-not (Test-StableSitesEntry $sitesEntryUrl)) {
     throw "Set PUBLIC_WEB_ENTRY_BASE_URL in $envPath to the stable HTTPS origin of your private Sites portal."
 }
 
-$upArgs = $composeArgs + @("up", "-d")
-if (-not $NoBuild) { $upArgs += "--build" }
+$upArgs = $composeArgs + @("up", "-d", "--no-build")
 $upArgs += @("db", "redis", "qdrant", "api", "worker", "worker-cad", "web", "mcp-gateway", "web-tunnel")
 Push-Location -LiteralPath $repoRoot
 try {
+    if (-not $NoBuild) {
+        # Every application role resolves to the same image tag. Build it once to avoid five
+        # parallel BuildKit exporters racing to write that tag on Docker Desktop.
+        & docker @composeArgs build api
+        if ($LASTEXITCODE -ne 0) { throw "The unified Sites Demo application image failed to build." }
+    }
     & docker @upArgs
     if ($LASTEXITCODE -ne 0) { throw "Sites Demo containers failed to start." }
 

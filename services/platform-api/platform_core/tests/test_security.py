@@ -84,7 +84,13 @@ class DemoAccessMiddlewareTests(TestCase):
 @override_settings(
     DEMO_AUTH_MODE="local",
     PLATFORM_SERVICE_TOKEN=SERVICE_TOKEN,
-    PLATFORM_SERVICE_TOKEN_SCOPES={"public-demo:read", "public-demo:write"},
+    PLATFORM_SERVICE_TOKEN_SCOPES={
+        "public-demo:read",
+        "public-demo:write",
+        "mold-planning:read",
+        "registry:read",
+        "rules:read",
+    },
     PLATFORM_SERVICE_ACTOR_ID="mcp-gateway-service-test",
     PLATFORM_SERVICE_CLIENTS={"mcp-gateway"},
 )
@@ -106,6 +112,25 @@ class PlatformServiceIdentityTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Mold AI Platform")
+
+    def test_mcp_service_identity_can_read_mold_plans_without_mutation_permissions(self) -> None:
+        response = self.client.get(
+            "/api/v1/mold-plans",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+            HTTP_AUTHORIZATION=f"Bearer {SERVICE_TOKEN}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["schema_version"], "1.0")
+        denied = self.client.post(
+            "/api/v1/mold-plans",
+            {},
+            content_type="application/json",
+            HTTP_X_MOLD_AI_CLIENT="mcp-gateway",
+            HTTP_AUTHORIZATION=f"Bearer {SERVICE_TOKEN}",
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.json()["error"]["code"], "ACCESS_DENIED")
 
     def test_service_token_requires_the_allowlisted_client_header(self) -> None:
         response = self.client.get(
