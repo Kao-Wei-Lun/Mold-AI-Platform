@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from tempfile import TemporaryDirectory
 
+from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
@@ -21,7 +22,7 @@ from platform_core.tasks import process_cad_job
 from platform_core.tests.fixtures import ASCII_TETRAHEDRON_STL
 
 
-@override_settings(SIMILARITY_AUTO_INDEX=False)
+@override_settings(SIMILARITY_AUTO_INDEX=False, DEMO_AUTH_MODE="local")
 class RuleResolutionTests(TestCase):
     def setUp(self) -> None:
         self.media_directory = TemporaryDirectory()
@@ -57,8 +58,12 @@ class RuleResolutionTests(TestCase):
             material_code="ABS-GENERAL",
         )
         self.version = records.version
+        self.revision = revision
         self.scope = scope
         self.default = get_demo_rule_profile()
+        self.admin = get_user_model().objects.create_superuser(
+            username="planning-admin", email="planning@example.test", password="Planning-2026!"
+        )
 
     def tearDown(self) -> None:
         self.settings_override.disable()
@@ -211,3 +216,46 @@ class RuleResolutionTests(TestCase):
         self.assertEqual(records.review.profile, selected)
         self.assertEqual(records.review.resolution_snapshot, snapshot)
         self.assertEqual(later.profile.profile_key, "newer-profile")
+
+    def test_mold_planning_preview_returns_context_sources_and_selection(self) -> None:
+        selected = self.profile(
+            "planning-three-plate",
+            priority=25,
+            dimensions={"mold_type": "three_plate", "product_type": "housing"},
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            "/api/v1/mold-plans/resolution-preview",
+            {
+                "mold_revision_id": str(self.revision.id),
+                "cad_artifact_version_id": str(self.version.id),
+                "context": {"location": "gate_area"},
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["selected"]["profile_id"], str(selected.id))
+        self.assertEqual(payload["selection_mode"], "automatic")
+        self.assertEqual(payload["sources"]["product_type"]["source_type"], "cad")
+        self.assertEqual(payload["context"]["mold_type"], "three_plate")
+
+    def test_mold_planning_preview_requires_governed_permissions(self) -> None:
+        user = get_user_model().objects.create_user(
+            username="planning-viewer", password="Planning-2026!"
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/api/v1/mold-plans/resolution-preview",
+            {"mold_revision_id": str(self.revision.id)},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn(
+            response.json()["error"]["code"],
+            {"PERMISSION_SCOPE_REQUIRED", "ACCESS_DENIED"},
+        )

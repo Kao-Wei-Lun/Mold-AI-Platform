@@ -371,6 +371,10 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         />
         <MoldPlanningWorkspace
           v-else-if="currentRoute.id === 'mold_planning' && accessReady"
+          :active-cad="activeCAD"
+          :master-data-options="masterDataOptions"
+          :master-data-loading="masterDataLoading"
+          :master-data-error="masterDataError"
           @navigate="navigatePath"
         />
         <DesignReviewWorkspace

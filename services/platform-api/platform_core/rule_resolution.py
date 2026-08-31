@@ -8,7 +8,7 @@ from typing import Any
 
 from django.db.models import Q
 
-from .models import ArtifactVersion, DataScope, MasterDataItem, RuleProfile
+from .models import ArtifactVersion, DataScope, MasterDataItem, MoldRevision, RuleProfile
 
 
 class RuleResolutionError(Exception):
@@ -97,7 +97,13 @@ def _candidate_payload(
     return {
         "profile_id": str(profile.id),
         "profile_key": profile.profile_key,
+        "display_name": profile.profile_key.replace("-", " ").replace("_", " ").title(),
         "version": profile.version,
+        "workflow_status": profile.workflow_status,
+        "owner": profile.owner,
+        "approved_by": profile.approved_by,
+        "effective_from": profile.effective_from.isoformat() if profile.effective_from else None,
+        "effective_to": profile.effective_to.isoformat() if profile.effective_to else None,
         "specificity": specificity,
         "priority": profile.priority,
         "is_default": profile.is_default,
@@ -106,42 +112,16 @@ def _candidate_payload(
     }
 
 
-def resolve_rule_profile(
-    artifact_version: ArtifactVersion,
+def resolve_rule_profile_for_context(
+    context: dict[str, str],
     *,
-    extra_context: dict[str, object] | None = None,
+    scope: DataScope | None,
+    classification: str,
     requested_profile_id: str | None = None,
     override_reason: str = "",
     today: date | None = None,
 ) -> RuleResolution:
-    artifact_version = ArtifactVersion.objects.select_related(
-        "artifact__mold_revision__mold__project__scope"
-    ).get(pk=artifact_version.pk)
-    artifact = artifact_version.artifact
     current_date = today or date.today()
-    scope = (
-        artifact.mold_revision.mold.project.scope
-        if artifact.mold_revision_id
-        else DataScope.objects.filter(code="public-demo", is_active=True).first()
-    )
-    context = context_for_artifact(artifact_version, extra_context)
-    for dimension, kind in (
-        ("molding_process", MasterDataItem.Kind.MOLDING_PROCESS),
-        ("location", MasterDataItem.Kind.LOCATION),
-    ):
-        if (
-            dimension in context
-            and not MasterDataItem.objects.filter(
-                scope=scope,
-                kind=kind,
-                code=context[dimension],
-                status=MasterDataItem.Status.ACTIVE,
-            ).exists()
-        ):
-            raise RuleResolutionError(
-                "VALIDATION_RESOLUTION_CONTEXT",
-                f"{dimension} must be an active governed engineering reference value.",
-            )
     profiles = (
         RuleProfile.objects.prefetch_related("applicability_entries")
         .select_related("scope")
@@ -152,20 +132,31 @@ def resolve_rule_profile(
         .filter(Q(effective_from__isnull=True) | Q(effective_from__lte=current_date))
         .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=current_date))
         .filter(Q(scope__isnull=True) | Q(scope=scope))
-        .filter(classification=artifact.classification)
+        .filter(classification=classification)
     )
     eligible: list[tuple[RuleProfile, int, list[str]]] = []
+    excluded_summary: list[dict[str, Any]] = []
     for profile in profiles:
         includes: dict[str, set[str]] = {}
-        excluded = False
+        excluded_dimensions: list[str] = []
         for entry in profile.applicability_entries.all():
             if entry.match_mode == entry.MatchMode.EXCLUDE:
                 if context.get(entry.dimension) == entry.value_code:
-                    excluded = True
-                    break
+                    excluded_dimensions.append(entry.dimension)
             else:
                 includes.setdefault(entry.dimension, set()).add(entry.value_code)
-        if excluded or any(context.get(key) not in values for key, values in includes.items()):
+        mismatched = sorted(
+            key for key, values in includes.items() if context.get(key) not in values
+        )
+        if excluded_dimensions or mismatched:
+            excluded_summary.append(
+                {
+                    "profile_id": str(profile.id),
+                    "profile_key": profile.profile_key,
+                    "reason_code": "EXCLUDED_VALUE" if excluded_dimensions else "INCLUDE_MISMATCH",
+                    "dimensions": sorted(set(excluded_dimensions or mismatched)),
+                }
+            )
             continue
         matched = sorted(includes)
         eligible.append((profile, len(matched), matched))
@@ -235,6 +226,7 @@ def resolve_rule_profile(
             "selection_mode": selection_mode,
             "context": context,
             "candidates": candidates,
+            "excluded_summary": excluded_summary,
             "selected": _candidate_payload(
                 profile, specificity=specificity, matched_dimensions=matched
             ),
@@ -242,4 +234,113 @@ def resolve_rule_profile(
             "override_reason": override_reason.strip() or None,
             "applicability_checksum": checksum,
         },
+    )
+
+
+def planning_context_for_revision(
+    revision: MoldRevision,
+    *,
+    artifact_version: ArtifactVersion | None = None,
+    extra_context: dict[str, object] | None = None,
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    allowed = {"product_type", "material", "molding_process", "location"}
+    unknown = set(extra_context or {}) - allowed
+    if unknown:
+        raise RuleResolutionError(
+            "VALIDATION_RESOLUTION_CONTEXT",
+            f"Unsupported resolution context fields: {', '.join(sorted(unknown))}.",
+        )
+    mold = revision.mold
+    context: dict[str, str] = {"mold_type": mold.mold_type, "project": mold.project.code}
+    sources: dict[str, dict[str, str]] = {
+        "mold_type": {"source_type": "registry", "source_ref": str(mold.id)},
+        "project": {"source_type": "registry", "source_ref": str(mold.project_id)},
+    }
+    if mold.product_part_id:
+        context.update(
+            {
+                "product_type": mold.product_part.product_type,
+                "material": mold.product_part.material_code,
+            }
+        )
+        sources.update(
+            {
+                "product_type": {
+                    "source_type": "registry",
+                    "source_ref": str(mold.product_part_id),
+                },
+                "material": {"source_type": "registry", "source_ref": str(mold.product_part_id)},
+            }
+        )
+    if artifact_version:
+        artifact = artifact_version.artifact
+        for dimension, value in (
+            ("product_type", artifact.product_type),
+            ("material", artifact.material_code),
+        ):
+            if value:
+                context[dimension] = value
+                sources[dimension] = {"source_type": "cad", "source_ref": str(artifact_version.id)}
+    item = MasterDataItem.objects.filter(
+        scope=mold.project.scope,
+        kind=MasterDataItem.Kind.MOLD_TYPE,
+        code=mold.mold_type,
+        status=MasterDataItem.Status.ACTIVE,
+    ).first()
+    if process_family := (item.attributes if item else {}).get("process_family"):
+        context["molding_process"] = str(process_family)
+        sources["molding_process"] = {
+            "source_type": "reference_data",
+            "source_ref": str(item.id),
+        }
+    for key, raw_value in (extra_context or {}).items():
+        value = str(raw_value or "").strip()
+        if value:
+            context[key] = value
+            sources[key] = {"source_type": "user_confirmed", "source_ref": "planning_preview"}
+    return {key: value for key, value in context.items() if value}, sources
+
+
+def resolve_rule_profile(
+    artifact_version: ArtifactVersion,
+    *,
+    extra_context: dict[str, object] | None = None,
+    requested_profile_id: str | None = None,
+    override_reason: str = "",
+    today: date | None = None,
+) -> RuleResolution:
+    artifact_version = ArtifactVersion.objects.select_related(
+        "artifact__mold_revision__mold__project__scope"
+    ).get(pk=artifact_version.pk)
+    artifact = artifact_version.artifact
+    scope = (
+        artifact.mold_revision.mold.project.scope
+        if artifact.mold_revision_id
+        else DataScope.objects.filter(code="public-demo", is_active=True).first()
+    )
+    context = context_for_artifact(artifact_version, extra_context)
+    for dimension, kind in (
+        ("molding_process", MasterDataItem.Kind.MOLDING_PROCESS),
+        ("location", MasterDataItem.Kind.LOCATION),
+    ):
+        if (
+            dimension in context
+            and not MasterDataItem.objects.filter(
+                scope=scope,
+                kind=kind,
+                code=context[dimension],
+                status=MasterDataItem.Status.ACTIVE,
+            ).exists()
+        ):
+            raise RuleResolutionError(
+                "VALIDATION_RESOLUTION_CONTEXT",
+                f"{dimension} must be an active governed engineering reference value.",
+            )
+    return resolve_rule_profile_for_context(
+        context,
+        scope=scope,
+        classification=artifact.classification,
+        requested_profile_id=requested_profile_id,
+        override_reason=override_reason,
+        today=today,
     )
