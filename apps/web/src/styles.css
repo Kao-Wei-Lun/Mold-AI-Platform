@@ -4380,7 +4380,22 @@ button:not(:disabled):active { transform: translateY(0); }
 .rule-diff-list article span { width: fit-content; border-radius: 999px; padding: 0.2rem 0.5rem; background: #e8eef6; font-size: 0.66rem; font-weight: 800; }
 .validation-report { margin-top: 0.8rem; border-left: 4px solid var(--color-warning); border-radius: 10px; padding: 0.8rem 1rem; background: #fff8e2; }
 .validation-report.valid { border-color: #2e9864; background: #e7f7ef; }
-.rule-sticky-actions { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem -1.5rem -1.5rem; border-top: 1px solid #d6e0eb; padding: 0.8rem 1.5rem; background: rgb(255 255 255 / 94%); backdrop-filter: blur(12px); }
+.rule-sticky-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1.25rem 0 0;
+  border: 1px solid #d6e0eb;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  background: #f8fafc;
+  box-shadow: 0 6px 18px rgb(24 43 69 / 6%);
+}
+.rule-sticky-actions span { min-width: 0; line-height: 1.5; }
+.rule-sticky-actions button { flex: 0 0 auto; }
 .document-workflow-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; grid-column: 1 / -1; }
 .document-workflow-actions button { padding: 0.2rem 0.35rem; }
 
@@ -4750,6 +4765,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .rule-profile-header,
   .section-heading,
   .rule-sticky-actions { align-items: stretch; flex-direction: column; }
+  .rule-sticky-actions button { width: 100%; }
   .ingestion-create-grid,
   .mapping-grid,
   .ingestion-stepper { grid-template-columns: 1fr; }
