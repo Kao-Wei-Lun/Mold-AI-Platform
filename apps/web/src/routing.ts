@@ -5,6 +5,7 @@ export type WorkspaceRouteId =
   | "cad"
   | "similarity"
   | "design_review"
+  | "knowledge_search"
   | "knowledge"
   | "process_trial"
   | "cae"
@@ -67,6 +68,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     description: "Separate immutable findings from reviewer decisions and model explanations.",
   },
   {
+    id: "knowledge_search",
+    path: "/engineering/knowledge-search",
+    label: "Engineering knowledge search",
+    group: "Engineering",
+    eyebrow: "Engineering / Knowledge search",
+    title: "Find governed engineering knowledge",
+    description: "Ask engineering questions and inspect authorized excerpts, citations and retrieval limitations.",
+  },
+  {
     id: "process_trial",
     path: "/engineering/process-trial",
     label: "Process / trial",
@@ -95,12 +105,12 @@ export const workspaceRoutes: WorkspaceRoute[] = [
   },
   {
     id: "knowledge",
-    path: "/knowledge",
-    label: "Knowledge",
+    path: "/governance/knowledge",
+    label: "Knowledge document management",
     group: "Governance",
-    eyebrow: "Governance / Knowledge",
-    title: "Search authorized engineering evidence",
-    description: "Inspect claims beside citations, source authority and retrieval limitations.",
+    eyebrow: "Governance / Knowledge documents",
+    title: "Manage governed knowledge documents",
+    description: "Import, inspect, review, publish and retire the sources used by engineering knowledge search.",
   },
   {
     id: "rules",
@@ -179,6 +189,9 @@ const notFoundRoute: WorkspaceRoute = {
 
 export function resolveWorkspaceRoute(pathname: string): WorkspaceRoute {
   const normalized = pathname !== "/" ? pathname.replace(/\/+$/, "") : pathname;
+  if (normalized === "/knowledge") {
+    return workspaceRoutes.find((route) => route.id === "knowledge") || notFoundRoute;
+  }
   if (normalized === "/data" || normalized.startsWith("/data/")) {
     return workspaceRoutes.find((route) => route.id === "history_data") || notFoundRoute;
   }
@@ -190,7 +203,7 @@ const deepLinkRoutes: Record<DeepLinkTarget, WorkspaceRouteId> = {
   job: "status",
   similarity: "similarity",
   design_review: "design_review",
-  knowledge: "knowledge",
+  knowledge: "knowledge_search",
   process_trial: "process_trial",
   cae: "cae",
   hmi: "hmi",

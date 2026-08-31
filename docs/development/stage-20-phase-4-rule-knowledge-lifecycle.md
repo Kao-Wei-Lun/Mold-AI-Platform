@@ -46,8 +46,22 @@ all Phase 4 permissions. Enterprise group mapping remains adapter-driven and def
 
 - Mold Rules displays the workflow status and a controlled clone/validate/submit/approve/publish/retire
   panel when the signed-in account is authorized.
+- Engineering Analysis exposes a dedicated Engineering Knowledge Search workspace at
+  `/engineering/knowledge-search`. It contains only query, retrieval filters, evidence, citations,
+  protected source download and a governed source-record handoff.
+- Governance exposes a dedicated Knowledge Document Management workspace at
+  `/governance/knowledge`. It contains document summary, filterable records, ingestion and publication
+  status, lifecycle actions and links to immutable version/chunk/citation details.
+- `/governance/knowledge?view=import` is a focused import task. Existing documents are not rendered
+  below the upload form; successful ingestion hands the user to the imported document or the document
+  management list.
+- The legacy `/knowledge` route redirects through route resolution to document management. MCP and
+  ChatGPT knowledge-search deep links resolve to the Engineering Analysis search workspace.
+- A workflow reason is requested only after submit, approve, publish or retire is chosen. The modal
+  explains the exact status transition and retrieval impact before recording the reason in audit
+  evidence.
 - Knowledge displays ingestion and publication status independently and exposes only valid next actions.
-- Both workspaces require a reason and show typed server errors without bypassing separation of duties.
+- Rule and knowledge workspaces show typed server errors without bypassing separation of duties.
 
 ## Verification gate
 

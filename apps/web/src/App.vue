@@ -17,6 +17,7 @@ import HistoryDataCenter from "./components/HistoryDataCenter.vue";
 import EngineeringDataManagementWorkspace from "./components/EngineeringDataManagementWorkspace.vue";
 import IdentityManagementWorkspace from "./components/IdentityManagementWorkspace.vue";
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
+import KnowledgeSearchWorkspace from "./components/KnowledgeSearchWorkspace.vue";
 import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
 import MoldRegistryWorkspace from "./components/MoldRegistryWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
@@ -102,7 +103,7 @@ const guidedSteps: Array<{ number: string; route: WorkspaceRouteId; title: strin
   { number: "04", route: "process_trial", title: "Compare trials", detail: "Review historical evidence and controlled candidates." },
   { number: "05", route: "cae", title: "Compare CAE", detail: "Confirm compatibility before reading metric deltas." },
   { number: "06", route: "hmi", title: "Review HMI", detail: "Confirm extracted fields before Excel export." },
-  { number: "07", route: "knowledge", title: "Verify knowledge", detail: "Ground conclusions in authorized citations." },
+  { number: "07", route: "knowledge_search", title: "Verify knowledge", detail: "Ground conclusions in authorized citations." },
 ];
 
 function routeById(routeId: WorkspaceRouteId): WorkspaceRoute {
@@ -271,7 +272,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
               <button type="button" @click="navigate('cad')">{{ t("CAD file") }}</button>
               <button type="button" @click="navigate('mold_registry')">{{ t("Project / part / mold") }}</button>
               <button type="button" @click="navigate('engineering_data')">{{ t("Trial / CAE / HMI") }}</button>
-              <button type="button" @click="navigate('knowledge')">{{ t("Knowledge document") }}</button>
+              <button type="button" @click="navigatePath('/governance/knowledge?view=import')">{{ t("Knowledge document") }}</button>
               <button type="button" @click="navigate('rules')">{{ t("Mold rules") }}</button>
             </div>
           </div>
@@ -373,11 +374,17 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           @context-change="assistantContext = $event"
           @navigate="navigate"
         />
+        <KnowledgeSearchWorkspace
+          v-else-if="currentRoute.id === 'knowledge_search' && accessReady"
+          :deep-link="activeDeepLink"
+          @context-change="assistantContext = $event"
+          @navigate="navigatePath"
+        />
         <KnowledgeWorkspace
           v-else-if="currentRoute.id === 'knowledge' && accessReady"
-          :deep-link="activeDeepLink"
+          :path="currentPath"
           :current-account="currentAccount"
-          @context-change="assistantContext = $event"
+          @navigate="navigatePath"
         />
         <ProcessTrialWorkspace
           v-else-if="currentRoute.id === 'process_trial' && accessReady"

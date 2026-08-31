@@ -7,6 +7,9 @@ describe("Engineering Workspace routes", () => {
     expect(resolveWorkspaceRoute("/governance/identity").id).toBe("identity");
     expect(resolveWorkspaceRoute("/governance/mold-registry").id).toBe("mold_registry");
     expect(resolveWorkspaceRoute("/governance/engineering-data").id).toBe("engineering_data");
+    expect(resolveWorkspaceRoute("/engineering/knowledge-search").id).toBe("knowledge_search");
+    expect(resolveWorkspaceRoute("/governance/knowledge").id).toBe("knowledge");
+    expect(resolveWorkspaceRoute("/knowledge").id).toBe("knowledge");
     expect(resolveWorkspaceRoute("/data/overview").id).toBe("history_data");
     expect(resolveWorkspaceRoute("/data/trials/trial-1").id).toBe("history_data");
     expect(resolveWorkspaceRoute("/missing").id).toBe("not_found");
@@ -15,7 +18,7 @@ describe("Engineering Workspace routes", () => {
   it.each([
     ["similarity", "/engineering/similarity"],
     ["design_review", "/engineering/design-review"],
-    ["knowledge", "/knowledge"],
+    ["knowledge", "/engineering/knowledge-search"],
     ["process_trial", "/engineering/process-trial"],
     ["cae", "/engineering/cae"],
     ["hmi", "/engineering/hmi"],

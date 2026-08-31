@@ -812,6 +812,7 @@ button[aria-busy="true"]::before {
 .similarity-workspace,
 .design-review-workspace,
 .knowledge-workspace,
+.knowledge-search-workspace,
 .process-workspace,
 .cae-workspace {
   margin-top: 1.5rem;
@@ -1327,6 +1328,338 @@ button[aria-busy="true"]::before {
 
 .knowledge-layout h3 {
   margin: 0;
+}
+
+.knowledge-search-workspace {
+  margin-top: 1.5rem;
+  overflow: hidden;
+  border: 1px solid #d1dce8;
+  border-radius: var(--radius-card, 18px);
+  padding: 1.7rem;
+  background: linear-gradient(180deg, rgb(252 253 254 / 98%), #fff 7rem);
+  box-shadow: var(--shadow-card, 0 18px 45px rgb(33 48 79 / 8%));
+}
+
+.knowledge-management-heading,
+.knowledge-heading-actions,
+.knowledge-document-card-heading,
+.knowledge-document-actions,
+.knowledge-source-actions,
+.workflow-dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.knowledge-heading-actions,
+.knowledge-document-actions,
+.knowledge-source-actions,
+.workflow-dialog-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.knowledge-management-heading > div:first-child {
+  max-width: 54rem;
+}
+
+.knowledge-management-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.knowledge-management-summary > div {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid #d8e3ee;
+  border-radius: 13px;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(145deg, #fff, #f4f8fc);
+}
+
+.knowledge-management-summary span,
+.knowledge-document-card dt {
+  color: #61758d;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.knowledge-management-summary strong {
+  color: #18304f;
+  font-size: 1.35rem;
+}
+
+.knowledge-document-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.32fr);
+  gap: 0.8rem;
+  align-items: end;
+  margin-bottom: 1rem;
+  border: 1px solid #dce4ed;
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: #f6f8fa;
+}
+
+.knowledge-document-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  color: #4d6078;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.knowledge-document-toolbar input,
+.knowledge-document-toolbar select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cbd8e6;
+  border-radius: 9px;
+  padding: 0.55rem 0.7rem;
+  color: #172b46;
+  background: #fff;
+  font: inherit;
+}
+
+.knowledge-document-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.knowledge-document-card {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+  border: 1px solid #d5e0ec;
+  border-radius: 15px;
+  padding: 1rem;
+  background: #fff;
+  box-shadow: 0 7px 20px rgb(25 49 81 / 5%);
+}
+
+.knowledge-document-card-heading {
+  align-items: start;
+}
+
+.knowledge-document-card-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.knowledge-document-card-heading span,
+.knowledge-document-card-heading small {
+  overflow: hidden;
+  color: #64778d;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-document-card h3 {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #172b46;
+  font-size: 1rem;
+}
+
+.knowledge-document-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.knowledge-document-card dl > div {
+  display: grid;
+  gap: 0.15rem;
+  border-radius: 9px;
+  padding: 0.55rem 0.65rem;
+  background: #f5f8fb;
+}
+
+.knowledge-document-card dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #203954;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.knowledge-import-workspace {
+  display: grid;
+  gap: 1rem;
+  max-width: 58rem;
+  margin-inline: auto;
+}
+
+.knowledge-import-intro {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  border: 1px solid #cfe0f1;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(135deg, #f8fbff, #eef5ff);
+}
+
+.knowledge-import-intro > span {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #285fd0;
+  font-weight: 900;
+}
+
+.knowledge-import-intro h3,
+.knowledge-import-intro p,
+.knowledge-import-handoff strong {
+  margin: 0;
+}
+
+.knowledge-import-intro p {
+  margin-top: 0.2rem;
+  color: #60738b;
+}
+
+.knowledge-import-handoff {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+  border-top: 1px solid #dce5ef;
+  padding-top: 0.9rem;
+}
+
+.knowledge-import-handoff > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.knowledge-query-card {
+  border: 1px solid #d8e3ee;
+  border-radius: 15px;
+  padding: 1rem;
+  background: linear-gradient(145deg, #fff, #f6f9fc);
+}
+
+.knowledge-search-filters {
+  grid-column: 1 / -1;
+  border: 1px solid #d6e1ec;
+  border-radius: 11px;
+  padding: 0.7rem;
+  background: #fff;
+}
+
+.knowledge-search-filters summary {
+  cursor: pointer;
+  color: #28548a;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.knowledge-search-filters > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.75rem;
+}
+
+.knowledge-query-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.8rem;
+}
+
+.knowledge-query-examples span {
+  color: #61758d;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.knowledge-query-examples button {
+  min-height: auto;
+  border-color: #cddbf0;
+  padding: 0.45rem 0.65rem;
+  color: #28548a;
+  background: #f4f8ff;
+  box-shadow: none;
+  font-size: 0.7rem;
+}
+
+.knowledge-search-results {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.knowledge-search-result-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.34fr) minmax(0, 0.66fr);
+  gap: 0.9rem;
+}
+
+.knowledge-search-result-layout .knowledge-result-list {
+  margin-top: 0;
+}
+
+.knowledge-source-actions {
+  margin-top: 0.75rem;
+}
+
+.workflow-dialog-backdrop {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(8 21 39 / 58%);
+  backdrop-filter: blur(3px);
+}
+
+.workflow-dialog {
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid #cad8e8;
+  border-radius: 17px;
+  padding: 1.2rem;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(5 18 36 / 30%);
+}
+
+.workflow-dialog h3 {
+  overflow-wrap: anywhere;
+  margin: 0.3rem 0 0.8rem;
+}
+
+.workflow-transition {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  border-radius: 11px;
+  padding: 0.75rem;
+  color: #24486f;
+  background: #eef5fc;
+  font-weight: 850;
+  text-align: center;
+}
+
+.workflow-dialog-actions {
+  justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .subsection-heading {
@@ -3979,6 +4312,7 @@ button:not(:disabled):active { transform: translateY(0); }
 .similarity-workspace,
 .design-review-workspace,
 .knowledge-workspace,
+.knowledge-search-workspace,
 .process-workspace,
 .cae-workspace,
 .hmi-workspace {
@@ -4710,6 +5044,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .similarity-workspace,
   .design-review-workspace,
   .knowledge-workspace,
+  .knowledge-search-workspace,
   .process-workspace,
   .cae-workspace,
   .hmi-workspace,
@@ -4741,6 +5076,9 @@ button:not(:disabled):active { transform: translateY(0); }
   .structured-rule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .applicability-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rule-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .knowledge-management-summary,
+  .knowledge-document-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .knowledge-search-result-layout { grid-template-columns: 1fr; }
   .ingestion-create-grid,
   .mapping-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -4752,6 +5090,7 @@ button:not(:disabled):active { transform: translateY(0); }
   .similarity-workspace,
   .design-review-workspace,
   .knowledge-workspace,
+  .knowledge-search-workspace,
   .process-workspace,
   .cae-workspace,
   .hmi-workspace,
@@ -4779,6 +5118,12 @@ button:not(:disabled):active { transform: translateY(0); }
   .rule-profile-header,
   .section-heading,
   .rule-sticky-actions { align-items: stretch; flex-direction: column; }
+  .knowledge-management-summary,
+  .knowledge-document-toolbar,
+  .knowledge-document-grid,
+  .knowledge-search-filters > div { grid-template-columns: 1fr; }
+  .knowledge-management-heading,
+  .knowledge-document-card-heading { align-items: stretch; flex-direction: column; }
   .rule-sticky-actions button { width: 100%; }
   .ingestion-create-grid,
   .mapping-grid,

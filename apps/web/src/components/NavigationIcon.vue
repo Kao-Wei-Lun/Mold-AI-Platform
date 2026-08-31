@@ -31,6 +31,9 @@ defineProps<{ name: string }>();
     <template v-else-if="name === 'knowledge'">
       <path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v17H7.5A3.5 3.5 0 0 0 4 22z" /><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v17h4.5A3.5 3.5 0 0 1 20 22z" />
     </template>
+    <template v-else-if="name === 'knowledge_search'">
+      <path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H13v14H7.5A3.5 3.5 0 0 0 4 19.5z" /><circle cx="16" cy="15" r="4" /><path d="m19 18 3 3" />
+    </template>
     <template v-else-if="name === 'identity'">
       <circle cx="9" cy="8" r="3" /><path d="M3.5 19c.8-3.2 2.7-5 5.5-5s4.7 1.8 5.5 5" /><path d="M16 8h5M18.5 5.5v5M16 15h5M16 19h5" />
     </template>
