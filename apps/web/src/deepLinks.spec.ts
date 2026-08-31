@@ -10,6 +10,13 @@ describe("Engineering Web deep-link contract", () => {
     expect(parseDeepLink("")).toEqual({ context: null, error: null });
   });
 
+  it.each(["?view=import", "?tab=versions", "?type=knowledge_search&page=2"])(
+    "ignores ordinary workspace state: %s",
+    (search) => {
+      expect(parseDeepLink(search)).toEqual({ context: null, error: null });
+    },
+  );
+
   it.each([
     [`?deep_link_version=1.0&target=rule_profile&profile_id=${PROFILE_ID}`, "rule_profile", "profile_id", PROFILE_ID],
     [`?deep_link_version=1.0&target=ingestion_batch&batch_id=${BATCH_ID}`, "ingestion_batch", "batch_id", BATCH_ID],
@@ -36,6 +43,7 @@ describe("Engineering Web deep-link contract", () => {
     `?deep_link_version=1.0&target=job&job_id=${SEARCH_ID}&return_url=https://attacker.test`,
     `?deep_link_version=1.0&target=job&job_id=${SEARCH_ID}&job_id=${CANDIDATE_ID}`,
     "?deep_link_version=1.0&target=home&token=secret",
+    "?view=import&token=secret",
   ])("rejects unsafe input: %s", (search) => {
     expect(parseDeepLink(search).error).not.toBeNull();
   });

@@ -55,6 +55,9 @@ all Phase 4 permissions. Enterprise group mapping remains adapter-driven and def
 - `/governance/knowledge?view=import` is a focused import task. Existing documents are not rendered
   below the upload form; successful ingestion hands the user to the imported document or the document
   management list.
+- Ordinary workspace query state such as `view`, `tab`, `type` and pagination is not parsed as an MCP
+  deep link. Deep-link validation starts only when its version, target or typed reference fields are
+  present; forbidden credential-like fields remain rejected.
 - The legacy `/knowledge` route redirects through route resolution to document management. MCP and
   ChatGPT knowledge-search deep links resolve to the Engineering Analysis search workspace.
 - A workflow reason is requested only after submit, approve, publish or retire is chosen. The modal

@@ -83,6 +83,17 @@ function correlationId(): string {
 export function parseDeepLink(search: string): DeepLinkState {
   const params = new URLSearchParams(search);
   if ([...params.keys()].length === 0) return { context: null, error: null };
+  const keys = [...params.keys()];
+  const hasDeepLinkIntent =
+    params.has("deep_link_version") ||
+    params.has("target") ||
+    keys.some((key) => uuidRefs.has(key));
+  if (!hasDeepLinkIntent) {
+    const forbidden = keys.find((key) => forbiddenFields.has(key));
+    return forbidden
+      ? failure("DEEP_LINK_REF_INVALID", `Unexpected parameter: ${forbidden}`)
+      : { context: null, error: null };
+  }
   for (const key of new Set(params.keys())) {
     if (params.getAll(key).length > 1) {
       return failure("DEEP_LINK_REF_INVALID", `Duplicate parameter: ${key}`);
