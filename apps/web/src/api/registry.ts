@@ -44,9 +44,54 @@ export type RegistryMold = {
   status: "active" | "retired" | "archived";
   row_version: number;
   revision_count: number;
+  current_revision_id: string | null;
+  current_revision_code: string | null;
+  artifact_count: number;
   revisions?: RegistryRevision[];
   created_at?: string;
   updated_at?: string;
+};
+
+export type RegistryPage = {
+  number: number;
+  size: number;
+  total: number;
+  sort: string;
+  has_next: boolean;
+};
+
+export type RegistryListPayload<T> = {
+  schema_version: "1.0";
+  items: T[];
+  page: RegistryPage;
+};
+
+export type RegistryOverview = {
+  schema_version: "1.0";
+  counts: {
+    active_projects: number;
+    active_molds: number;
+    released_revisions: number;
+    draft_revisions: number;
+    released_without_cad: number;
+    pending_mapping: number;
+  };
+};
+
+export type RegistryQuery = {
+  q?: string;
+  status?: string;
+  project_id?: string;
+  part_id?: string;
+  mold_type?: string;
+  product_type?: string;
+  material_code?: string;
+  revision_status?: string;
+  has_cad?: "true" | "false";
+  view?: "table" | "tree";
+  sort?: string;
+  page?: number;
+  page_size?: number;
 };
 
 export type RegistryRevision = {
@@ -103,6 +148,37 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+function withQuery(path: string, query: RegistryQuery = {}): string {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      params.set(key, String(value));
+    }
+  });
+  const encoded = params.toString();
+  return encoded ? `${path}?${encoded}` : path;
+}
+
+export function fetchRegistryOverview(): Promise<RegistryOverview> {
+  return request("/api/v1/registry/overview");
+}
+
+export function fetchRegistryProjects(query: RegistryQuery = {}): Promise<RegistryListPayload<RegistryProject>> {
+  return request(withQuery("/api/v1/registry/projects", query));
+}
+
+export function fetchRegistryParts(query: RegistryQuery = {}): Promise<RegistryListPayload<RegistryPart>> {
+  return request(withQuery("/api/v1/registry/parts", query));
+}
+
+export function fetchRegistryMolds(query: RegistryQuery = {}): Promise<RegistryListPayload<RegistryMold>> {
+  return request(withQuery("/api/v1/registry/molds", query));
+}
+
+export function fetchRegistryRevisions(query: RegistryQuery = {}): Promise<RegistryListPayload<RegistryRevision>> {
+  return request(withQuery("/api/v1/registry/revisions", query));
+}
+
 export async function fetchRegistry(): Promise<{
   projects: RegistryProject[];
   parts: RegistryPart[];
@@ -110,10 +186,10 @@ export async function fetchRegistry(): Promise<{
   revisions: RegistryRevision[];
 }> {
   const [projectPayload, partPayload, moldPayload, revisionPayload] = await Promise.all([
-    request<{ items: RegistryProject[] }>("/api/v1/registry/projects"),
-    request<{ items: RegistryPart[] }>("/api/v1/registry/parts"),
-    request<{ items: RegistryMold[] }>("/api/v1/registry/molds"),
-    request<{ items: RegistryRevision[] }>("/api/v1/registry/revisions"),
+    fetchRegistryProjects({ page_size: 100 }),
+    fetchRegistryParts({ page_size: 100 }),
+    fetchRegistryMolds({ page_size: 100 }),
+    fetchRegistryRevisions({ page_size: 100 }),
   ]);
   return {
     projects: projectPayload.items,

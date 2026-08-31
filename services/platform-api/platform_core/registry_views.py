@@ -154,6 +154,11 @@ def part_payload(part: ProductPart) -> dict[str, object]:
 
 
 def mold_payload(mold: Mold, *, include_revisions: bool = False) -> dict[str, object]:
+    revisions = list(mold.revisions.all())
+    released = next(
+        (item for item in revisions if item.status == MoldRevision.Status.RELEASED),
+        None,
+    )
     payload: dict[str, object] = {
         "id": str(mold.id),
         "project_id": str(mold.project_id),
@@ -166,12 +171,15 @@ def mold_payload(mold: Mold, *, include_revisions: bool = False) -> dict[str, ob
         "cavity_count": mold.cavity_count,
         "status": mold.status,
         "row_version": mold.row_version,
-        "revision_count": mold.revisions.count(),
+        "revision_count": len(revisions),
+        "current_revision_id": str(released.id) if released else None,
+        "current_revision_code": released.revision_code if released else None,
+        "artifact_count": sum(len(list(item.artifacts.all())) for item in revisions),
         "created_at": mold.created_at.isoformat(),
         "updated_at": mold.updated_at.isoformat(),
     }
     if include_revisions:
-        payload["revisions"] = [revision_payload(item) for item in mold.revisions.all()]
+        payload["revisions"] = [revision_payload(item) for item in revisions]
     return payload
 
 
@@ -241,6 +249,37 @@ def _paginated_response(
     )
 
 
+class RegistryOverviewView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        if denied := _require(request, "registry:read"):
+            return denied
+        scope_codes = _allowed_scope_codes(request)
+        projects = Project.objects.filter(scope__code__in=scope_codes)
+        molds = Mold.objects.filter(project__scope__code__in=scope_codes)
+        revisions = MoldRevision.objects.filter(mold__project__scope__code__in=scope_codes)
+        released = revisions.filter(status=MoldRevision.Status.RELEASED)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "counts": {
+                    "active_projects": projects.filter(status=Project.Status.ACTIVE).count(),
+                    "active_molds": molds.filter(status=Mold.Status.ACTIVE).count(),
+                    "released_revisions": released.count(),
+                    "draft_revisions": revisions.filter(
+                        status=MoldRevision.Status.DRAFT
+                    ).count(),
+                    "released_without_cad": released.filter(artifacts__isnull=True).count(),
+                    "pending_mapping": molds.filter(
+                        status=Mold.Status.ACTIVE, product_part__isnull=True
+                    ).count(),
+                },
+            }
+        )
+
+
 class ProjectListCreateView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []
@@ -254,15 +293,30 @@ class ProjectListCreateView(APIView):
             .filter(scope__code__in=_allowed_scope_codes(request))
         )
         if query := request.query_params.get("q"):
-            projects = projects.filter(Q(code__icontains=query) | Q(name__icontains=query))
+            projects = projects.filter(
+                Q(code__icontains=query)
+                | Q(name__icontains=query)
+                | Q(parts__part_number__icontains=query)
+                | Q(parts__name__icontains=query)
+                | Q(molds__mold_code__icontains=query)
+                | Q(molds__name__icontains=query)
+                | Q(molds__revisions__revision_code__icontains=query)
+                | Q(molds__revisions__source_revision_id__icontains=query)
+            ).distinct()
         if status_filter := request.query_params.get("status"):
             projects = projects.filter(status=status_filter)
         return _paginated_response(
             request,
             projects,
             project_payload,
-            allowed_sort={"code": "code", "name": "name", "created_at": "created_at"},
-            default_sort="code",
+            allowed_sort={
+                "code": "code",
+                "name": "name",
+                "status": "status",
+                "created_at": "created_at",
+                "updated_at": "updated_at",
+            },
+            default_sort="-updated_at",
         )
 
     def post(self, request: Request) -> Response:
@@ -370,8 +424,22 @@ class PartListCreateView(APIView):
         )
         if project_id := request.query_params.get("project_id"):
             items = items.filter(project_id=project_id)
+        if status_filter := request.query_params.get("status"):
+            items = items.filter(status=status_filter)
+        if product_type := request.query_params.get("product_type"):
+            items = items.filter(product_type=product_type)
+        if material_code := request.query_params.get("material_code"):
+            items = items.filter(material_code=material_code)
         if query := request.query_params.get("q"):
-            items = items.filter(Q(part_number__icontains=query) | Q(name__icontains=query))
+            items = items.filter(
+                Q(part_number__icontains=query)
+                | Q(name__icontains=query)
+                | Q(project__code__icontains=query)
+                | Q(project__name__icontains=query)
+                | Q(molds__mold_code__icontains=query)
+                | Q(molds__name__icontains=query)
+                | Q(molds__revisions__revision_code__icontains=query)
+            ).distinct()
         return _paginated_response(
             request,
             items,
@@ -379,9 +447,14 @@ class PartListCreateView(APIView):
             allowed_sort={
                 "part_number": "part_number",
                 "name": "name",
+                "project_code": "project__code",
+                "product_type": "product_type",
+                "material_code": "material_code",
+                "status": "status",
                 "created_at": "created_at",
+                "updated_at": "updated_at",
             },
-            default_sort="part_number",
+            default_sort="-updated_at",
         )
 
     def post(self, request: Request) -> Response:
@@ -489,23 +562,60 @@ class MoldListCreateView(APIView):
             return denied
         items = (
             Mold.objects.select_related("project", "product_part")
-            .prefetch_related("revisions")
+            .prefetch_related("revisions__artifacts")
             .filter(project__scope__code__in=_allowed_scope_codes(request))
         )
         if project_id := request.query_params.get("project_id"):
             items = items.filter(project_id=project_id)
+        if part_id := request.query_params.get("part_id"):
+            if part_id == "unassigned":
+                items = items.filter(product_part__isnull=True)
+            else:
+                items = items.filter(product_part_id=part_id)
+        if status_filter := request.query_params.get("status"):
+            items = items.filter(status=status_filter)
+        if mold_type := request.query_params.get("mold_type"):
+            items = items.filter(mold_type=mold_type)
+        if product_type := request.query_params.get("product_type"):
+            items = items.filter(product_part__product_type=product_type)
+        if material_code := request.query_params.get("material_code"):
+            items = items.filter(product_part__material_code=material_code)
+        if revision_status := request.query_params.get("revision_status"):
+            items = items.filter(revisions__status=revision_status)
+        has_cad = request.query_params.get("has_cad")
+        if has_cad == "true":
+            items = items.filter(revisions__artifacts__isnull=False)
+        elif has_cad == "false":
+            items = items.exclude(revisions__artifacts__isnull=False)
         if query := request.query_params.get("q"):
-            items = items.filter(Q(mold_code__icontains=query) | Q(name__icontains=query))
+            items = items.filter(
+                Q(mold_code__icontains=query)
+                | Q(name__icontains=query)
+                | Q(project__code__icontains=query)
+                | Q(project__name__icontains=query)
+                | Q(product_part__part_number__icontains=query)
+                | Q(product_part__name__icontains=query)
+                | Q(revisions__revision_code__icontains=query)
+                | Q(revisions__source_revision_id__icontains=query)
+            )
+        items = items.distinct()
+        include_revisions = request.query_params.get("view") == "tree"
         return _paginated_response(
             request,
             items,
-            mold_payload,
+            lambda item: mold_payload(item, include_revisions=include_revisions),
             allowed_sort={
                 "mold_code": "mold_code",
                 "name": "name",
+                "project_code": "project__code",
+                "part_number": "product_part__part_number",
+                "mold_type": "mold_type",
+                "cavity_count": "cavity_count",
+                "status": "status",
                 "created_at": "created_at",
+                "updated_at": "updated_at",
             },
-            default_sort="mold_code",
+            default_sort="-updated_at",
         )
 
     def post(self, request: Request) -> Response:
@@ -652,18 +762,33 @@ class RevisionListCreateView(APIView):
         )
         if mold_id := request.query_params.get("mold_id"):
             items = items.filter(mold_id=mold_id)
+        if project_id := request.query_params.get("project_id"):
+            items = items.filter(mold__project_id=project_id)
+        if part_id := request.query_params.get("part_id"):
+            items = items.filter(mold__product_part_id=part_id)
         if status_filter := request.query_params.get("status"):
             items = items.filter(status=status_filter)
+        if query := request.query_params.get("q"):
+            items = items.filter(
+                Q(revision_code__icontains=query)
+                | Q(source_revision_id__icontains=query)
+                | Q(mold__mold_code__icontains=query)
+                | Q(mold__name__icontains=query)
+                | Q(mold__project__code__icontains=query)
+                | Q(mold__product_part__part_number__icontains=query)
+            )
         return _paginated_response(
             request,
             items,
             revision_payload,
             allowed_sort={
                 "revision_code": "revision_code",
+                "mold_code": "mold__mold_code",
                 "created_at": "created_at",
+                "updated_at": "updated_at",
                 "status": "status",
             },
-            default_sort="revision_code",
+            default_sort="-updated_at",
         )
 
     def post(self, request: Request) -> Response:

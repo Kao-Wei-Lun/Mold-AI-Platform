@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from django.contrib.auth import get_user_model
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, override_settings
@@ -123,6 +125,78 @@ class MoldRegistryApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(MoldRevision.objects.get(id=first["id"]).status, "superseded")
+
+    def test_mold_discovery_filters_tree_and_overview_are_governed(self):
+        project, part, mold, revision = self.create_hierarchy()
+
+        searched = self.client.get(
+            "/api/v1/registry/molds",
+            {
+                "q": "PART-001",
+                "project_id": project["id"],
+                "part_id": part["id"],
+                "mold_type": "injection",
+                "status": "active",
+                "revision_status": "draft",
+                "has_cad": "false",
+                "view": "tree",
+                "sort": "-updated_at",
+                "page": 1,
+                "page_size": 25,
+            },
+        )
+
+        self.assertEqual(searched.status_code, 200)
+        self.assertEqual(searched.json()["page"]["total"], 1)
+        self.assertEqual(searched.json()["items"][0]["id"], mold["id"])
+        self.assertEqual(searched.json()["items"][0]["current_revision_code"], None)
+        self.assertEqual(searched.json()["items"][0]["artifact_count"], 0)
+        self.assertEqual(searched.json()["items"][0]["revisions"][0]["id"], revision["id"])
+
+        overview = self.client.get("/api/v1/registry/overview")
+        self.assertEqual(overview.status_code, 200)
+        self.assertGreaterEqual(overview.json()["counts"]["active_projects"], 1)
+        self.assertGreaterEqual(overview.json()["counts"]["active_molds"], 1)
+        self.assertGreaterEqual(overview.json()["counts"]["draft_revisions"], 1)
+
+        Artifact.objects.create(
+            name="Discovery CAD",
+            kind=Artifact.Kind.CAD_SOURCE,
+            dataset_id="manual-cad-upload-v1",
+            mold_revision_id=revision["id"],
+        )
+        with_cad = self.client.get("/api/v1/registry/molds", {"has_cad": "true"})
+        self.assertEqual(with_cad.status_code, 200)
+        self.assertEqual(with_cad.json()["page"]["total"], 1)
+        self.assertEqual(with_cad.json()["items"][0]["artifact_count"], 1)
+
+    def test_mold_discovery_keeps_the_ten_thousand_row_demo_budget(self):
+        scope = DataScope.objects.get(code="public-demo")
+        project = Project.objects.create(scope=scope, code="PERF-PROJECT", name="Performance")
+        Mold.objects.bulk_create(
+            [
+                Mold(
+                    project=project,
+                    mold_code=f"PERF-MOLD-{index:05d}",
+                    name=f"Performance mold {index}",
+                    mold_type="injection",
+                )
+                for index in range(10_000)
+            ],
+            batch_size=1_000,
+        )
+
+        started = perf_counter()
+        response = self.client.get(
+            "/api/v1/registry/molds",
+            {"project_id": str(project.id), "page": 1, "page_size": 25},
+        )
+        elapsed_ms = (perf_counter() - started) * 1_000
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["page"]["total"], 10_000)
+        self.assertEqual(len(response.json()["items"]), 25)
+        self.assertLess(elapsed_ms, 1_500, f"registry discovery took {elapsed_ms:.1f} ms")
 
     def test_codes_are_unique_and_immutable(self):
         project, _, mold, _ = self.create_hierarchy()

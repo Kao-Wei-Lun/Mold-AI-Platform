@@ -357,3 +357,8 @@ release gate. See [`stage-31-mold-planning-release.md`](stage-31-mold-planning-r
 Stage 32 clarifies Rule Profile applicability and adds a direct, governed editing path from an
 immutable version to a cloned draft. See
 [`stage-32-applicability-editing-ux.md`](stage-32-applicability-editing-ux.md).
+
+Stage 33 Phase 1 changes Mold Registry into a mold-first discovery workspace with authorized
+server-side search and filters, pagination, reproducible URL state, table/hierarchy views,
+responsive cards and an on-demand governed creation drawer. See
+[`stage-33-phase-1-mold-registry-discovery.md`](stage-33-phase-1-mold-registry-discovery.md).

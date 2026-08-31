@@ -78,6 +78,7 @@ from .registry_views import (
     PartListCreateView,
     ProjectDetailView,
     ProjectListCreateView,
+    RegistryOverviewView,
     RevisionDetailView,
     RevisionListCreateView,
 )
@@ -167,6 +168,7 @@ urlpatterns = [
         MoldPlanProfileSelectionView.as_view(),
         name="mold-plan-select-profile",
     ),
+    path("registry/overview", RegistryOverviewView.as_view(), name="registry-overview"),
     path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
     path(
         "registry/projects/<uuid:project_id>",
