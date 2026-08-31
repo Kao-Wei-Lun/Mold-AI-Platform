@@ -22,7 +22,7 @@ const { locale, t } = useI18n();
 const props = defineProps<{ query: CADModelResult | null; deepLink?: DeepLinkContext | null }>();
 const emit = defineEmits<{
   contextChange: [context: AssistantContext];
-  navigate: [route: "cad"];
+  navigate: [route: "cad" | "mold_planning"];
 }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
@@ -268,6 +268,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="result" class="review-results">
+      <article v-if="result.source_mold_plan" class="source-mold-plan-card">
+        <div><span>{{ t("Source mold plan") }}</span><strong>{{ result.source_mold_plan.plan_code }}</strong><small>{{ t("Resolution") }} {{ result.source_mold_plan.resolution_number }}</small></div>
+        <button type="button" class="secondary-button" @click="emit('navigate', 'mold_planning')">{{ t("Open mold planning") }}</button>
+      </article>
       <div class="review-summary">
         <div class="review-decision" :class="result.summary.decision.toLowerCase()">
           <span>{{ t("Overall") }}</span>

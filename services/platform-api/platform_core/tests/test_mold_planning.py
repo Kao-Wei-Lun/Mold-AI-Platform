@@ -1,4 +1,5 @@
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -11,6 +12,8 @@ from platform_core.models import (
     Artifact,
     DataScope,
     Mold,
+    MoldPlanHandoff,
+    MoldPlanRequirement,
     MoldPlanResolution,
     MoldRevision,
     ProductPart,
@@ -156,3 +159,87 @@ class MoldPlanningPersistenceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             resolution.save()
+
+    def test_resolution_creates_requirements_and_design_review_handoff(self) -> None:
+        created = self.create_plan()
+        resolved = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/resolve",
+            {},
+            content_type="application/json",
+        ).json()
+        summary = resolved["latest_resolution"]["requirement_summary"]
+        self.assertEqual(summary["total"], self.profile.rules.filter(enabled=True).count())
+        self.assertEqual(MoldPlanRequirement.objects.count(), summary["total"])
+        self.assertGreater(summary["cad_evidence"], 0)
+
+        with patch("platform_core.mold_planning_views.run_design_review_job.apply_async"):
+            response = self.client.post(
+                f"/api/v1/mold-plans/{created['plan_id']}/handoffs/design_review",
+                {"row_version": resolved["row_version"]},
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 201, response.content)
+        handoff = response.json()
+        self.assertIn("target=design_review", handoff["contract"]["ui_path"])
+        self.assertEqual(MoldPlanHandoff.objects.count(), 1)
+
+        review = self.client.get(
+            f"/api/v1/design-reviews/{handoff['review_id']}"
+        )
+        self.assertEqual(review.status_code, 200)
+        self.assertEqual(review.json()["source_mold_plan"]["plan_id"], created["plan_id"])
+        self.assertEqual(
+            review.json()["resolution_snapshot"]["mold_plan_resolution_id"],
+            resolved["latest_resolution"]["resolution_id"],
+        )
+
+        current = self.client.get(f"/api/v1/mold-plans/{created['plan_id']}").json()
+        replay = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/handoffs/design_review",
+            {"row_version": current["row_version"]},
+            content_type="application/json",
+        )
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json()["idempotent_replay"])
+
+    def test_handoff_rejects_a_changed_ruleset(self) -> None:
+        created = self.create_plan()
+        resolved = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/resolve",
+            {},
+            content_type="application/json",
+        ).json()
+        type(self.profile).objects.filter(id=self.profile.id).update(
+            ruleset_checksum="f" * 64
+        )
+        response = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/handoffs/design_review",
+            {"row_version": resolved["row_version"]},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "MOLD_PLAN_RULESET_MISMATCH")
+
+    def test_handoff_requires_mold_planning_permission(self) -> None:
+        created = self.create_plan()
+        resolved = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/resolve",
+            {},
+            content_type="application/json",
+        ).json()
+        viewer = get_user_model().objects.create_user(
+            username="handoff-viewer",
+            email="handoff-viewer@example.test",
+            password="Handoff-Viewer-2026!",
+        )
+        self.client.force_login(viewer)
+        response = self.client.post(
+            f"/api/v1/mold-plans/{created['plan_id']}/handoffs/design_review",
+            {"row_version": resolved["row_version"]},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertIn(
+            response.json()["error"]["code"],
+            {"ACCESS_DENIED", "PERMISSION_SCOPE_REQUIRED"},
+        )

@@ -63,6 +63,7 @@ from .master_data_views import MasterDataDetailView, MasterDataListCreateView, M
 from .mold_planning_views import (
     MoldPlanActionView,
     MoldPlanDetailView,
+    MoldPlanHandoffView,
     MoldPlanListCreateView,
     MoldPlanningCandidateComparisonView,
     MoldPlanningResolutionPreviewView,
@@ -154,6 +155,11 @@ urlpatterns = [
         "mold-plans/<uuid:plan_id>/actions",
         MoldPlanActionView.as_view(),
         name="mold-plan-actions",
+    ),
+    path(
+        "mold-plans/<uuid:plan_id>/handoffs/<str:handoff_type>",
+        MoldPlanHandoffView.as_view(),
+        name="mold-plan-handoff",
     ),
     path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
     path(

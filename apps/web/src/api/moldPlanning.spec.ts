@@ -1,4 +1,9 @@
-import { compareMoldPlanningCandidates, previewMoldPlanningResolution } from "./moldPlanning";
+import {
+  compareMoldPlanningCandidates,
+  createMoldPlanHandoff,
+  previewMoldPlanningResolution,
+  type MoldPlan,
+} from "./moldPlanning";
 
 describe("mold planning API", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -22,5 +27,24 @@ describe("mold planning API", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.profile_ids).toEqual(["profile-a", "profile-b"]);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/candidates/compare");
+  });
+
+  it("starts a version-checked engineering handoff", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ schema_version: "1.0", handoff_id: "handoff-1" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createMoldPlanHandoff(
+      { plan_id: "plan-1", row_version: 7 } as MoldPlan,
+      "design_review",
+    );
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain(
+      "/api/v1/mold-plans/plan-1/handoffs/design_review",
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ row_version: 7 });
   });
 });

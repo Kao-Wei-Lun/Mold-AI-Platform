@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .design_review import DesignReviewValidationError, create_design_review_records
 from .identity import audit_identity_event
 from .models import (
     Artifact,
@@ -19,9 +20,12 @@ from .models import (
     MasterDataItem,
     MoldPlan,
     MoldPlanContext,
+    MoldPlanHandoff,
+    MoldPlanRequirement,
     MoldPlanResolution,
     MoldRevision,
     RuleProfile,
+    RuleVersion,
 )
 from .pagination import PaginationValueError, paginate
 from .rule_resolution import (
@@ -29,6 +33,17 @@ from .rule_resolution import (
     planning_context_for_revision,
     resolve_rule_profile_for_context,
 )
+from .tasks import run_design_review_job
+
+CAD_EVALUATORS = {
+    "bbox_dimension",
+    "bbox_aspect_ratio",
+    "cad_scalar",
+    "edge_face_ratio",
+    "quality_flag_absent",
+    "unit_known",
+    "surface_share",
+}
 
 
 def _error(request: Request, code: str, message: str, status: int, **detail) -> Response:
@@ -60,7 +75,126 @@ def _scopes(request: Request) -> set[str]:
     return set(getattr(request._request, "mold_ai_data_scopes", set())) or {"public-demo"}
 
 
+def _requirement_payload(requirement: MoldPlanRequirement) -> dict[str, object]:
+    rule = requirement.rule_version
+    return {
+        "requirement_id": str(requirement.id),
+        "rule_version_id": str(rule.id),
+        "rule_id": rule.rule_id,
+        "rule_version": rule.rule_version,
+        "title": rule.title,
+        "description": rule.description,
+        "severity": rule.severity,
+        "risk_type": rule.risk_type,
+        "operator": rule.operator,
+        "limit_value": rule.limit_value,
+        "unit": rule.unit,
+        "tolerance": rule.tolerance,
+        "recommendation": rule.recommendation,
+        "requirement_type": requirement.requirement_type,
+        "evidence_requirement": requirement.evidence_requirement,
+        "planning_status": requirement.planning_status,
+        "source_reference": requirement.source_reference_snapshot,
+    }
+
+
+def _handoff_payload(handoff: MoldPlanHandoff) -> dict[str, object]:
+    return {
+        "handoff_id": str(handoff.id),
+        "handoff_type": handoff.handoff_type,
+        "target_ref": handoff.target_ref,
+        "review_id": str(handoff.review_run_id) if handoff.review_run_id else None,
+        "contract": handoff.contract_snapshot,
+        "created_by": handoff.created_by,
+        "created_at": handoff.created_at.isoformat(),
+    }
+
+
+def _requirement_contract(
+    rule: RuleVersion, *, cad_available: bool
+) -> tuple[str, dict[str, object], str]:
+    if rule.evaluator in {"context_ratio", "context_value"}:
+        evidence_kind = "manual_measurement"
+        planning_status = MoldPlanRequirement.PlanningStatus.MANUAL_CONFIRMATION
+        requirement_type = MoldPlanRequirement.RequirementType.MANUAL_CONFIRMATION
+    elif rule.evaluator in CAD_EVALUATORS:
+        evidence_kind = "cad_geometry"
+        planning_status = (
+            MoldPlanRequirement.PlanningStatus.READY_FOR_REVIEW
+            if cad_available
+            else MoldPlanRequirement.PlanningStatus.INSUFFICIENT_DATA
+        )
+        requirement_type = (
+            MoldPlanRequirement.RequirementType.MUST
+            if rule.severity in {"high", "critical"}
+            else MoldPlanRequirement.RequirementType.SHOULD
+        )
+    else:
+        evidence_kind = "cae_or_engineering_evidence"
+        planning_status = MoldPlanRequirement.PlanningStatus.INSUFFICIENT_DATA
+        requirement_type = (
+            MoldPlanRequirement.RequirementType.MUST
+            if rule.severity in {"high", "critical"}
+            else MoldPlanRequirement.RequirementType.SHOULD
+        )
+    evidence = {
+        "schema_version": "1.0",
+        "kind": evidence_kind,
+        "evaluator": rule.evaluator,
+        "required": requirement_type != MoldPlanRequirement.RequirementType.SHOULD,
+    }
+    return requirement_type, evidence, planning_status
+
+
+def _create_requirements(resolution: MoldPlanResolution) -> None:
+    records = []
+    for rule in resolution.selected_profile.rules.filter(enabled=True):
+        requirement_type, evidence, planning_status = _requirement_contract(
+            rule,
+            cad_available=bool(resolution.plan.cad_artifact_version_id),
+        )
+        records.append(
+            MoldPlanRequirement(
+                resolution=resolution,
+                rule_version=rule,
+                requirement_type=requirement_type,
+                evidence_requirement=evidence,
+                planning_status=planning_status,
+                source_reference_snapshot={
+                    "schema_version": "1.0",
+                    "rule_id": rule.rule_id,
+                    "rule_version": rule.rule_version,
+                    "reference": rule.reference,
+                },
+            )
+        )
+    MoldPlanRequirement.objects.bulk_create(records)
+
+
 def _resolution_payload(resolution: MoldPlanResolution) -> dict[str, object]:
+    requirements = [_requirement_payload(item) for item in resolution.requirements.all()]
+    requirement_summary = {
+        "total": len(requirements),
+        "must": sum(item["requirement_type"] == "must" for item in requirements),
+        "should": sum(item["requirement_type"] == "should" for item in requirements),
+        "manual_confirmation": sum(
+            item["requirement_type"] == "manual_confirmation" for item in requirements
+        ),
+        "high_risk": sum(
+            item["severity"] in {"high", "critical"} for item in requirements
+        ),
+        "cad_evidence": sum(
+            item["evidence_requirement"]["kind"] == "cad_geometry"
+            for item in requirements
+        ),
+        "cae_evidence": sum(
+            item["evidence_requirement"]["kind"] == "cae_or_engineering_evidence"
+            for item in requirements
+        ),
+        "insufficient_data": sum(
+            item["planning_status"] == "insufficient_data" for item in requirements
+        ),
+    }
     return {
         "resolution_id": str(resolution.id),
         "resolution_number": resolution.resolution_number,
@@ -78,6 +212,9 @@ def _resolution_payload(resolution: MoldPlanResolution) -> dict[str, object]:
         "excluded_summary": resolution.exclusion_summary,
         "resolved_by": resolution.resolved_by,
         "resolved_at": resolution.resolved_at.isoformat(),
+        "requirement_summary": requirement_summary,
+        "requirements": requirements,
+        "handoffs": [_handoff_payload(item) for item in resolution.handoffs.all()],
     }
 
 
@@ -133,7 +270,8 @@ def mold_plan_queryset(request: Request):
         .prefetch_related(
             "context_entries",
             "resolutions__selected_profile",
-            "resolutions__requirements",
+            "resolutions__requirements__rule_version",
+            "resolutions__handoffs__review_run",
         )
         .filter(scope__code__in=_scopes(request))
     )
@@ -641,6 +779,7 @@ class MoldPlanResolveView(APIView):
                 exclusion_summary=snapshot.get("excluded_summary", []),
                 resolved_by=_actor(request),
             )
+            _create_requirements(record)
             plan.status = MoldPlan.Status.READY
             plan.updated_by = _actor(request)
             plan.row_version += 1
@@ -657,6 +796,149 @@ class MoldPlanResolveView(APIView):
             )
         return Response(
             mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True)
+        )
+
+
+class MoldPlanHandoffView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, plan_id: uuid.UUID, handoff_type: str) -> Response:
+        if denied := _require(request, "mold-planning:create"):
+            return denied
+        if handoff_type not in MoldPlanHandoff.HandoffType.values:
+            return _error(
+                request,
+                "VALIDATION_HANDOFF_TYPE",
+                "The requested engineering handoff is not supported.",
+                400,
+            )
+        plan = mold_plan_queryset(request).filter(id=plan_id).first()
+        if plan is None:
+            return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
+        if int(request.data.get("row_version", 0)) != plan.row_version:
+            return _error(
+                request,
+                "CONCURRENCY_CONFLICT",
+                "The mold plan changed after it was loaded.",
+                409,
+            )
+        if plan.status not in {MoldPlan.Status.READY, MoldPlan.Status.COMPLETED}:
+            return _error(
+                request,
+                "MOLD_PLAN_NOT_READY",
+                "Resolve the mold plan before starting an engineering handoff.",
+                409,
+            )
+        resolution = next(iter(plan.resolutions.all()), None)
+        if resolution is None:
+            return _error(
+                request,
+                "MOLD_PLAN_RESOLUTION_MISSING",
+                "The mold plan has no saved rule resolution.",
+                409,
+            )
+        existing = resolution.handoffs.filter(handoff_type=handoff_type).first()
+        if existing:
+            return Response(
+                {
+                    "schema_version": "1.0",
+                    "idempotent_replay": True,
+                    **_handoff_payload(existing),
+                }
+            )
+
+        contract: dict[str, object] = {
+            "schema_version": "1.0",
+            "mold_plan_id": str(plan.id),
+            "mold_plan_resolution_id": str(resolution.id),
+            "mold_revision_id": str(plan.mold_revision_id),
+            "cad_artifact_version_id": (
+                str(plan.cad_artifact_version_id) if plan.cad_artifact_version_id else None
+            ),
+            "selected_profile_id": str(resolution.selected_profile_id),
+            "ruleset_checksum": resolution.ruleset_checksum,
+        }
+        review = None
+        if handoff_type == MoldPlanHandoff.HandoffType.DESIGN_REVIEW:
+            if plan.cad_artifact_version is None:
+                return _error(
+                    request,
+                    "MOLD_PLAN_CAD_REQUIRED",
+                    "Select a processed CAD version before creating a design review.",
+                    409,
+                )
+            try:
+                records = create_design_review_records(
+                    plan.cad_artifact_version,
+                    idempotency_key=f"mold-plan:{plan.id}:resolution:{resolution.id}:review",
+                    pinned_resolution=resolution,
+                )
+            except DesignReviewValidationError as exc:
+                return _error(request, exc.code, exc.user_message, 409)
+            review = records.review
+            target_ref = f"design-review:{review.id}"
+            contract["review_id"] = str(review.id)
+            contract["job_id"] = str(records.job.id)
+            contract["ui_path"] = (
+                "/engineering/design-review?deep_link_version=1.0"
+                f"&target=design_review&review_id={review.id}"
+            )
+            if records.created:
+                try:
+                    run_design_review_job.apply_async(args=[str(records.job.id)], queue="cad")
+                except Exception:
+                    return _error(
+                        request,
+                        "JOB_QUEUE_UNAVAILABLE",
+                        "The design review job could not be queued.",
+                        503,
+                    )
+        else:
+            routes = {
+                MoldPlanHandoff.HandoffType.CAD: "/engineering/cad",
+                MoldPlanHandoff.HandoffType.SIMILARITY: "/engineering/similarity",
+                MoldPlanHandoff.HandoffType.CAE: "/engineering/cae",
+            }
+            target_ref = f"{handoff_type}:mold-plan:{plan.id}"
+            contract["ui_path"] = routes[handoff_type]
+
+        with transaction.atomic():
+            locked = MoldPlan.objects.select_for_update().get(id=plan.id)
+            if locked.row_version != plan.row_version:
+                return _error(
+                    request,
+                    "CONCURRENCY_CONFLICT",
+                    "The mold plan changed while the handoff was being created.",
+                    409,
+                )
+            handoff = MoldPlanHandoff.objects.create(
+                resolution=resolution,
+                handoff_type=handoff_type,
+                target_ref=target_ref,
+                review_run=review,
+                contract_snapshot=contract,
+                created_by=_actor(request),
+            )
+            locked.row_version += 1
+            locked.updated_by = _actor(request)
+            locked.save(update_fields=["row_version", "updated_by", "updated_at"])
+            audit_identity_event(
+                "mold_plan.handoff.created.v1",
+                actor_id=_actor(request),
+                target_refs=[str(plan.id), str(resolution.id), target_ref],
+                detail={
+                    "handoff_type": handoff_type,
+                    "ruleset_checksum": resolution.ruleset_checksum,
+                },
+            )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "idempotent_replay": False,
+                **_handoff_payload(handoff),
+            },
+            status=201,
         )
 
 

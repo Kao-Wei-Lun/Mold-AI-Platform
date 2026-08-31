@@ -70,6 +70,16 @@ export type DesignReviewResult = {
     selected: { profile_id: string; profile_key: string; version: string; specificity: number; priority: number; matched_dimensions: string[] };
     reason: string;
     applicability_checksum: string;
+    mold_plan_id?: string;
+    mold_plan_resolution_id?: string;
+    mold_plan_resolution_number?: number;
+  };
+  source_mold_plan: null | {
+    plan_id: string;
+    plan_code: string;
+    resolution_id: string;
+    resolution_number: number;
+    handoff_id: string;
   };
   context: Record<string, number>;
   summary: {

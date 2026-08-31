@@ -14,6 +14,7 @@ from .models import (
     DataScope,
     Job,
     JobEvent,
+    MoldPlanResolution,
     ReviewDecision,
     ReviewFinding,
     ReviewRun,
@@ -354,6 +355,7 @@ def create_design_review_records(
     requested_profile_id: str | None = None,
     override_reason: str = "",
     idempotency_key: str | None = None,
+    pinned_resolution: MoldPlanResolution | None = None,
 ) -> DesignReviewRecords:
     try:
         cad_model = CADModel.objects.select_related("artifact_version__artifact").get(
@@ -379,18 +381,60 @@ def create_design_review_records(
                 )
             return DesignReviewRecords(existing_job.design_review, existing_job, created=False)
 
-    get_demo_rule_profile()
+    if pinned_resolution is None:
+        get_demo_rule_profile()
     normalized = _normalized_context(context)
-    try:
-        resolution = resolve_rule_profile(
-            artifact_version,
-            extra_context=resolution_context,
-            requested_profile_id=requested_profile_id,
-            override_reason=override_reason,
+    if pinned_resolution is not None:
+        plan = pinned_resolution.plan
+        if plan.cad_artifact_version_id != artifact_version.id:
+            raise DesignReviewValidationError(
+                "MOLD_PLAN_CAD_MISMATCH",
+                "The mold plan resolution does not reference this CAD version.",
+            )
+        profile = pinned_resolution.selected_profile
+        if profile.ruleset_checksum != pinned_resolution.ruleset_checksum:
+            raise DesignReviewValidationError(
+                "MOLD_PLAN_RULESET_MISMATCH",
+                "The saved mold plan ruleset no longer matches the selected rule profile.",
+            )
+        selected = next(
+            (
+                item
+                for item in pinned_resolution.candidate_snapshot
+                if str(item.get("profile_id")) == str(profile.id)
+            ),
+            {
+                "profile_id": str(profile.id),
+                "profile_key": profile.profile_key,
+                "version": profile.version,
+            },
         )
-    except RuleResolutionError as exc:
-        raise DesignReviewValidationError(exc.code, exc.user_message) from exc
-    profile = resolution.profile
+        resolution_snapshot = {
+            "schema_version": "1.0",
+            "resolved_at": pinned_resolution.resolved_at.isoformat(),
+            "selection_mode": pinned_resolution.selection_mode,
+            "context": pinned_resolution.context_snapshot,
+            "candidates": pinned_resolution.candidate_snapshot,
+            "selected": selected,
+            "reason": pinned_resolution.reason,
+            "override_reason": pinned_resolution.override_reason or None,
+            "applicability_checksum": pinned_resolution.applicability_checksum,
+            "mold_plan_id": str(plan.id),
+            "mold_plan_resolution_id": str(pinned_resolution.id),
+            "mold_plan_resolution_number": pinned_resolution.resolution_number,
+        }
+    else:
+        try:
+            resolution = resolve_rule_profile(
+                artifact_version,
+                extra_context=resolution_context,
+                requested_profile_id=requested_profile_id,
+                override_reason=override_reason,
+            )
+        except RuleResolutionError as exc:
+            raise DesignReviewValidationError(exc.code, exc.user_message) from exc
+        profile = resolution.profile
+        resolution_snapshot = resolution.snapshot
     rules = list(profile.rules.filter(enabled=True))
     snapshot = {
         "schema_version": "1.0",
@@ -401,7 +445,7 @@ def create_design_review_records(
         "ruleset_checksum": profile.ruleset_checksum,
         "rules": [{"rule_id": rule.rule_id, "rule_version": rule.rule_version} for rule in rules],
         "context": normalized,
-        "resolution": resolution.snapshot,
+        "resolution": resolution_snapshot,
     }
     with transaction.atomic():
         job = Job.objects.create(
@@ -427,7 +471,7 @@ def create_design_review_records(
             profile=profile,
             context=normalized,
             input_snapshot=snapshot,
-            resolution_snapshot=resolution.snapshot,
+            resolution_snapshot=resolution_snapshot,
             geometry_engine_version=f"{cad_model.parser_name}@{cad_model.parser_version}",
         )
     return DesignReviewRecords(review, job, created=True)

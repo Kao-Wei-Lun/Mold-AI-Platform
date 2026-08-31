@@ -328,6 +328,16 @@ def review_payload(review: ReviewRun) -> dict[str, object]:
     preview = None
     if cad_model.preview_artifact_version_id:
         preview = artifact_version_payload(cad_model.preview_artifact_version)
+    handoff = review.mold_plan_handoffs.select_related("resolution__plan").first()
+    source_mold_plan = None
+    if handoff:
+        source_mold_plan = {
+            "plan_id": str(handoff.resolution.plan_id),
+            "plan_code": handoff.resolution.plan.plan_code,
+            "resolution_id": str(handoff.resolution_id),
+            "resolution_number": handoff.resolution.resolution_number,
+            "handoff_id": str(handoff.id),
+        }
     return {
         "review_id": str(review.id),
         "job_id": str(review.job_id),
@@ -337,6 +347,7 @@ def review_payload(review: ReviewRun) -> dict[str, object]:
         "geometry_engine_version": review.geometry_engine_version,
         "input_snapshot": review.input_snapshot,
         "resolution_snapshot": review.resolution_snapshot,
+        "source_mold_plan": source_mold_plan,
         "context": review.context,
         "summary": review.result_summary,
         "preview": preview,

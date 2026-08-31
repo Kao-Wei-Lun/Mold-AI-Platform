@@ -60,6 +60,37 @@ export type MoldPlanningCandidateComparison = {
   }>;
 };
 
+export type MoldPlanRequirement = {
+  requirement_id: string;
+  rule_version_id: string;
+  rule_id: string;
+  rule_version: string;
+  title: string;
+  description: string;
+  severity: string;
+  risk_type: string;
+  operator: string;
+  limit_value: number | null;
+  unit: string;
+  tolerance: number;
+  recommendation: string;
+  requirement_type: "must" | "should" | "manual_confirmation";
+  evidence_requirement: { schema_version: string; kind: string; evaluator: string; required: boolean };
+  planning_status: "not_checked" | "insufficient_data" | "ready_for_review" | "manual_confirmation";
+  source_reference: Record<string, unknown>;
+};
+
+export type MoldPlanHandoff = {
+  handoff_id: string;
+  handoff_type: "design_review" | "cad" | "similarity" | "cae";
+  target_ref: string;
+  review_id: string | null;
+  contract: { ui_path: string; [key: string]: unknown };
+  created_by: string;
+  created_at: string;
+  idempotent_replay?: boolean;
+};
+
 export type MoldPlan = {
   plan_id: string;
   plan_code: string;
@@ -95,6 +126,18 @@ export type MoldPlan = {
     excluded_summary: unknown[];
     resolved_by: string;
     resolved_at: string;
+    requirement_summary: {
+      total: number;
+      must: number;
+      should: number;
+      manual_confirmation: number;
+      high_risk: number;
+      cad_evidence: number;
+      cae_evidence: number;
+      insufficient_data: number;
+    };
+    requirements: MoldPlanRequirement[];
+    handoffs: MoldPlanHandoff[];
   };
   context?: Record<string, { value_code: string; source_type: string; source_ref: string }>;
   resolutions?: NonNullable<MoldPlan["latest_resolution"]>[];
@@ -199,5 +242,15 @@ export function transitionMoldPlan(plan: MoldPlan, action: "complete" | "reopen"
   return planRequest(`/api/v1/mold-plans/${plan.plan_id}/actions`, {
     method: "POST",
     body: JSON.stringify({ action, reason, row_version: plan.row_version }),
+  });
+}
+
+export function createMoldPlanHandoff(
+  plan: MoldPlan,
+  handoffType: MoldPlanHandoff["handoff_type"],
+): Promise<MoldPlanHandoff> {
+  return planRequest(`/api/v1/mold-plans/${plan.plan_id}/handoffs/${handoffType}`, {
+    method: "POST",
+    body: JSON.stringify({ row_version: plan.row_version }),
   });
 }

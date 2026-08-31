@@ -21,6 +21,90 @@
   text-rendering: optimizeLegibility;
 }
 
+.planning-requirements {
+  margin-top: 1.5rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--color-border);
+  border-radius: 1.25rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.requirement-summary-grid,
+.requirement-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.requirement-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1rem 0;
+}
+
+.requirement-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.requirement-summary-grid article,
+.requirement-list > article {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: var(--color-surface-subtle);
+}
+
+.requirement-summary-grid article {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.requirement-summary-grid strong { font-size: 1.6rem; }
+
+.requirement-list header,
+.requirement-list dl,
+.planning-handoff-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.source-mold-plan-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #a7c1f2;
+  border-radius: 1rem;
+  background: #f1f6ff;
+}
+
+.source-mold-plan-card > div { display: grid; gap: 0.2rem; }
+.source-mold-plan-card span,
+.source-mold-plan-card small { color: var(--color-text-muted); }
+
+.requirement-list h4 { margin: 0.25rem 0; }
+.requirement-list dl { align-items: stretch; margin: 0.75rem 0; }
+.requirement-list dl > div { flex: 1; }
+.requirement-list dt,
+.requirement-list dd { margin: 0; }
+.requirement-recommendation,
+.handoff-lineage-note { color: var(--color-text-muted); }
+
+.planning-handoff-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+  .requirement-summary-grid,
+  .requirement-list { grid-template-columns: 1fr; }
+  .requirement-list dl { align-items: flex-start; flex-direction: column; }
+}
+
 /* Mold planning candidate catalog and governed rule-set comparison. */
 .candidate-catalog { margin-top: 1rem; border-top: 1px solid var(--color-border); padding-top: 1rem; }
 .candidate-catalog > summary { cursor: pointer; font-weight: 800; }

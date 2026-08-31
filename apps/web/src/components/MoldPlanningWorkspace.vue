@@ -6,6 +6,7 @@ import type { MasterDataOptions } from "../api/masterData";
 import {
   compareMoldPlanningCandidates,
   createMoldPlan,
+  createMoldPlanHandoff,
   fetchMoldPlan,
   fetchMoldPlans,
   MoldPlanningError,
@@ -54,6 +55,7 @@ const storedPlan = ref<MoldPlan | null>(null);
 const planName = ref("");
 const planStatusFilter = ref("");
 const saving = ref(false);
+const handoffLoading = ref("");
 const hydratingPlan = ref(false);
 const comparing = ref(false);
 const selectedCandidateIds = ref<string[]>([]);
@@ -252,6 +254,26 @@ async function transitionPlan(action: "complete" | "reopen" | "archive"): Promis
   }
 }
 
+async function startHandoff(handoffType: "design_review" | "cad" | "similarity" | "cae"): Promise<void> {
+  if (!storedPlan.value) return;
+  handoffLoading.value = handoffType;
+  error.value = null;
+  try {
+    const handoff = await createMoldPlanHandoff(storedPlan.value, handoffType);
+    storedPlan.value = await fetchMoldPlan(storedPlan.value.plan_id);
+    const path = handoff.contract.ui_path;
+    if (handoffType === "design_review") {
+      window.location.assign(path);
+    } else {
+      emit("navigate", path);
+    }
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Unable to start the engineering handoff.");
+  } finally {
+    handoffLoading.value = "";
+  }
+}
+
 async function resolveStandard(): Promise<void> {
   if (!canResolve.value) return;
   resolving.value = true;
@@ -379,6 +401,31 @@ onMounted(load);
         <div v-else class="planning-preview-empty"><span>◇</span><h3>{{ t("Complete the context to see a recommendation") }}</h3><p>{{ t("No rule set is selected until the governed server-side resolution succeeds.") }}</p></div>
       </section>
     </div>
+
+    <section v-if="storedPlan?.latest_resolution" class="planning-requirements" aria-labelledby="planning-requirements-title">
+      <div class="section-heading"><div><span class="step-badge">4–5</span><h3 id="planning-requirements-title">{{ t("Planning requirements and engineering handoff") }}</h3><p>{{ t("Review the immutable rule requirements and pass the same governed context to the next engineering workspace.") }}</p></div></div>
+      <div class="requirement-summary-grid">
+        <article><small>{{ t("Total requirements") }}</small><strong>{{ storedPlan.latest_resolution.requirement_summary.total }}</strong></article>
+        <article><small>{{ t("Must") }}</small><strong>{{ storedPlan.latest_resolution.requirement_summary.must }}</strong></article>
+        <article><small>{{ t("High risk") }}</small><strong>{{ storedPlan.latest_resolution.requirement_summary.high_risk }}</strong></article>
+        <article><small>{{ t("Insufficient data") }}</small><strong>{{ storedPlan.latest_resolution.requirement_summary.insufficient_data }}</strong></article>
+      </div>
+      <div class="requirement-list">
+        <article v-for="requirement in storedPlan.latest_resolution.requirements" :key="requirement.requirement_id">
+          <header><div><code>{{ requirement.rule_id }}@{{ requirement.rule_version }}</code><h4>{{ requirement.title }}</h4></div><span :class="`severity-${requirement.severity}`">{{ t(requirement.severity) }}</span></header>
+          <p>{{ requirement.description }}</p>
+          <dl><div><dt>{{ t("Threshold") }}</dt><dd>{{ requirement.operator }} {{ requirement.limit_value ?? "—" }} {{ requirement.unit }}</dd></div><div><dt>{{ t("Evidence") }}</dt><dd>{{ t(requirement.evidence_requirement.kind) }}</dd></div><div><dt>{{ t("Planning status") }}</dt><dd>{{ t(requirement.planning_status) }}</dd></div></dl>
+          <p class="requirement-recommendation">{{ requirement.recommendation }}</p>
+        </article>
+      </div>
+      <div class="planning-handoff-actions">
+        <button type="button" :disabled="Boolean(handoffLoading)" @click="startHandoff('design_review')">{{ handoffLoading === 'design_review' ? t("Creating design review…") : t("Create design review") }}</button>
+        <button type="button" class="secondary-button" :disabled="Boolean(handoffLoading)" @click="startHandoff('cad')">{{ t("Open CAD") }}</button>
+        <button type="button" class="secondary-button" :disabled="Boolean(handoffLoading)" @click="startHandoff('similarity')">{{ t("Find similar molds") }}</button>
+        <button type="button" class="secondary-button" :disabled="Boolean(handoffLoading)" @click="startHandoff('cae')">{{ t("Prepare CAE comparison") }}</button>
+      </div>
+      <p v-if="storedPlan.latest_resolution.handoffs.length" class="handoff-lineage-note">{{ t("Recorded handoffs") }}: {{ storedPlan.latest_resolution.handoffs.map((item) => t(item.handoff_type)).join("、") }}</p>
+    </section>
 
     <section v-if="comparison" class="candidate-comparison" aria-labelledby="candidate-comparison-title">
       <div class="section-heading"><div><span class="step-badge">3B</span><h3 id="candidate-comparison-title">{{ t("Rule set comparison") }}</h3><p>{{ t("Engineering differences are calculated by the server against the recommended baseline.") }}</p></div><button type="button" class="text-button" @click="comparison = null">{{ t("Close comparison") }}</button></div>

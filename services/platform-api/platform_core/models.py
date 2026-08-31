@@ -1958,3 +1958,40 @@ class MoldPlanRequirement(models.Model):
 
     def __str__(self) -> str:
         return f"{self.resolution}: {self.rule_version.rule_id}"
+
+
+class MoldPlanHandoff(models.Model):
+    class HandoffType(models.TextChoices):
+        DESIGN_REVIEW = "design_review", "Design review"
+        CAD = "cad", "CAD"
+        SIMILARITY = "similarity", "Similarity"
+        CAE = "cae", "CAE"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    resolution = models.ForeignKey(
+        MoldPlanResolution, related_name="handoffs", on_delete=models.PROTECT
+    )
+    handoff_type = models.CharField(max_length=24, choices=HandoffType.choices)
+    target_ref = models.CharField(max_length=255)
+    review_run = models.ForeignKey(
+        ReviewRun,
+        related_name="mold_plan_handoffs",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    contract_snapshot = models.JSONField(default=dict)
+    created_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["resolution", "handoff_type"],
+                name="unique_mold_plan_handoff",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.resolution}: {self.handoff_type} -> {self.target_ref}"
