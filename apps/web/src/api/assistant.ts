@@ -6,6 +6,7 @@ export type AssistantContext = {
     | "engineering_workspace"
     | "cad_processing"
     | "similarity_search"
+    | "mold_planning"
     | "design_review"
     | "knowledge_search"
     | "process_trial"
@@ -20,6 +21,11 @@ export type AssistantContext = {
   process_search_id?: string;
   cae_comparison_id?: string;
   metric_code?: string;
+  mold_plan_id?: string;
+  mold_revision_id?: string;
+  cad_artifact_version_id?: string;
+  resolution_id?: string;
+  selected_profile_id?: string;
   ui_locale: string;
 };
 

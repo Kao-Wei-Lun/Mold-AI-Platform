@@ -51,7 +51,7 @@ class HealthEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["data_scope"], "public_demo")
-        self.assertEqual(len(body["capabilities"]), 8)
+        self.assertEqual(len(body["capabilities"]), 9)
         process = next(
             item for item in body["capabilities"] if item["capability_id"] == "process.case_search"
         )

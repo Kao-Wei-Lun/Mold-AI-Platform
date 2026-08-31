@@ -15,6 +15,7 @@ from .models import (
     Job,
     KnowledgeDocument,
     KnowledgeSearch,
+    MoldPlan,
     ProcessCaseSearch,
     ReviewFinding,
     ReviewRun,
@@ -27,6 +28,7 @@ ALLOWED_PAGES = {
     "engineering_workspace",
     "cad_processing",
     "similarity_search",
+    "mold_planning",
     "design_review",
     "knowledge_search",
     "process_trial",
@@ -45,6 +47,11 @@ ALLOWED_CONTEXT_FIELDS = {
     "process_search_id",
     "cae_comparison_id",
     "metric_code",
+    "mold_plan_id",
+    "mold_revision_id",
+    "cad_artifact_version_id",
+    "resolution_id",
+    "selected_profile_id",
     "ui_locale",
 }
 UUID_CONTEXT_FIELDS = {
@@ -57,6 +64,11 @@ UUID_CONTEXT_FIELDS = {
     "knowledge_search_id",
     "process_search_id",
     "cae_comparison_id",
+    "mold_plan_id",
+    "mold_revision_id",
+    "cad_artifact_version_id",
+    "resolution_id",
+    "selected_profile_id",
 }
 
 
@@ -512,6 +524,104 @@ def _cae_answer(
     )
 
 
+def _mold_plan_answer(
+    context: dict[str, str],
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    plan_id = context.get("mold_plan_id")
+    if not plan_id:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_INCOMPLETE",
+            "Open a saved mold plan before asking for its planning explanation.",
+        )
+    try:
+        plan = (
+            MoldPlan.objects.select_related("mold_revision", "cad_artifact_version")
+            .prefetch_related(
+                "resolutions__selected_profile",
+                "resolutions__requirements__rule_version",
+            )
+            .get(id=plan_id, classification="public_demo")
+        )
+    except MoldPlan.DoesNotExist as exc:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND", "The selected mold plan is not available."
+        ) from exc
+    resolution_id = context.get("resolution_id")
+    resolution = next(
+        (
+            item
+            for item in plan.resolutions.all()
+            if not resolution_id or str(item.id) == resolution_id
+        ),
+        None,
+    )
+    if resolution is None:
+        raise AssistantValidationError(
+            "ASSISTANT_CONTEXT_NOT_FOUND",
+            "The selected mold plan resolution is not available.",
+        )
+    requirements = list(resolution.requirements.all())
+    insufficient = [item for item in requirements if item.planning_status == "insufficient_data"]
+    manual = [item for item in requirements if item.planning_status == "manual_confirmation"]
+    high_risk = [
+        item
+        for item in requirements
+        if item.rule_version.severity in {"high", "critical"}
+    ]
+    answer = {
+        "summary": (
+            f"Mold plan {plan.plan_code} uses "
+            f"{resolution.selected_profile.profile_key}@{resolution.selected_profile.version} "
+            f"through {resolution.selection_mode} resolution."
+        ),
+        "facts": [
+            resolution.reason,
+            f"The immutable resolution contains {len(requirements)} requirements, "
+            f"including {len(high_risk)} high-risk requirements.",
+            f"Evidence gaps: {len(insufficient)} insufficient-data requirements and "
+            f"{len(manual)} manual confirmations.",
+        ],
+        "interpretation": [
+            "Mold planning selects governed requirements; it does not claim that design rules "
+            "have passed."
+        ],
+        "recommendations": [
+            *[
+                f"Provide evidence for {item.rule_version.rule_id}: "
+                f"{item.rule_version.recommendation}"
+                for item in insufficient[:5]
+            ],
+            *[
+                f"Confirm {item.rule_version.rule_id} manually before completion."
+                for item in manual[:5]
+            ],
+        ],
+        "uncertainties": [
+            "The Assistant explains only the persisted resolution and requirement snapshots."
+        ],
+        "evidence_refs": [
+            f"mold-plan:{plan.id}",
+            f"mold-plan-resolution:{resolution.id}",
+            f"rule-profile:{resolution.selected_profile_id}",
+        ],
+    }
+    return (
+        answer,
+        [],
+        [
+            {
+                "name": "explain_mold_plan_rule_selection",
+                "status": "succeeded",
+                "arguments": {
+                    "mold_plan_id": str(plan.id),
+                    "resolution_id": str(resolution.id),
+                },
+                "result_ref": f"mold-plan-resolution:{resolution.id}",
+            }
+        ],
+    )
+
+
 def _evidence_envelope(
     intent: str,
     context: dict[str, str],
@@ -563,7 +673,10 @@ def create_assistant_response(message: str, raw_context: object) -> dict[str, ob
     job_terms = ("job", "status", "progress", "工作", "狀態", "進度")
     intent = "unsupported"
 
-    if context.get("review_id"):
+    if context.get("mold_plan_id"):
+        intent = "explain_mold_plan"
+        answer, ui_actions, tool_calls = _mold_plan_answer(context)
+    elif context.get("review_id"):
         intent = "explain_design_review"
         answer, ui_actions, tool_calls = _design_review_answer(context)
     elif context.get("knowledge_search_id"):

@@ -11,6 +11,8 @@ SEARCH_ID = "11111111-1111-4111-8111-111111111111"
 CANDIDATE_ID = "22222222-2222-4222-8222-222222222222"
 PROFILE_ID = "33333333-3333-4333-8333-333333333333"
 BATCH_ID = "44444444-4444-4444-8444-444444444444"
+MOLD_PLAN_ID = "55555555-5555-4555-8555-555555555555"
+RESOLUTION_ID = "66666666-6666-4666-8666-666666666666"
 
 
 class DeepLinkBuilderTests(SimpleTestCase):
@@ -50,6 +52,11 @@ class DeepLinkBuilderTests(SimpleTestCase):
             f"target=ingestion_batch&batch_id={BATCH_ID}",
             builder.build("ingestion_batch", batch_id=BATCH_ID),
         )
+        mold_plan = builder.build(
+            "mold_plan", mold_plan_id=MOLD_PLAN_ID, resolution_id=RESOLUTION_ID
+        )
+        self.assertIn(f"mold_plan_id={MOLD_PLAN_ID}", mold_plan)
+        self.assertIn(f"resolution_id={RESOLUTION_ID}", mold_plan)
 
     def test_rejects_unknown_targets_refs_sensitive_fields_and_non_uuid_ids(self) -> None:
         builder = DeepLinkBuilder("https://mold-ai.example.test")

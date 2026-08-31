@@ -85,6 +85,33 @@
 .source-mold-plan-card span,
 .source-mold-plan-card small { color: var(--color-text-muted); }
 
+.modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(10 24 48 / 62%);
+}
+
+.override-dialog {
+  width: min(560px, 100%);
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1.25rem;
+  background: var(--color-surface);
+  box-shadow: 0 24px 80px rgb(10 24 48 / 32%);
+}
+
+.override-dialog h3 { margin: 0.25rem 0; }
+.override-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
 .requirement-list h4 { margin: 0.25rem 0; }
 .requirement-list dl { align-items: stretch; margin: 0.75rem 0; }
 .requirement-list dl > div { flex: 1; }

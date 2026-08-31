@@ -22,6 +22,21 @@ CAPABILITIES: tuple[dict[str, object], ...] = (
         "limitations": ["Public synthetic Demo dataset only."],
     },
     {
+        "capability_id": "mold.planning",
+        "title": "Governed mold planning",
+        "status": "demo_ready",
+        "web_available": True,
+        "mcp_tools": [
+            "get_mold_plan",
+            "preview_mold_plan_rule_resolution",
+            "explain_mold_plan_rule_selection",
+        ],
+        "prerequisites": ["Governed mold revision and canonical engineering context"],
+        "limitations": [
+            "MCP planning tools are read-only; Web authorization is required for changes."
+        ],
+    },
+    {
         "capability_id": "design.review",
         "title": "Deterministic design review",
         "status": "demo_ready",

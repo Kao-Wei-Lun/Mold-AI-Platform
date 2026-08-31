@@ -67,6 +67,7 @@ from .mold_planning_views import (
     MoldPlanListCreateView,
     MoldPlanningCandidateComparisonView,
     MoldPlanningResolutionPreviewView,
+    MoldPlanProfileSelectionView,
     MoldPlanResolveView,
 )
 from .registry_views import (
@@ -160,6 +161,11 @@ urlpatterns = [
         "mold-plans/<uuid:plan_id>/handoffs/<str:handoff_type>",
         MoldPlanHandoffView.as_view(),
         name="mold-plan-handoff",
+    ),
+    path(
+        "mold-plans/<uuid:plan_id>/select-profile",
+        MoldPlanProfileSelectionView.as_view(),
+        name="mold-plan-select-profile",
     ),
     path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
     path(

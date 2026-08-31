@@ -12,7 +12,9 @@ from platform_core.mcp_gateway import (
     MCPAccessMiddleware,
     PlatformAPIClient,
     create_app,
+    explain_mold_plan_rule_selection,
     get_job_status,
+    get_mold_plan,
     get_platform_status,
     get_similarity_explanation,
     get_web_launcher_ui,
@@ -34,16 +36,18 @@ CANDIDATE_B_ID = "55555555-5555-4555-8555-555555555555"
 PROCESS_SEARCH_ID = "66666666-6666-4666-8666-666666666666"
 PROFILE_ID = "77777777-7777-4777-8777-777777777777"
 BATCH_ID = "88888888-8888-4888-8888-888888888888"
+MOLD_PLAN_ID = "99999999-9999-4999-8999-999999999999"
+RESOLUTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
 class MCPGatewayTests(SimpleTestCase):
-    def test_web_launcher_is_a_decoupled_tenth_tool_with_versioned_ui_metadata(self) -> None:
+    def test_web_launcher_is_decoupled_with_versioned_ui_metadata(self) -> None:
         tools = mcp._tool_manager.list_tools()
         launcher = next(tool for tool in tools if tool.name == "open_mold_ai_web")
         resources = mcp._resource_manager.list_resources()
         resource = next(item for item in resources if str(item.uri) == PLUGIN_UI_RESOURCE_URI)
 
-        self.assertEqual(len(tools), 10)
+        self.assertEqual(len(tools), 13)
         self.assertEqual(launcher.meta["ui"]["resourceUri"], PLUGIN_UI_RESOURCE_URI)
         self.assertEqual(launcher.meta["openai/outputTemplate"], PLUGIN_UI_RESOURCE_URI)
         self.assertEqual(resource.mime_type, PLUGIN_UI_MIME_TYPE)
@@ -62,6 +66,13 @@ class MCPGatewayTests(SimpleTestCase):
             ingestion_batch = asyncio.run(
                 open_mold_ai_web(target="ingestion_batch", batch_id=BATCH_ID)
             )
+            mold_plan = asyncio.run(
+                open_mold_ai_web(
+                    target="mold_plan",
+                    mold_plan_id=MOLD_PLAN_ID,
+                    resolution_id=RESOLUTION_ID,
+                )
+            )
             with self.assertRaisesRegex(ValueError, "do not match"):
                 asyncio.run(open_mold_ai_web(target="home", job_id=JOB_ID))
 
@@ -72,6 +83,8 @@ class MCPGatewayTests(SimpleTestCase):
         self.assertIn(f"search_id={SEARCH_ID}", similarity.links["ui"])
         self.assertIn(f"profile_id={PROFILE_ID}", rule_profile.links["ui"])
         self.assertIn(f"batch_id={BATCH_ID}", ingestion_batch.links["ui"])
+        self.assertIn(f"mold_plan_id={MOLD_PLAN_ID}", mold_plan.links["ui"])
+        self.assertIn(f"resolution_id={RESOLUTION_ID}", mold_plan.links["ui"])
         self.assertEqual(similarity.domain_result["authentication"], "personal_mold_ai_session")
 
     def test_plugin_ui_restricts_external_open_to_the_configured_sites_origin(self) -> None:
@@ -172,6 +185,40 @@ class MCPGatewayTests(SimpleTestCase):
 
         self.assertEqual(result.domain_result["indexed_count"], 1)
         self.assertEqual(result.domain_result["items"][0]["document_id"], "demo-1")
+
+    def test_mold_plan_tools_return_read_only_snapshot_and_deep_link(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertTrue(request.url.path.endswith(f"/mold-plans/{MOLD_PLAN_ID}"))
+            return httpx.Response(
+                200,
+                json={
+                    "schema_version": "1.0",
+                    "plan_id": MOLD_PLAN_ID,
+                    "plan_code": "MP-DEMO-001",
+                    "status": "ready",
+                    "latest_resolution": {
+                        "resolution_id": RESOLUTION_ID,
+                        "selected_profile_key": "demo-general-design",
+                        "selection_mode": "automatic",
+                        "reason": "Most specific eligible profile.",
+                        "requirement_summary": {"total": 13, "high_risk": 2},
+                    },
+                },
+            )
+
+        client = PlatformAPIClient(
+            "http://platform.test/api/v1",
+            "https://demo.example.test",
+            httpx.MockTransport(handler),
+        )
+        with patch("platform_core.mcp_gateway._client", return_value=client):
+            record = asyncio.run(get_mold_plan(MOLD_PLAN_ID))
+            explanation = asyncio.run(explain_mold_plan_rule_selection(MOLD_PLAN_ID))
+
+        self.assertIn("MP-DEMO-001", record.summary)
+        self.assertIn("Most specific eligible profile", explanation.summary)
+        self.assertIn(f"mold_plan_id={MOLD_PLAN_ID}", explanation.links["ui"])
 
     def test_process_tool_omits_unprovided_defaults_and_reports_input_source(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -439,7 +486,7 @@ class MCPGatewayTests(SimpleTestCase):
 
         payload = asyncio.run(exercise())
         self.assertEqual(payload["connection"]["path"], "secure_mcp_tunnel")
-        self.assertEqual(payload["tool_count"], 10)
+        self.assertEqual(payload["tool_count"], 13)
         self.assertTrue(payload["server_side_chatgpt_preflight_ready"])
         self.assertTrue(payload["deep_links"]["ready"])
         self.assertTrue(payload["plugin_ui"]["ready"])

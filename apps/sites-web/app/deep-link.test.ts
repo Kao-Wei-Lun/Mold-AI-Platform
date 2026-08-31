@@ -6,6 +6,7 @@ const SEARCH_ID = '11111111-1111-4111-8111-111111111111';
 const CANDIDATE_ID = '22222222-2222-4222-8222-222222222222';
 const PROFILE_ID = '33333333-3333-4333-8333-333333333333';
 const BATCH_ID = '44444444-4444-4444-8444-444444444444';
+const MOLD_PLAN_ID = '55555555-5555-4555-8555-555555555555';
 
 describe('Sites deep-link contract', () => {
   it('parses and serializes an allowlisted similarity context', () => {
@@ -23,6 +24,7 @@ describe('Sites deep-link contract', () => {
   it.each([
     [`deep_link_version=1.0&target=rule_profile&profile_id=${PROFILE_ID}`, 'rule_profile', 'profile_id', PROFILE_ID],
     [`deep_link_version=1.0&target=ingestion_batch&batch_id=${BATCH_ID}`, 'ingestion_batch', 'batch_id', BATCH_ID],
+    [`deep_link_version=1.0&target=mold_plan&mold_plan_id=${MOLD_PLAN_ID}`, 'mold_plan', 'mold_plan_id', MOLD_PLAN_ID],
   ])('supports governed record target %s', (query, target, refName, refValue) => {
     const parsed = parseDeepLink(query);
     expect(parsed.target).toBe(target);

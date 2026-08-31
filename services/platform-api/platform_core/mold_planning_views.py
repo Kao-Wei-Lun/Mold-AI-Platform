@@ -942,6 +942,120 @@ class MoldPlanHandoffView(APIView):
         )
 
 
+class MoldPlanProfileSelectionView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, plan_id: uuid.UUID) -> Response:
+        if denied := _require(request, "rules:override"):
+            return denied
+        reason = str(request.data.get("reason", "")).strip()
+        if not 10 <= len(reason) <= 512:
+            return _error(
+                request,
+                "VALIDATION_OVERRIDE_REASON",
+                "A specific override reason between 10 and 512 characters is required.",
+                400,
+            )
+        if any(marker in reason.casefold() for marker in ("sk-", "api_key", "token=")):
+            return _error(
+                request,
+                "VALIDATION_OVERRIDE_REASON_SENSITIVE",
+                "Do not include credentials or tokens in an engineering override reason.",
+                400,
+            )
+        try:
+            profile_id = uuid.UUID(str(request.data.get("profile_id", "")))
+        except ValueError:
+            return _error(
+                request,
+                "VALIDATION_RULE_PROFILE",
+                "profile_id must be a UUID.",
+                400,
+            )
+        with transaction.atomic():
+            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            if plan is None:
+                return _error(
+                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
+                )
+            if int(request.data.get("row_version", 0)) != plan.row_version:
+                return _error(
+                    request,
+                    "CONCURRENCY_CONFLICT",
+                    "The mold plan changed after it was loaded.",
+                    409,
+                )
+            if plan.status in {MoldPlan.Status.COMPLETED, MoldPlan.Status.ARCHIVED}:
+                return _error(
+                    request,
+                    "MOLD_PLAN_IMMUTABLE",
+                    "Reopen a completed or archived plan before changing its rule set.",
+                    409,
+                )
+            context = {item.dimension: item.value_code for item in plan.context_entries.all()}
+            try:
+                automatic = resolve_rule_profile_for_context(
+                    context,
+                    scope=plan.scope,
+                    classification=plan.classification,
+                )
+            except RuleResolutionError as exc:
+                return _error(request, exc.code, exc.user_message, 409)
+            candidate = next(
+                (
+                    item
+                    for item in automatic.snapshot["candidates"]
+                    if str(item["profile_id"]) == str(profile_id)
+                ),
+                None,
+            )
+            if candidate is None:
+                return _error(
+                    request,
+                    "RULE_PROFILE_OVERRIDE_NOT_ELIGIBLE",
+                    "Only a profile eligible for the saved engineering context can be selected.",
+                    409,
+                )
+            profile = RuleProfile.objects.prefetch_related("rules").get(id=profile_id)
+            record = MoldPlanResolution.objects.create(
+                plan=plan,
+                resolution_number=plan.resolutions.count() + 1,
+                context_checksum=_context_checksum(context),
+                selected_profile=profile,
+                ruleset_checksum=profile.ruleset_checksum,
+                applicability_checksum=candidate["applicability_checksum"],
+                selection_mode="manual_override",
+                reason=(
+                    f"Authorized manual selection of {profile.profile_key}@{profile.version} "
+                    "from the eligible candidate set."
+                ),
+                override_reason=reason,
+                context_snapshot=context,
+                candidate_snapshot=automatic.snapshot["candidates"],
+                exclusion_summary=automatic.snapshot.get("excluded_summary", []),
+                resolved_by=_actor(request),
+            )
+            _create_requirements(record)
+            plan.status = MoldPlan.Status.READY
+            plan.updated_by = _actor(request)
+            plan.row_version += 1
+            plan.save(update_fields=["status", "updated_by", "row_version", "updated_at"])
+            audit_identity_event(
+                "mold_plan.profile_overridden.v1",
+                actor_id=_actor(request),
+                target_refs=[str(plan.id), str(record.id), str(profile.id)],
+                detail={
+                    "reason": reason,
+                    "eligible_candidate_count": len(automatic.snapshot["candidates"]),
+                    "automatic_profile_id": str(automatic.profile.id),
+                },
+            )
+        return Response(
+            mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True)
+        )
+
+
 class MoldPlanActionView(APIView):
     authentication_classes = [SessionAuthentication]
     permission_classes: list = []

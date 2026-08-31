@@ -218,6 +218,7 @@ const deepLinkRoutes: Record<DeepLinkTarget, WorkspaceRouteId> = {
   cae: "cae",
   hmi: "hmi",
   rule_profile: "rules",
+  mold_plan: "mold_planning",
   ingestion_batch: "history_data",
 };
 

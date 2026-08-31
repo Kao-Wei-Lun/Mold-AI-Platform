@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 
+import type { AssistantContext } from "../api/assistant";
 import { fetchRecentCAD, type CADArtifactSummary, type CADModelResult } from "../api/cad";
 import type { MasterDataOptions } from "../api/masterData";
 import {
@@ -12,14 +13,17 @@ import {
   MoldPlanningError,
   previewMoldPlanningResolution,
   resolveMoldPlan,
+  selectMoldPlanProfile,
   transitionMoldPlan,
   updateMoldPlan,
   type MoldPlan,
   type MoldPlanningCandidateComparison,
   type MoldPlanningResolutionPreview,
   type PlanningContextSource,
+  type RuleResolutionCandidate,
 } from "../api/moldPlanning";
 import { fetchRegistry, type RegistryMold, type RegistryPart, type RegistryProject, type RegistryRevision } from "../api/registry";
+import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
 import FormField from "./FormField.vue";
 
@@ -28,8 +32,12 @@ const props = defineProps<{
   masterDataOptions: MasterDataOptions;
   masterDataLoading?: boolean;
   masterDataError?: string | null;
+  deepLink?: DeepLinkContext | null;
 }>();
-const emit = defineEmits<{ navigate: [path: string] }>();
+const emit = defineEmits<{
+  navigate: [path: string];
+  contextChange: [context: AssistantContext];
+}>();
 const { locale, t } = useI18n();
 
 const loading = ref(true);
@@ -56,6 +64,9 @@ const planName = ref("");
 const planStatusFilter = ref("");
 const saving = ref(false);
 const handoffLoading = ref("");
+const overrideCandidate = ref<RuleResolutionCandidate | null>(null);
+const overrideReason = ref("");
+const overriding = ref(false);
 const hydratingPlan = ref(false);
 const comparing = ref(false);
 const selectedCandidateIds = ref<string[]>([]);
@@ -69,6 +80,13 @@ const availableRevisions = computed(() => revisions.value.filter((item) => item.
 const availableArtifacts = computed(() => artifacts.value.filter((item) => item.mold_revision_id === selectedRevisionId.value));
 const selectedArtifact = computed(() => availableArtifacts.value.find((item) => item.versions?.some((version) => version.artifact_version_id === selectedCadVersionId.value)) || null);
 const canResolve = computed(() => Boolean(selectedRevisionId.value && productType.value && material.value && moldingProcess.value));
+const overrideSelectionCandidate = computed(() => {
+  if (!preview.value) return null;
+  const candidateId = selectedCandidateIds.value.find(
+    (id) => id !== preview.value?.selected.profile_id,
+  );
+  return preview.value.candidates.find((item) => item.profile_id === candidateId) || null;
+});
 
 function sourceFor(dimension: string): string {
   if (preview.value?.sources[dimension]) return preview.value.sources[dimension].source_type;
@@ -141,6 +159,9 @@ async function load(): Promise<void> {
       || availableArtifacts.value[0]?.versions?.[0]?.artifact_version_id || "";
     applySelectionContext();
     await loadPlans();
+    if (props.deepLink?.target === "mold_plan") {
+      await openPlan(props.deepLink.refs.mold_plan_id);
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load mold planning context.");
   } finally {
@@ -274,6 +295,38 @@ async function startHandoff(handoffType: "design_review" | "cad" | "similarity" 
   }
 }
 
+function requestProfileOverride(candidate: RuleResolutionCandidate): void {
+  overrideCandidate.value = candidate;
+  overrideReason.value = "";
+}
+
+async function confirmProfileOverride(): Promise<void> {
+  if (!storedPlan.value || !overrideCandidate.value || overrideReason.value.trim().length < 10) return;
+  overriding.value = true;
+  error.value = null;
+  try {
+    storedPlan.value = await selectMoldPlanProfile(
+      storedPlan.value,
+      overrideCandidate.value.profile_id,
+      overrideReason.value.trim(),
+    );
+    const selected = overrideCandidate.value;
+    preview.value = {
+      ...preview.value!,
+      selection_mode: "manual_override",
+      selected,
+      reason: storedPlan.value.latest_resolution?.reason || "",
+    };
+    overrideCandidate.value = null;
+    overrideReason.value = "";
+    await loadPlans();
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Unable to change the selected rule set.");
+  } finally {
+    overriding.value = false;
+  }
+}
+
 async function resolveStandard(): Promise<void> {
   if (!canResolve.value) return;
   resolving.value = true;
@@ -334,6 +387,31 @@ async function compareCandidates(): Promise<void> {
 }
 
 onMounted(load);
+
+watch(
+  () => [storedPlan.value?.plan_id, storedPlan.value?.latest_resolution?.resolution_id],
+  () => {
+    emit("contextChange", {
+      context_version: "1.0",
+      page: "mold_planning",
+      ui_locale: locale.value,
+      ...(storedPlan.value?.plan_id ? { mold_plan_id: storedPlan.value.plan_id } : {}),
+      ...(storedPlan.value?.mold_revision_id
+        ? { mold_revision_id: storedPlan.value.mold_revision_id }
+        : {}),
+      ...(storedPlan.value?.cad_artifact_version_id
+        ? { cad_artifact_version_id: storedPlan.value.cad_artifact_version_id }
+        : {}),
+      ...(storedPlan.value?.latest_resolution?.resolution_id
+        ? { resolution_id: storedPlan.value.latest_resolution.resolution_id }
+        : {}),
+      ...(storedPlan.value?.latest_resolution?.selected_profile_id
+        ? { selected_profile_id: storedPlan.value.latest_resolution.selected_profile_id }
+        : {}),
+    });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -397,6 +475,14 @@ onMounted(load);
             </label>
           </div>
           <button type="button" :disabled="selectedCandidateIds.length < 2 || comparing" @click="compareCandidates">{{ comparing ? t("Comparing…") : t("Compare selected rule sets") }}</button>
+          <button
+            v-if="storedPlan?.status === 'ready' && overrideSelectionCandidate"
+            type="button"
+            class="secondary-button"
+            @click="requestProfileOverride(overrideSelectionCandidate!)"
+          >
+            {{ t("Select compared rule set") }}
+          </button>
         </details>
         <div v-else class="planning-preview-empty"><span>◇</span><h3>{{ t("Complete the context to see a recommendation") }}</h3><p>{{ t("No rule set is selected until the governed server-side resolution succeeds.") }}</p></div>
       </section>
@@ -438,5 +524,20 @@ onMounted(load);
         </article>
       </div>
     </section>
+
+    <div v-if="overrideCandidate" class="modal-backdrop" role="presentation" @click.self="overrideCandidate = null">
+      <section class="override-dialog" role="dialog" aria-modal="true" aria-labelledby="override-dialog-title">
+        <p class="eyebrow">{{ t("Governed manual selection") }}</p>
+        <h3 id="override-dialog-title">{{ t("Change to {profile}", { profile: overrideCandidate.display_name }) }}</h3>
+        <p>{{ t("This rule set is eligible for the saved context. The automatic recommendation and your reason will both remain in audit history.") }}</p>
+        <FormField v-slot="{ fieldId }" :label="t('Override reason')" required :hint="t('Describe the engineering reason in at least 10 characters.')">
+          <textarea :id="fieldId" v-model="overrideReason" minlength="10" maxlength="512" rows="4" required></textarea>
+        </FormField>
+        <div class="override-dialog-actions">
+          <button type="button" class="secondary-button" :disabled="overriding" @click="overrideCandidate = null">{{ t("Cancel") }}</button>
+          <button type="button" :disabled="overriding || overrideReason.trim().length < 10" @click="confirmProfileOverride">{{ overriding ? t("Saving…") : t("Confirm governed selection") }}</button>
+        </div>
+      </section>
+    </div>
   </section>
 </template>

@@ -375,6 +375,8 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :master-data-options="masterDataOptions"
           :master-data-loading="masterDataLoading"
           :master-data-error="masterDataError"
+          :deep-link="activeDeepLink"
+          @context-change="assistantContext = $event"
           @navigate="navigatePath"
         />
         <DesignReviewWorkspace

@@ -10,6 +10,7 @@ export type DeepLinkTarget =
   | 'cae'
   | 'hmi'
   | 'rule_profile'
+  | 'mold_plan'
   | 'ingestion_batch';
 
 export type DeepLinkContext = {
@@ -33,6 +34,7 @@ const targetRefs: Record<DeepLinkTarget, { required: string[]; optional: string[
   cae: { required: ['cae_comparison_id'], optional: ['metric_code'] },
   hmi: { required: ['hmi_extraction_id'], optional: [] },
   rule_profile: { required: ['profile_id'], optional: [] },
+  mold_plan: { required: ['mold_plan_id'], optional: ['resolution_id'] },
   ingestion_batch: { required: ['batch_id'], optional: [] },
 };
 
@@ -49,6 +51,8 @@ const uuidRefs = new Set([
   'cae_comparison_id',
   'hmi_extraction_id',
   'profile_id',
+  'mold_plan_id',
+  'resolution_id',
   'batch_id',
 ]);
 
@@ -143,6 +147,7 @@ export function deepLinkTitle(target: DeepLinkTarget): string {
     cae: 'CAE comparison',
     hmi: 'HMI extraction',
     rule_profile: 'Mold rule profile',
+    mold_plan: 'Mold planning decision',
     ingestion_batch: 'Data import job',
   }[target];
 }

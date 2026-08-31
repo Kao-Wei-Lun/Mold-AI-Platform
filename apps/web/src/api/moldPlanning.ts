@@ -121,6 +121,7 @@ export type MoldPlan = {
     applicability_checksum: string;
     selection_mode: string;
     reason: string;
+    override_reason: string | null;
     context: Record<string, string>;
     candidates: RuleResolutionCandidate[];
     excluded_summary: unknown[];
@@ -252,5 +253,20 @@ export function createMoldPlanHandoff(
   return planRequest(`/api/v1/mold-plans/${plan.plan_id}/handoffs/${handoffType}`, {
     method: "POST",
     body: JSON.stringify({ row_version: plan.row_version }),
+  });
+}
+
+export function selectMoldPlanProfile(
+  plan: MoldPlan,
+  profileId: string,
+  reason: string,
+): Promise<MoldPlan> {
+  return planRequest(`/api/v1/mold-plans/${plan.plan_id}/select-profile`, {
+    method: "POST",
+    body: JSON.stringify({
+      profile_id: profileId,
+      reason,
+      row_version: plan.row_version,
+    }),
   });
 }

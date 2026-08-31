@@ -35,6 +35,7 @@ WEB_TARGET_TITLES = {
     "cae": "CAE comparison",
     "hmi": "HMI extraction",
     "rule_profile": "Mold rule profile",
+    "mold_plan": "Mold planning decision",
     "ingestion_batch": "Data import job",
 }
 
@@ -337,6 +338,7 @@ async def open_mold_ai_web(
         "cae",
         "hmi",
         "rule_profile",
+        "mold_plan",
         "ingestion_batch",
     ] = "home",
     job_id: str | None = None,
@@ -352,6 +354,8 @@ async def open_mold_ai_web(
     metric_code: str | None = None,
     hmi_extraction_id: str | None = None,
     profile_id: str | None = None,
+    mold_plan_id: str | None = None,
+    resolution_id: str | None = None,
     batch_id: str | None = None,
 ) -> ToolResponse:
     client = _client()
@@ -371,6 +375,8 @@ async def open_mold_ai_web(
             "metric_code": metric_code,
             "hmi_extraction_id": hmi_extraction_id,
             "profile_id": profile_id,
+            "mold_plan_id": mold_plan_id,
+            "resolution_id": resolution_id,
             "batch_id": batch_id,
         }.items()
         if value is not None
@@ -446,6 +452,125 @@ async def get_platform_status() -> ToolResponse:
             "deep_links": deep_link_readiness(client.public_web_entry_base_url),
         },
         links={"ui": client.deep_link("home")},
+    )
+
+
+@mcp.tool(
+    name="get_mold_plan",
+    title="Get a governed mold plan",
+    description=(
+        "Read one saved Mold AI planning record, including its canonical context, immutable "
+        "rule resolution, requirements, evidence gaps, and engineering handoffs."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def get_mold_plan(mold_plan_id: str) -> ToolResponse:
+    client = _client()
+    result = await client.request("GET", f"mold-plans/{mold_plan_id}")
+    resolution = result.get("latest_resolution") or {}
+    return ToolResponse(
+        summary=(
+            f"Mold plan {result.get('plan_code')} is {result.get('status')} and uses "
+            f"{resolution.get('selected_profile_key', 'no resolved rule set')}."
+        ),
+        domain_result=result,
+        links={
+            "ui": client.deep_link(
+                "mold_plan",
+                mold_plan_id=mold_plan_id,
+                resolution_id=resolution.get("resolution_id"),
+            )
+        },
+    )
+
+
+@mcp.tool(
+    name="preview_mold_plan_rule_resolution",
+    title="Preview the rule set for a mold planning context",
+    description=(
+        "Resolve eligible published rule sets for a governed mold revision without saving a "
+        "Mold Plan. Required engineering context must be supplied explicitly; never invent it."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def preview_mold_plan_rule_resolution(
+    mold_revision_id: str,
+    product_type: str,
+    material: str,
+    molding_process: str,
+    cad_artifact_version_id: str | None = None,
+    location: str | None = None,
+) -> ToolResponse:
+    client = _client()
+    result = await client.request(
+        "POST",
+        "mold-plans/resolution-preview",
+        payload={
+            "mold_revision_id": mold_revision_id,
+            "cad_artifact_version_id": cad_artifact_version_id,
+            "context": {
+                "product_type": product_type,
+                "material": material,
+                "molding_process": molding_process,
+                **({"location": location} if location else {}),
+            },
+        },
+    )
+    selected = result.get("selected", {})
+    return ToolResponse(
+        summary=(
+            f"The governed resolver recommends {selected.get('display_name')} "
+            f"through {result.get('selection_mode')} resolution."
+        ),
+        domain_result=result,
+        links={"ui": client.deep_link("home")},
+    )
+
+
+@mcp.tool(
+    name="explain_mold_plan_rule_selection",
+    title="Explain a mold plan rule selection",
+    description=(
+        "Explain why the saved Mold Plan selected its immutable Rule Profile and summarize "
+        "required evidence, high-risk rules, data gaps, limitations, and lineage."
+    ),
+    annotations=READ_ONLY,
+    structured_output=True,
+)
+async def explain_mold_plan_rule_selection(mold_plan_id: str) -> ToolResponse:
+    client = _client()
+    result = await client.request("GET", f"mold-plans/{mold_plan_id}")
+    resolution = result.get("latest_resolution") or {}
+    if not resolution:
+        raise PlatformAPIError("The Mold Plan has no saved rule resolution.")
+    summary = resolution.get("requirement_summary", {})
+    explanation = {
+        "schema_version": "1.0",
+        "mold_plan_id": mold_plan_id,
+        "plan_code": result.get("plan_code"),
+        "status": result.get("status"),
+        "resolution": resolution,
+        "evidence_summary": summary,
+        "limitations": [
+            "Planning selects governed requirements; Design Review or CAE determines results.",
+            "This tool is read-only and cannot override the saved rule selection.",
+        ],
+    }
+    return ToolResponse(
+        summary=(
+            f"{resolution.get('selected_profile_key')} was selected by "
+            f"{resolution.get('selection_mode')} resolution: {resolution.get('reason')}"
+        ),
+        domain_result=explanation,
+        links={
+            "ui": client.deep_link(
+                "mold_plan",
+                mold_plan_id=mold_plan_id,
+                resolution_id=resolution.get("resolution_id"),
+            )
+        },
     )
 
 
@@ -812,7 +937,7 @@ def mcp_preflight_payload() -> dict[str, object]:
         "service": "mcp-gateway",
         "transport": "streamable-http",
         "endpoint": "/mcp",
-        "tool_count": 10,
+        "tool_count": len(mcp._tool_manager.list_tools()),
         "data_scope": "public-demo",
         "authentication": {
             "mode": auth_mode,

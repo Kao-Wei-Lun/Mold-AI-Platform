@@ -51,6 +51,16 @@ vi.mock("../api/moldPlanning", async (importOriginal) => {
     updateMoldPlan: async () => storedPlan,
     resolveMoldPlan: (id: string) => resolvePlan(id),
     transitionMoldPlan: async () => storedPlan,
+    selectMoldPlanProfile: async () => storedPlan,
+    createMoldPlanHandoff: async () => ({
+      handoff_id: "handoff-1",
+      handoff_type: "cad",
+      target_ref: "cad:plan-1",
+      review_id: null,
+      contract: { ui_path: "/engineering/cad" },
+      created_by: "owner",
+      created_at: "2026-08-31T00:00:00Z",
+    }),
   };
 });
 
@@ -71,6 +81,10 @@ describe("MoldPlanningWorkspace", () => {
     expect(wrapper.text()).toContain("MOLD-1@A");
     expect(wrapper.text()).toContain("housing.stl");
     expect(wrapper.text()).not.toContain("Profile key");
+    expect(wrapper.emitted("contextChange")?.[0]?.[0]).toMatchObject({
+      page: "mold_planning",
+      context_version: "1.0",
+    });
   });
 
   it("resolves and explains the recommended review rule set", async () => {

@@ -25,6 +25,7 @@ describe("Engineering Workspace routes", () => {
     ["hmi", "/engineering/hmi"],
     ["job", "/status"],
     ["rule_profile", "/governance/rules"],
+    ["mold_plan", "/engineering/mold-planning"],
     ["ingestion_batch", "/data/overview"],
   ] as const)("maps %s deep links to %s", (target, path) => {
     expect(routeForDeepLink(target).path).toBe(path);

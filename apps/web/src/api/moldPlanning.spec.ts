@@ -2,6 +2,7 @@ import {
   compareMoldPlanningCandidates,
   createMoldPlanHandoff,
   previewMoldPlanningResolution,
+  selectMoldPlanProfile,
   type MoldPlan,
 } from "./moldPlanning";
 
@@ -46,5 +47,27 @@ describe("mold planning API", () => {
       "/api/v1/mold-plans/plan-1/handoffs/design_review",
     );
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ row_version: 7 });
+  });
+
+  it("submits an explicit reason for governed profile selection", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ plan_id: "plan-1" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await selectMoldPlanProfile(
+      { plan_id: "plan-1", row_version: 8 } as MoldPlan,
+      "profile-2",
+      "Customer specification requires this eligible standard.",
+    );
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/select-profile");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      profile_id: "profile-2",
+      reason: "Customer specification requires this eligible standard.",
+      row_version: 8,
+    });
   });
 });
