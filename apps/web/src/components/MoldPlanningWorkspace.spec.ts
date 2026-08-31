@@ -18,14 +18,28 @@ const previewResolution = vi.fn(async (_input: unknown) => ({
   context: { mold_type: "three_plate", product_type: "housing", material: "ABS-GENERAL", molding_process: "injection", project: "DEMO" },
   sources: { product_type: { source_type: "cad", source_ref: "version-1" } }, missing_fields: [],
   selected: { profile_id: "profile-1", profile_key: "housing-standard", display_name: "Housing Standard", version: "1.0", workflow_status: "published", owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, specificity: 2, priority: 10, is_default: false, matched_dimensions: ["mold_type", "product_type"], applicability_checksum: "checksum" },
-  candidates: [], excluded_summary: [], reason: "Selected the most specific published profile.", applicability_checksum: "checksum",
+  candidates: [
+    { profile_id: "profile-1", profile_key: "housing-standard", display_name: "Housing Standard", version: "1.0", workflow_status: "published", owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, specificity: 2, priority: 10, is_default: false, matched_dimensions: ["mold_type", "product_type"], applicability_checksum: "checksum" },
+    { profile_id: "profile-2", profile_key: "general-standard", display_name: "General Standard", version: "1.0", workflow_status: "published", owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, specificity: 1, priority: 5, is_default: false, matched_dimensions: ["mold_type"], applicability_checksum: "checksum-2" },
+  ], excluded_summary: [], reason: "Selected the most specific published profile.", applicability_checksum: "checksum",
+}));
+const compareResolution = vi.fn(async (_input: unknown) => ({
+  schema_version: "1.0", context: {}, baseline_profile_id: "profile-1",
+  items: [
+    { profile_id: "profile-1", profile_key: "housing-standard", display_name: "Housing Standard", version: "1.0", priority: 10, is_default: false, owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, applicability: [], enabled_rule_count: 3, risk_categories: ["demolding"], high_risk_rules: [{ rule_id: "RULE-1", title: "Draft", severity: "high", risk_type: "demolding" }], difference_summary: { baseline_profile_id: "profile-1", added: [], removed: [], modified: [] } },
+    { profile_id: "profile-2", profile_key: "general-standard", display_name: "General Standard", version: "1.0", priority: 5, is_default: false, owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, applicability: [], enabled_rule_count: 2, risk_categories: [], high_risk_rules: [], difference_summary: { baseline_profile_id: "profile-1", added: [], removed: ["RULE-1"], modified: [] } },
+  ],
 }));
 
 vi.mock("../api/registry", () => ({ fetchRegistry: () => fetchRegistry() }));
 vi.mock("../api/cad", () => ({ fetchRecentCAD: () => fetchRecentCAD() }));
 vi.mock("../api/moldPlanning", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/moldPlanning")>();
-  return { ...actual, previewMoldPlanningResolution: (input: unknown) => previewResolution(input) };
+  return {
+    ...actual,
+    previewMoldPlanningResolution: (input: unknown) => previewResolution(input),
+    compareMoldPlanningCandidates: (input: unknown) => compareResolution(input),
+  };
 });
 
 const options = emptyMasterDataOptions();
@@ -35,7 +49,7 @@ options.material = [{ id: "md-material", code: "ABS-GENERAL", name_en: "ABS", na
 options.molding_process = [{ id: "md-process", code: "injection", name_en: "Injection", name_zh_tw: "射出成型", attributes: {}, row_version: 1 }];
 
 describe("MoldPlanningWorkspace", () => {
-  beforeEach(() => { fetchRegistry.mockClear(); fetchRecentCAD.mockClear(); previewResolution.mockClear(); });
+  beforeEach(() => { fetchRegistry.mockClear(); fetchRecentCAD.mockClear(); previewResolution.mockClear(); compareResolution.mockClear(); });
 
   it("loads a governed mold context without asking for a profile key", async () => {
     const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
@@ -64,5 +78,20 @@ describe("MoldPlanningWorkspace", () => {
     await wrapper.get(".planning-intro button").trigger("click");
 
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/governance/rules"]);
+  });
+
+  it("compares two eligible candidates using the server contract", async () => {
+    const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    const candidates = wrapper.findAll(".candidate-option-list input");
+    await candidates[1].setValue(true);
+    await wrapper.get(".candidate-catalog > button").trigger("click");
+    await flushPromises();
+
+    expect(compareResolution).toHaveBeenCalledOnce();
+    expect(wrapper.findAll(".comparison-card-grid article")).toHaveLength(2);
+    expect(wrapper.text()).toContain("General Standard");
   });
 });

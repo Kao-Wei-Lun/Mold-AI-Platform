@@ -7,7 +7,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Artifact, ArtifactVersion, MasterDataItem, MoldRevision
+from .models import Artifact, ArtifactVersion, MasterDataItem, MoldRevision, RuleProfile
 from .rule_resolution import (
     RuleResolutionError,
     planning_context_for_revision,
@@ -173,5 +173,118 @@ class MoldPlanningResolutionPreviewView(APIView):
                 "cad_artifact_version_id": str(artifact_version.id) if artifact_version else None,
                 "sources": sources,
                 "missing_fields": [],
+            }
+        )
+
+
+def _comparison_profile_payload(profile: RuleProfile, baseline: RuleProfile) -> dict[str, object]:
+    rules = list(profile.rules.filter(enabled=True).order_by("rule_id"))
+    baseline_rules = {rule.rule_id: rule for rule in baseline.rules.filter(enabled=True)}
+    current_rules = {rule.rule_id: rule for rule in rules}
+    added = sorted(set(current_rules) - set(baseline_rules))
+    removed = sorted(set(baseline_rules) - set(current_rules))
+    modified = sorted(
+        rule_id
+        for rule_id in set(current_rules) & set(baseline_rules)
+        if (
+            current_rules[rule_id].operator,
+            current_rules[rule_id].limit_value,
+            current_rules[rule_id].unit,
+            current_rules[rule_id].tolerance,
+            current_rules[rule_id].severity,
+        )
+        != (
+            baseline_rules[rule_id].operator,
+            baseline_rules[rule_id].limit_value,
+            baseline_rules[rule_id].unit,
+            baseline_rules[rule_id].tolerance,
+            baseline_rules[rule_id].severity,
+        )
+    )
+    return {
+        "profile_id": str(profile.id),
+        "profile_key": profile.profile_key,
+        "display_name": profile.profile_key.replace("-", " ").replace("_", " ").title(),
+        "version": profile.version,
+        "priority": profile.priority,
+        "is_default": profile.is_default,
+        "owner": profile.owner,
+        "approved_by": profile.approved_by,
+        "effective_from": profile.effective_from.isoformat() if profile.effective_from else None,
+        "effective_to": profile.effective_to.isoformat() if profile.effective_to else None,
+        "applicability": [
+            {
+                "dimension": item.dimension,
+                "value_code": item.value_code,
+                "match_mode": item.match_mode,
+            }
+            for item in profile.applicability_entries.all()
+        ],
+        "enabled_rule_count": len(rules),
+        "risk_categories": sorted({rule.risk_type for rule in rules if rule.risk_type}),
+        "high_risk_rules": [
+            {
+                "rule_id": rule.rule_id,
+                "title": rule.title,
+                "severity": rule.severity,
+                "risk_type": rule.risk_type,
+            }
+            for rule in rules
+            if rule.severity in {"high", "critical"}
+        ],
+        "difference_summary": {
+            "baseline_profile_id": str(baseline.id),
+            "added": added,
+            "removed": removed,
+            "modified": modified,
+        },
+    }
+
+
+class MoldPlanningCandidateComparisonView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request) -> Response:
+        profile_ids = request.data.get("profile_ids", [])
+        if (
+            not isinstance(profile_ids, list)
+            or not 2 <= len(profile_ids) <= 3
+            or len({str(item) for item in profile_ids}) != len(profile_ids)
+        ):
+            return _error(
+                request,
+                "VALIDATION_COMPARISON_SELECTION",
+                "Select two or three distinct eligible candidates.",
+                400,
+            )
+        preview = MoldPlanningResolutionPreviewView().post(request)
+        if preview.status_code >= 400:
+            return preview
+        eligible_ids = {str(item["profile_id"]) for item in preview.data["candidates"]}
+        requested_ids = [str(item) for item in profile_ids]
+        if not set(requested_ids).issubset(eligible_ids):
+            return _error(
+                request,
+                "RULE_PROFILE_COMPARISON_NOT_ELIGIBLE",
+                "Comparison is limited to candidates eligible for this engineering context.",
+                409,
+            )
+        profiles_by_id = {
+            str(profile.id): profile
+            for profile in RuleProfile.objects.prefetch_related(
+                "applicability_entries", "rules"
+            ).filter(id__in=requested_ids)
+        }
+        profiles = [profiles_by_id[item] for item in requested_ids]
+        baseline = profiles[0]
+        return Response(
+            {
+                "schema_version": "1.0",
+                "context": preview.data["context"],
+                "baseline_profile_id": str(baseline.id),
+                "items": [
+                    _comparison_profile_payload(profile, baseline) for profile in profiles
+                ],
             }
         )

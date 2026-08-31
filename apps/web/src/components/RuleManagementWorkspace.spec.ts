@@ -83,7 +83,7 @@ describe("RuleManagementWorkspace", () => {
     const rulesTab = wrapper.findAll(".rule-detail-tabs button").find((button) => button.text() === "Rules");
     await rulesTab!.trigger("click");
     expect(wrapper.findAll("tbody tr")).toHaveLength(2);
-    await wrapper.get('input[type="search"]').setValue("draft");
+    await wrapper.get('.rule-filter-bar input[type="search"]').setValue("draft");
     expect(wrapper.findAll("tbody tr")).toHaveLength(1);
     expect(wrapper.text()).toContain("MOLD-DRAFT-001");
   });
@@ -115,9 +115,22 @@ describe("RuleManagementWorkspace", () => {
     });
     await flushPromises();
 
-    expect((wrapper.get(".rule-catalog-toolbar select").element as HTMLSelectElement).value)
-      .toBe(linkedProfile.profile_id);
+    expect(wrapper.get(".rule-catalog-card.active").attributes("aria-pressed")).toBe("true");
     expect(wrapper.text()).toContain("demo-general-design @ 2.0");
+  });
+
+  it("filters a keyboard-operable review rule set catalog", async () => {
+    const second = { ...profile, profile_id: "55555555-5555-4555-8555-555555555555", profile_key: "automotive-housing", version: "2.0" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("master-data/options")
+      ? { ok: true, status: 200, json: async () => ({ results: {} }) }
+      : { ok: true, status: 200, json: async () => ({ schema_version: "1.0", items: [profile, second] }) }));
+    const wrapper = mount(RuleManagementWorkspace);
+    await flushPromises();
+
+    expect(wrapper.findAll(".rule-catalog-card")).toHaveLength(2);
+    await wrapper.get('.rule-catalog-toolbar input[type="search"]').setValue("automotive");
+    expect(wrapper.findAll(".rule-catalog-card")).toHaveLength(1);
+    expect(wrapper.get(".rule-catalog-card").attributes("type")).toBe("button");
   });
 
   it("offers controlled version cloning to authorized rule authors", async () => {

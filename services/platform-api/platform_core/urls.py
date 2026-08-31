@@ -60,7 +60,10 @@ from .ingestion_views import (
     IngestionValidateView,
 )
 from .master_data_views import MasterDataDetailView, MasterDataListCreateView, MasterDataOptionsView
-from .mold_planning_views import MoldPlanningResolutionPreviewView
+from .mold_planning_views import (
+    MoldPlanningCandidateComparisonView,
+    MoldPlanningResolutionPreviewView,
+)
 from .registry_views import (
     ArtifactGovernanceView,
     MoldDetailView,
@@ -130,6 +133,11 @@ urlpatterns = [
         "mold-plans/resolution-preview",
         MoldPlanningResolutionPreviewView.as_view(),
         name="mold-planning-resolution-preview",
+    ),
+    path(
+        "mold-plans/candidates/compare",
+        MoldPlanningCandidateComparisonView.as_view(),
+        name="mold-planning-candidate-comparison",
     ),
     path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
     path(

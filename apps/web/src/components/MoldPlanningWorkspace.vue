@@ -3,7 +3,13 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { fetchRecentCAD, type CADArtifactSummary, type CADModelResult } from "../api/cad";
 import type { MasterDataOptions } from "../api/masterData";
-import { MoldPlanningError, previewMoldPlanningResolution, type MoldPlanningResolutionPreview } from "../api/moldPlanning";
+import {
+  compareMoldPlanningCandidates,
+  MoldPlanningError,
+  previewMoldPlanningResolution,
+  type MoldPlanningCandidateComparison,
+  type MoldPlanningResolutionPreview,
+} from "../api/moldPlanning";
 import { fetchRegistry, type RegistryMold, type RegistryPart, type RegistryProject, type RegistryRevision } from "../api/registry";
 import { useI18n } from "../i18n";
 import FormField from "./FormField.vue";
@@ -35,6 +41,9 @@ const material = ref("");
 const moldingProcess = ref("");
 const location = ref("");
 const preview = ref<MoldPlanningResolutionPreview | null>(null);
+const comparing = ref(false);
+const selectedCandidateIds = ref<string[]>([]);
+const comparison = ref<MoldPlanningCandidateComparison | null>(null);
 
 const selectedMold = computed(() => molds.value.find((item) => item.id === selectedMoldId.value) || null);
 const selectedRevision = computed(() => revisions.value.find((item) => item.id === selectedRevisionId.value) || null);
@@ -68,6 +77,8 @@ function applySelectionContext(): void {
     moldingProcess.value = processFamily || props.masterDataOptions.molding_process[0]?.code || "";
   }
   preview.value = null;
+  comparison.value = null;
+  selectedCandidateIds.value = [];
 }
 
 watch(selectedMoldId, () => {
@@ -124,11 +135,45 @@ async function resolveStandard(): Promise<void> {
         location: location.value || undefined,
       },
     });
+    selectedCandidateIds.value = [preview.value.selected.profile_id];
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to resolve a review rule set.");
     errorCode.value = caught instanceof MoldPlanningError ? caught.code : "MOLD_PLANNING_ERROR";
   } finally {
     resolving.value = false;
+  }
+}
+
+function toggleCandidate(profileId: string): void {
+  if (selectedCandidateIds.value.includes(profileId)) {
+    if (profileId !== preview.value?.selected.profile_id) {
+      selectedCandidateIds.value = selectedCandidateIds.value.filter((item) => item !== profileId);
+    }
+    return;
+  }
+  if (selectedCandidateIds.value.length < 3) selectedCandidateIds.value.push(profileId);
+}
+
+async function compareCandidates(): Promise<void> {
+  if (selectedCandidateIds.value.length < 2) return;
+  comparing.value = true;
+  error.value = null;
+  try {
+    comparison.value = await compareMoldPlanningCandidates({
+      mold_revision_id: selectedRevisionId.value,
+      cad_artifact_version_id: selectedCadVersionId.value || undefined,
+      context: {
+        product_type: productType.value,
+        material: material.value,
+        molding_process: moldingProcess.value,
+        location: location.value || undefined,
+      },
+      profile_ids: selectedCandidateIds.value,
+    });
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Unable to compare review rule sets.");
+  } finally {
+    comparing.value = false;
   }
 }
 
@@ -170,8 +215,37 @@ onMounted(load);
           <dl><div><dt>{{ t("Matched conditions") }}</dt><dd>{{ preview.selected.matched_dimensions.map((item) => t(item)).join("、") || t("Controlled default") }}</dd></div><div><dt>{{ t("Priority") }}</dt><dd>{{ preview.selected.priority }}</dd></div><div><dt>{{ t("Owner") }}</dt><dd>{{ preview.selected.owner || "—" }}</dd></div><div><dt>{{ t("Approved by") }}</dt><dd>{{ preview.selected.approved_by || "—" }}</dd></div></dl>
           <details><summary>{{ t("Technical resolution information") }}</summary><code>{{ preview.applicability_checksum }}</code></details>
         </article>
+        <details v-if="preview" class="candidate-catalog" open>
+          <summary>{{ t("Other eligible candidates") }} <span>{{ preview.candidates.length }}</span></summary>
+          <p>{{ t("Select up to three eligible rule sets. The recommended set remains the comparison baseline.") }}</p>
+          <div class="candidate-option-list">
+            <label v-for="candidate in preview.candidates" :key="candidate.profile_id" :class="{ selected: selectedCandidateIds.includes(candidate.profile_id) }">
+              <input
+                type="checkbox"
+                :checked="selectedCandidateIds.includes(candidate.profile_id)"
+                :disabled="candidate.profile_id === preview.selected.profile_id || (!selectedCandidateIds.includes(candidate.profile_id) && selectedCandidateIds.length >= 3)"
+                @change="toggleCandidate(candidate.profile_id)"
+              />
+              <span><strong>{{ candidate.display_name }}</strong><small>v{{ candidate.version }} · {{ candidate.specificity }} {{ t("matched dimensions") }} · {{ t("Priority") }} {{ candidate.priority }}</small></span>
+              <em v-if="candidate.profile_id === preview.selected.profile_id">{{ t("Recommended") }}</em>
+            </label>
+          </div>
+          <button type="button" :disabled="selectedCandidateIds.length < 2 || comparing" @click="compareCandidates">{{ comparing ? t("Comparing…") : t("Compare selected rule sets") }}</button>
+        </details>
         <div v-else class="planning-preview-empty"><span>◇</span><h3>{{ t("Complete the context to see a recommendation") }}</h3><p>{{ t("No rule set is selected until the governed server-side resolution succeeds.") }}</p></div>
       </section>
     </div>
+
+    <section v-if="comparison" class="candidate-comparison" aria-labelledby="candidate-comparison-title">
+      <div class="section-heading"><div><span class="step-badge">3B</span><h3 id="candidate-comparison-title">{{ t("Rule set comparison") }}</h3><p>{{ t("Engineering differences are calculated by the server against the recommended baseline.") }}</p></div><button type="button" class="text-button" @click="comparison = null">{{ t("Close comparison") }}</button></div>
+      <div class="comparison-card-grid">
+        <article v-for="item in comparison.items" :key="item.profile_id" :class="{ baseline: item.profile_id === comparison.baseline_profile_id }">
+          <header><div><span v-if="item.profile_id === comparison.baseline_profile_id">{{ t("Baseline") }}</span><h4>{{ item.display_name }}</h4><p>{{ item.profile_key }} · v{{ item.version }}</p></div><strong>{{ item.enabled_rule_count }} {{ t("rules") }}</strong></header>
+          <dl><div><dt>{{ t("Priority") }}</dt><dd>{{ item.priority }}</dd></div><div><dt>{{ t("High-risk rules") }}</dt><dd>{{ item.high_risk_rules.length }}</dd></div><div><dt>{{ t("Rule categories") }}</dt><dd>{{ item.risk_categories.join("、") || "—" }}</dd></div><div><dt>{{ t("Applicability") }}</dt><dd>{{ item.applicability.length }}</dd></div></dl>
+          <div class="difference-chips"><span class="added">＋{{ item.difference_summary.added.length }}</span><span class="modified">△{{ item.difference_summary.modified.length }}</span><span class="removed">－{{ item.difference_summary.removed.length }}</span></div>
+          <details v-if="item.high_risk_rules.length"><summary>{{ t("View high-risk rules") }}</summary><ul><li v-for="rule in item.high_risk_rules" :key="rule.rule_id"><code>{{ rule.rule_id }}</code> {{ rule.title }}</li></ul></details>
+        </article>
+      </div>
+    </section>
   </section>
 </template>

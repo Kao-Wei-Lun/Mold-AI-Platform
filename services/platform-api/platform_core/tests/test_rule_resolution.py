@@ -259,3 +259,45 @@ class RuleResolutionTests(TestCase):
             response.json()["error"]["code"],
             {"PERMISSION_SCOPE_REQUIRED", "ACCESS_DENIED"},
         )
+
+    def test_candidate_comparison_is_limited_to_eligible_profiles(self) -> None:
+        first = self.profile(
+            "planning-compare-a",
+            priority=20,
+            dimensions={"mold_type": "three_plate", "product_type": "housing"},
+        )
+        second = self.profile(
+            "planning-compare-b",
+            priority=10,
+            dimensions={"mold_type": "three_plate"},
+        )
+        foreign = self.profile(
+            "planning-compare-foreign",
+            priority=999,
+            dimensions={"product_type": "other"},
+        )
+        self.client.force_login(self.admin)
+        body = {
+            "mold_revision_id": str(self.revision.id),
+            "cad_artifact_version_id": str(self.version.id),
+            "context": {},
+            "profile_ids": [str(first.id), str(second.id)],
+        }
+
+        response = self.client.post(
+            "/api/v1/mold-plans/candidates/compare", body, content_type="application/json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            [item["profile_id"] for item in response.json()["items"]],
+            body["profile_ids"],
+        )
+        self.assertIn("difference_summary", response.json()["items"][1])
+
+        body["profile_ids"] = [str(first.id), str(foreign.id)]
+        denied = self.client.post(
+            "/api/v1/mold-plans/candidates/compare", body, content_type="application/json"
+        )
+        self.assertEqual(denied.status_code, 409)
+        self.assertEqual(denied.json()["error"]["code"], "RULE_PROFILE_COMPARISON_NOT_ELIGIBLE")

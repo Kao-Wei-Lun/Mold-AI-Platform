@@ -46,6 +46,8 @@ const impact = ref<RuleImpact | null>(null);
 const diff = ref<RuleProfileDiff | null>(null);
 const baselineId = ref("");
 const showCreate = ref(false);
+const catalogQuery = ref("");
+const catalogStatus = ref("all");
 const createForm = ref({ mode: "clone" as "blank" | "template" | "clone", profileKey: "", sourceId: "", version: "2.0", changeSummary: "" });
 const profileForm = ref({ changeSummary: "", priority: 0, isDefault: false, effectiveFrom: "", effectiveTo: "", resolutionStatus: "eligible" as "eligible" | "disabled" });
 
@@ -61,6 +63,14 @@ const filteredRules = computed(() => {
   return (profile.value?.rules || []).filter((rule) => (severity.value === "all" || rule.severity === severity.value) && (!needle || [rule.rule_id, rule.title, rule.description, rule.risk_type, rule.reference.document].join(" ").toLowerCase().includes(needle)));
 });
 const baselineProfiles = computed(() => profiles.value.filter((item) => item.profile_id !== profile.value?.profile_id));
+const filteredProfiles = computed(() => {
+  const needle = catalogQuery.value.trim().toLowerCase();
+  return profiles.value.filter((item) => {
+    const matchesStatus = catalogStatus.value === "all" || item.workflow_status === catalogStatus.value;
+    const searchable = [item.profile_key, item.owner, item.approved_by, ...item.rules.map((rule) => rule.rule_id)].join(" ").toLowerCase();
+    return matchesStatus && (!needle || searchable.includes(needle));
+  });
+});
 
 function copyProfileToEditor(): void {
   if (!profile.value) return;
@@ -188,8 +198,28 @@ watch(
     <div v-else-if="error && !profile" class="workspace-state error-state" role="alert"><strong>{{ t("Rule catalog unavailable") }}</strong><span>{{ error }}</span><button type="button" @click="loadProfiles()">{{ t("Try again") }}</button></div>
     <template v-else-if="profile">
       <div class="rule-catalog-toolbar">
-        <FormField v-slot="{ fieldId }" :label="t('Review rule set')"><select :id="fieldId" v-model="selectedProfileId"><option v-for="item in profiles" :key="item.profile_id" :value="item.profile_id">{{ item.profile_key }} @ {{ item.version }} · {{ t(item.workflow_status) }}</option></select></FormField>
+        <FormField v-slot="{ fieldId }" :label="t('Search review rule sets')"><input :id="fieldId" v-model="catalogQuery" type="search" :placeholder="t('Name, owner or rule ID')" /></FormField>
+        <FormField v-slot="{ fieldId }" :label="t('Workflow status')"><select :id="fieldId" v-model="catalogStatus"><option value="all">{{ t("All statuses") }}</option><option v-for="status in ['draft', 'validated', 'in_review', 'approved', 'published', 'retired']" :key="status" :value="status">{{ t(status) }}</option></select></FormField>
         <button v-if="canAuthor" type="button" @click="showCreate = !showCreate">{{ t("Create review rule set") }}</button>
+      </div>
+
+      <div class="rule-catalog-grid" role="list" :aria-label="t('Review rule set catalog')">
+        <button
+          v-for="item in filteredProfiles"
+          :key="item.profile_id"
+          type="button"
+          role="listitem"
+          class="rule-catalog-card"
+          :class="{ active: item.profile_id === profile.profile_id }"
+          :aria-pressed="item.profile_id === profile.profile_id"
+          @click="selectedProfileId = item.profile_id"
+        >
+          <span class="catalog-card-heading"><strong>{{ item.profile_key }}</strong><em>{{ t(item.workflow_status) }}</em></span>
+          <span class="catalog-card-meta">v{{ item.version }} · {{ item.rule_count }} {{ t("rules") }} · {{ t("Priority") }} {{ item.priority }}</span>
+          <span class="catalog-applicability"><small v-for="entry in item.applicability.slice(0, 3)" :key="`${entry.dimension}-${entry.value_code}`">{{ t(entry.dimension) }}: {{ entry.value_code }}</small><small v-if="!item.applicability.length">{{ t("Controlled default") }}</small></span>
+          <span class="catalog-owner">{{ t("Owner") }} · {{ item.owner || "—" }}</span>
+        </button>
+        <p v-if="!filteredProfiles.length" class="workspace-state">{{ t("No review rule sets match these filters.") }}</p>
       </div>
 
       <form v-if="showCreate" class="rule-create-wizard" @submit.prevent="createProfile">
