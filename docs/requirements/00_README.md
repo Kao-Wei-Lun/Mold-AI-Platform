@@ -33,6 +33,7 @@
 14. [外網 Sites、個人帳號、MCP 與 ChatGPT Plugin UI SRS](14_External_Sites_Identity_MCP_Plugin_UI_SRS.md)：定義外網個人 session、MCP 服務身分、穩定 deep link、Plugin UI `openExternal` 第二種體驗、威脅模型與 UAT。
 15. [模具規定與工程資料新增／匯入強化 SRS](15_Rule_and_Data_Ingestion_Enhancement_SRS.md)：將「主資料」改為使用者可理解的「工程基礎資料」，並定義模具類型、規則適用性、結構化規則編輯器、統一新增資料與批次匯入中心、權限、測試及分階段實作 Gate。
 16. [模具規劃工作區與規則選用體驗改善規劃](16_Mold_Planning_Workspace_Improvement_Plan.md)：將工程端「模具規劃」改為以工件、產品、材料與製程條件驅動的規劃流程，涵蓋自動規則解析、候選比較、人工改選、規劃案保存、下游交接、權限稽核與分階段測試／Git Gate。
+17. [模具台帳工作區與完整模具履歷改善規劃](17_Mold_Registry_Workspace_Improvement_Plan.md)：將既有台帳提升為可搜尋、可維護且可追溯的模具主檔與工程履歷入口，涵蓋階層瀏覽、詳細資料、受控編輯、版本生命週期、關聯工程紀錄、權限稽核、資料匯入與分階段測試／Git Gate。
 
 目前 Stage 12 之後的可執行開發順序、工作拆解、Gate、風險與 Web UI 改良計畫，另見
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。Planning 文件將本 SRS 的 MUST
