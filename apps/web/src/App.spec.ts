@@ -113,6 +113,21 @@ describe("App", () => {
     expect(wrapper.find(".similarity-workspace").exists()).toBe(false);
   });
 
+  it("keeps the engineering assistant hidden by default and opens it on demand", async () => {
+    installApiMock();
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.find(".assistant-panel").exists()).toBe(false);
+    expect(wrapper.get(".assistant-toggle").text()).toBe("Open assistant");
+
+    await wrapper.get(".assistant-toggle").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".assistant-panel").exists()).toBe(true);
+    expect(wrapper.get(".assistant-toggle").text()).toBe("Hide assistant");
+  });
+
   it("shows dependency status on the dedicated status route", async () => {
     window.history.replaceState(null, "", "/status");
     installApiMock();
