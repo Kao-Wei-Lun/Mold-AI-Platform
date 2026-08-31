@@ -190,7 +190,7 @@ watch(
         <p v-if="missingSearchFields" class="form-validation-summary" aria-live="polite">
           {{ t("Required fields remaining: {count}", { count: missingSearchFields }) }}
         </p>
-        <button type="submit" :disabled="searching || indexedCount === 0" :aria-busy="searching">
+        <button type="submit" class="knowledge-form-primary-action" :disabled="searching || indexedCount === 0" :aria-busy="searching">
           {{ searching ? t("Retrieving...") : t("Search authorized evidence") }}
         </button>
       </form>

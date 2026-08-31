@@ -52,6 +52,7 @@ describe("KnowledgeWorkspace", () => {
     expect(wrapper.find(".knowledge-upload-form").exists()).toBe(false);
     await wrapper.get(".knowledge-heading-actions button:last-child").trigger("click");
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/governance/knowledge?view=import"]);
+    expect(wrapper.get(".knowledge-stop-publishing-button").text()).toContain("Stop publishing");
   });
 
   it("shows field guidance and does not upload an incomplete document", async () => {
@@ -136,6 +137,7 @@ describe("KnowledgeWorkspace", () => {
     expect((selects[0].element as HTMLSelectElement).value).toBe("design_guideline");
     expect((selects[1].element as HTMLSelectElement).value).toBe("demo");
     expect((selects[2].element as HTMLSelectElement).value).toBe("en");
+    expect(wrapper.get(".knowledge-form-primary-action").attributes("type")).toBe("submit");
   });
 
   it("requests a contextual audit reason only after a lifecycle action is chosen", async () => {

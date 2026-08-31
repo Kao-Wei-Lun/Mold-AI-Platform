@@ -56,6 +56,7 @@ describe("KnowledgeSearchWorkspace", () => {
     expect(citation.element.tagName).toBe("BUTTON");
     expect(citation.attributes("href")).toBeUndefined();
     expect(wrapper.text()).toContain("No LLM synthesis");
+    expect(wrapper.get(".knowledge-form-primary-action").attributes("type")).toBe("submit");
   });
 
   it("keeps retrieval disabled when no published document is indexed", async () => {

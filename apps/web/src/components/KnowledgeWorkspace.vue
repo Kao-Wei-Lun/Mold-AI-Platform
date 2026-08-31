@@ -163,6 +163,14 @@ function workflowImpact(action: WorkflowAction): string {
   return t("Submission sends this draft into the controlled review workflow.");
 }
 
+function workflowActionLabel(action: WorkflowAction): string {
+  return action === "retire" ? t("Stop publishing") : t(action);
+}
+
+function publicationStatusLabel(status: KnowledgeDocument["publication_status"]): string {
+  return status === "retired" ? t("Publication stopped") : t(status);
+}
+
 async function confirmWorkflow(): Promise<void> {
   if (!pendingWorkflow.value || !workflowReason.value.trim()) return;
   const { document, action } = pendingWorkflow.value;
@@ -218,7 +226,7 @@ onBeforeUnmount(() => {
 
       <section class="knowledge-document-toolbar">
         <label><span>{{ t("Search documents") }}</span><input v-model="documentQuery" type="search" :placeholder="t('Title, file name or document type')" /></label>
-        <label><span>{{ t("Publication status") }}</span><select v-model="documentStatus"><option value="">{{ t("All statuses") }}</option><option value="draft">{{ t("draft") }}</option><option value="in_review">{{ t("in review") }}</option><option value="approved">{{ t("approved") }}</option><option value="published">{{ t("published") }}</option><option value="retired">{{ t("retired") }}</option></select></label>
+        <label><span>{{ t("Publication status") }}</span><select v-model="documentStatus"><option value="">{{ t("All statuses") }}</option><option value="draft">{{ t("draft") }}</option><option value="in_review">{{ t("in review") }}</option><option value="approved">{{ t("approved") }}</option><option value="published">{{ t("published") }}</option><option value="retired">{{ t("Publication stopped") }}</option></select></label>
       </section>
 
       <p v-if="loadingDocuments" class="workspace-state">{{ t("Loading knowledge documents...") }}</p>
@@ -226,7 +234,7 @@ onBeforeUnmount(() => {
         <article v-for="document in filteredDocuments" :key="document.document_id" class="knowledge-document-card">
           <div class="knowledge-document-card-heading">
             <div><span>{{ documentTypeLabel(document.document_type) }} · v{{ document.version_number }}</span><h3>{{ document.title }}</h3><small>{{ document.original_filename }}</small></div>
-            <span class="document-status" :class="document.ingestion_status">{{ t(document.publication_status) }}</span>
+            <span class="document-status" :class="document.ingestion_status">{{ publicationStatusLabel(document.publication_status) }}</span>
           </div>
           <dl>
             <div><dt>{{ t("Index status") }}</dt><dd>{{ t(document.ingestion_status) }}</dd></div>
@@ -239,7 +247,7 @@ onBeforeUnmount(() => {
             <button v-if="canAuthor && document.publication_status === 'draft'" type="button" class="text-button" @click="beginWorkflow(document, 'submit')">{{ t("Submit") }}</button>
             <button v-if="canApprove && document.publication_status === 'in_review'" type="button" class="text-button" @click="beginWorkflow(document, 'approve')">{{ t("Approve") }}</button>
             <button v-if="canApprove && document.publication_status === 'approved'" type="button" class="text-button" @click="beginWorkflow(document, 'publish')">{{ t("Publish") }}</button>
-            <button v-if="canApprove && document.publication_status === 'published'" type="button" class="text-button danger-text" @click="beginWorkflow(document, 'retire')">{{ t("Retire") }}</button>
+            <button v-if="canApprove && document.publication_status === 'published'" type="button" class="knowledge-stop-publishing-button danger-text" @click="beginWorkflow(document, 'retire')"><span aria-hidden="true">⏸</span>{{ t("Stop publishing") }}</button>
           </div>
         </article>
       </section>
@@ -261,7 +269,7 @@ onBeforeUnmount(() => {
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Authority')" required><select :id="fieldId" v-model="authorityLevel" required :aria-describedby="describedBy" :aria-invalid="invalid"><option value="demo">Demo</option><option value="reviewed_demo">{{ t("Reviewed Demo") }}</option></select></FormField>
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Language')" required><select :id="fieldId" v-model="language" required :aria-describedby="describedBy" :aria-invalid="invalid"><option value="en">{{ t("English") }}</option><option value="zh-Hant">{{ t("Traditional Chinese") }}</option></select></FormField>
           <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">{{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}</p>
-          <button type="submit" :disabled="uploading" :aria-busy="uploading">{{ uploading ? t("Uploading...") : t("Import and start indexing") }}</button>
+          <button type="submit" class="knowledge-form-primary-action" :disabled="uploading" :aria-busy="uploading">{{ uploading ? t("Uploading...") : t("Import and start indexing") }}</button>
         </form>
         <div v-if="job" class="job-panel compact-job">
           <div class="job-heading"><div><span class="job-state" :class="job.state">{{ t(job.state) }}</span><strong>{{ t(job.stage.replaceAll("_", " ")) }}</strong></div><span>{{ job.progress }}%</span></div>
@@ -275,8 +283,8 @@ onBeforeUnmount(() => {
     <div v-if="pendingWorkflow" class="workflow-dialog-backdrop" @click.self="closeWorkflow">
       <section class="workflow-dialog" role="dialog" aria-modal="true" :aria-labelledby="`knowledge-workflow-${pendingWorkflow.document.document_id}`">
         <p class="eyebrow">{{ t("Controlled knowledge workflow") }}</p>
-        <h3 :id="`knowledge-workflow-${pendingWorkflow.document.document_id}`">{{ t(pendingWorkflow.action) }} · {{ pendingWorkflow.document.title }}</h3>
-        <div class="workflow-transition"><span>{{ t(pendingWorkflow.document.publication_status) }}</span><b>→</b><span>{{ t(nextStatus(pendingWorkflow.action)) }}</span></div>
+        <h3 :id="`knowledge-workflow-${pendingWorkflow.document.document_id}`">{{ workflowActionLabel(pendingWorkflow.action) }} · {{ pendingWorkflow.document.title }}</h3>
+        <div class="workflow-transition"><span>{{ publicationStatusLabel(pendingWorkflow.document.publication_status) }}</span><b>→</b><span>{{ pendingWorkflow.action === 'retire' ? t("Publication stopped") : t(nextStatus(pendingWorkflow.action)) }}</span></div>
         <p>{{ workflowImpact(pendingWorkflow.action) }}</p>
         <FormField v-slot="{ fieldId }" :label="t('Workflow reason')" required :helper="t('Explain the engineering or governance reason recorded in the audit trail.')"><textarea :id="fieldId" v-model="workflowReason" rows="3" maxlength="512" required :placeholder="t('Example: Technical review completed against the approved molding standard.')"></textarea></FormField>
         <div class="workflow-dialog-actions"><button type="button" class="secondary-button" :disabled="Boolean(workflowBusyId)" @click="closeWorkflow">{{ t("Cancel") }}</button><button type="button" :disabled="Boolean(workflowBusyId) || !workflowReason.trim()" @click="confirmWorkflow">{{ t("Confirm workflow action") }}</button></div>
