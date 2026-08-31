@@ -3,6 +3,7 @@ import type { DeepLinkContext, DeepLinkTarget } from "./deepLinks";
 export type WorkspaceRouteId =
   | "home"
   | "cad"
+  | "mold_planning"
   | "similarity"
   | "design_review"
   | "knowledge_search"
@@ -48,6 +49,15 @@ export const workspaceRoutes: WorkspaceRoute[] = [
     eyebrow: "Engineering / CAD",
     title: "Prepare a versioned geometry context",
     description: "Upload or select governed Demo geometry before starting downstream analysis.",
+  },
+  {
+    id: "mold_planning",
+    path: "/engineering/mold-planning",
+    label: "Mold planning",
+    group: "Engineering",
+    eyebrow: "Engineering / Mold planning",
+    title: "Resolve the right standard before design review",
+    description: "Build a governed engineering context, understand the selected standard and preserve a traceable planning decision.",
   },
   {
     id: "similarity",

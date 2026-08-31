@@ -19,6 +19,7 @@ import IdentityManagementWorkspace from "./components/IdentityManagementWorkspac
 import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import KnowledgeSearchWorkspace from "./components/KnowledgeSearchWorkspace.vue";
 import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
+import MoldPlanningWorkspace from "./components/MoldPlanningWorkspace.vue";
 import MoldRegistryWorkspace from "./components/MoldRegistryWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
@@ -98,12 +99,13 @@ const canAddData = computed(() => currentAccount.value?.permissions.some((permis
 
 const guidedSteps: Array<{ number: string; route: WorkspaceRouteId; title: string; detail: string }> = [
   { number: "01", route: "cad", title: "Prepare CAD", detail: "Select a curated model or process STEP/STL." },
-  { number: "02", route: "similarity", title: "Find precedents", detail: "Rank comparable molds and inspect score lanes." },
-  { number: "03", route: "design_review", title: "Review design", detail: "Run approved deterministic engineering rules." },
-  { number: "04", route: "process_trial", title: "Compare trials", detail: "Review historical evidence and controlled candidates." },
-  { number: "05", route: "cae", title: "Compare CAE", detail: "Confirm compatibility before reading metric deltas." },
-  { number: "06", route: "hmi", title: "Review HMI", detail: "Confirm extracted fields before Excel export." },
-  { number: "07", route: "knowledge_search", title: "Verify knowledge", detail: "Ground conclusions in authorized citations." },
+  { number: "02", route: "mold_planning", title: "Plan the mold", detail: "Resolve the governed standard from engineering context." },
+  { number: "03", route: "similarity", title: "Find precedents", detail: "Rank comparable molds and inspect score lanes." },
+  { number: "04", route: "design_review", title: "Review design", detail: "Run approved deterministic engineering rules." },
+  { number: "05", route: "process_trial", title: "Compare trials", detail: "Review historical evidence and controlled candidates." },
+  { number: "06", route: "cae", title: "Compare CAE", detail: "Confirm compatibility before reading metric deltas." },
+  { number: "07", route: "hmi", title: "Review HMI", detail: "Confirm extracted fields before Excel export." },
+  { number: "08", route: "knowledge_search", title: "Verify knowledge", detail: "Ground conclusions in authorized citations." },
 ];
 
 function routeById(routeId: WorkspaceRouteId): WorkspaceRoute {
@@ -307,7 +309,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           <section class="home-overview" aria-labelledby="guided-demo-title">
             <div class="home-intro-card">
               <p class="eyebrow">{{ t("Recommended path") }}</p>
-              <h2 id="guided-demo-title">{{ t("Complete the seven-step guided Demo") }}</h2>
+              <h2 id="guided-demo-title">{{ t("Complete the eight-step guided Demo") }}</h2>
               <p>{{ t("Each step opens a focused workspace. Your selected CAD context remains available while navigating.") }}</p>
               <button type="button" @click="navigate('cad')">{{ t("Start with CAD & artifacts") }}</button>
             </div>
@@ -366,6 +368,10 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           @retry-master-data="refreshMasterData"
           @context-change="assistantContext = $event"
           @navigate="navigate"
+        />
+        <MoldPlanningWorkspace
+          v-else-if="currentRoute.id === 'mold_planning' && accessReady"
+          @navigate="navigatePath"
         />
         <DesignReviewWorkspace
           v-else-if="currentRoute.id === 'design_review' && accessReady"

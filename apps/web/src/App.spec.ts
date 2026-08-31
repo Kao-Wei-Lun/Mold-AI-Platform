@@ -107,7 +107,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Complete the seven-step guided Demo");
+    expect(wrapper.text()).toContain("Complete the eight-step guided Demo");
     expect(wrapper.text()).toContain("Core services");
     expect(wrapper.find(".cad-workspace").exists()).toBe(false);
     expect(wrapper.find(".similarity-workspace").exists()).toBe(false);
@@ -251,12 +251,12 @@ describe("App", () => {
 
     await wrapper.findAll(".language-switch button")[1].trigger("click");
 
-    expect(wrapper.text()).toContain("完成七步驟 Demo 導引");
+    expect(wrapper.text()).toContain("完成八步驟 Demo 導引");
     expect(wrapper.text()).toContain("模具規定");
     expect(document.documentElement.lang).toBe("zh-TW");
     expect(window.localStorage.getItem("mold-ai.locale")).toBe("zh-TW");
 
     await wrapper.findAll(".language-switch button")[0].trigger("click");
-    expect(wrapper.text()).toContain("Complete the seven-step guided Demo");
+    expect(wrapper.text()).toContain("Complete the eight-step guided Demo");
   });
 });

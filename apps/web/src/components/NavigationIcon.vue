@@ -13,6 +13,9 @@ defineProps<{ name: string }>();
     <template v-else-if="name === 'cad'">
       <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" /><path d="m4 7.5 8 4.5 8-4.5M12 12v9" />
     </template>
+    <template v-else-if="name === 'mold_planning'">
+      <path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h5M8 17h7" /><path d="m15 5 2 2 3-3" />
+    </template>
     <template v-else-if="name === 'similarity'">
       <rect x="3" y="4" width="11" height="11" rx="2" /><rect x="10" y="9" width="11" height="11" rx="2" />
     </template>

@@ -188,8 +188,8 @@ watch(
     <div v-else-if="error && !profile" class="workspace-state error-state" role="alert"><strong>{{ t("Rule catalog unavailable") }}</strong><span>{{ error }}</span><button type="button" @click="loadProfiles()">{{ t("Try again") }}</button></div>
     <template v-else-if="profile">
       <div class="rule-catalog-toolbar">
-        <FormField v-slot="{ fieldId }" :label="t('Rule profile')"><select :id="fieldId" v-model="selectedProfileId"><option v-for="item in profiles" :key="item.profile_id" :value="item.profile_id">{{ item.profile_key }} @ {{ item.version }} · {{ t(item.workflow_status) }}</option></select></FormField>
-        <button v-if="canAuthor" type="button" @click="showCreate = !showCreate">{{ t("Create rule profile") }}</button>
+        <FormField v-slot="{ fieldId }" :label="t('Review rule set')"><select :id="fieldId" v-model="selectedProfileId"><option v-for="item in profiles" :key="item.profile_id" :value="item.profile_id">{{ item.profile_key }} @ {{ item.version }} · {{ t(item.workflow_status) }}</option></select></FormField>
+        <button v-if="canAuthor" type="button" @click="showCreate = !showCreate">{{ t("Create review rule set") }}</button>
       </div>
 
       <form v-if="showCreate" class="rule-create-wizard" @submit.prevent="createProfile">
@@ -202,9 +202,9 @@ watch(
         <button type="submit" :disabled="busy">{{ t("Create draft") }}</button>
       </form>
 
-      <div class="rule-profile-header"><div><p class="eyebrow">{{ t("Governed rule profile") }}</p><h2 id="rule-management-title">{{ profile.profile_key }} @ {{ profile.version }}</h2><p>{{ t("{count} enabled rules · owned by {owner} · approved by {approver}", { count: profile.rule_count, owner: profile.owner, approver: profile.approved_by || "—" }) }}</p></div><span class="governance-state">{{ t(profile.workflow_status) }}</span></div>
+      <div class="rule-profile-header"><div><p class="eyebrow">{{ t("Governed review rule set") }}</p><h2 id="rule-management-title">{{ profile.profile_key }} @ {{ profile.version }}</h2><p>{{ t("{count} enabled rules · owned by {owner} · approved by {approver}", { count: profile.rule_count, owner: profile.owner, approver: profile.approved_by || "—" }) }}</p></div><span class="governance-state">{{ t(profile.workflow_status) }}</span></div>
       <div v-if="error" class="inline-validation error-state" role="alert">{{ error }} <button type="button" @click="error = null">{{ t("Dismiss") }}</button></div>
-      <nav class="rule-detail-tabs" :aria-label="t('Rule profile sections')"><button v-for="tab in tabs" :key="tab" type="button" :class="{ active: activeTab === tab }" @click="activeTab = tab">{{ t(tab === 'diff' ? 'Version diff' : tab[0].toUpperCase() + tab.slice(1)) }}</button></nav>
+      <nav class="rule-detail-tabs" :aria-label="t('Review rule set sections')"><button v-for="tab in tabs" :key="tab" type="button" :class="{ active: activeTab === tab }" @click="activeTab = tab">{{ t(tab === 'diff' ? 'Version diff' : tab[0].toUpperCase() + tab.slice(1)) }}</button></nav>
 
       <section v-if="activeTab === 'overview'" class="rule-tab-panel">
         <div class="governance-summary" :aria-label="t('Rule governance summary')"><div><span>{{ t("Profile version") }}</span><strong>{{ profile.version }}</strong></div><div><span>{{ t("Enabled rules") }}</span><strong>{{ profile.rule_count }}</strong></div><div><span>{{ t("Priority") }}</span><strong>{{ profile.priority }}</strong></div><div><span>{{ t("Ruleset checksum") }}</span><code>{{ profile.ruleset_checksum.slice(0, 12) }}…</code></div></div>

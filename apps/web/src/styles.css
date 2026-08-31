@@ -3638,6 +3638,105 @@ button[aria-busy="true"]::before {
   padding: 1.4rem;
 }
 
+.mold-planning-workspace {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.planning-intro,
+.planning-empty-state {
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.planning-intro {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+}
+
+.planning-intro h2,
+.planning-empty-state h3 {
+  margin: 0.35rem 0 0.45rem;
+}
+
+.planning-intro p:last-child,
+.planning-empty-state p,
+.planning-step-list p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.planning-step-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-step-list li {
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+  min-height: 138px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 1rem;
+  background: linear-gradient(145deg, #fff, #f5f8fd);
+}
+
+.planning-step-list li > span {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--color-accent);
+  font-weight: 800;
+}
+
+.planning-step-list strong { display: block; margin-bottom: 0.35rem; }
+.planning-step-list p { font-size: 0.78rem; line-height: 1.5; }
+
+.planning-empty-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.5rem;
+}
+
+.planning-empty-state > span {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--color-accent);
+  background: #eaf1ff;
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1050px) {
+  .planning-step-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .planning-intro,
+  .planning-empty-state { align-items: stretch; flex-direction: column; }
+  .planning-empty-state { grid-template-columns: 1fr; }
+  .planning-step-list { grid-template-columns: 1fr; }
+}
+
 .rule-management-workspace {
   overflow: hidden;
   margin-top: 1rem;
