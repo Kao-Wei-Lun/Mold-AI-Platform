@@ -403,7 +403,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", handlePopState));
                 <td :data-label="t('CAD')">{{ mold.artifact_count }}</td>
                 <td :data-label="t('Status')"><em :class="`status-${mold.status}`">{{ t(mold.status) }}</em></td>
                 <td :data-label="t('Last updated')">{{ formatDate(mold.updated_at) }}</td>
-                <td class="registry-row-actions"><a class="secondary-button" :href="`/data/molds/${mold.id}`">{{ t("View") }}</a></td>
+                <td class="registry-row-actions"><a class="secondary-button" :href="`/governance/mold-registry/molds/${mold.id}`">{{ t("View") }}</a></td>
               </tr>
             </tbody>
           </table>
@@ -419,7 +419,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", handlePopState));
                   <article v-for="mold in part.molds" :key="mold.id" class="registry-tree-mold">
                     <div><span>{{ t("Mold") }}</span><strong>{{ mold.mold_code }}</strong><small>{{ mold.name }} · {{ masterLabel('mold_type', mold.mold_type) }}</small></div>
                     <em :class="`status-${mold.status}`">{{ t(mold.status) }}</em>
-                    <a class="secondary-button" :href="`/data/molds/${mold.id}`">{{ t("View") }}</a>
+                    <a class="secondary-button" :href="`/governance/mold-registry/molds/${mold.id}`">{{ t("View") }}</a>
                     <div v-if="mold.revisions?.length" class="registry-tree-revisions">
                       <div v-for="revision in mold.revisions" :key="revision.id">
                         <span>{{ t("Revision") }}</span><strong>{{ revision.revision_code }}</strong><em :class="`status-${revision.status}`">{{ t(revision.status) }}</em><small>{{ revision.artifact_count }} {{ t("CAD artifacts") }}</small>

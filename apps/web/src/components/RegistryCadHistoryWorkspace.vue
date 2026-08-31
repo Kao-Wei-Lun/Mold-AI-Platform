@@ -5,9 +5,12 @@ import { fetchCADArtifactDetail, fetchCADHistory, isCADModelJob, type CADArtifac
 import {
   fetchRegistry,
   fetchRegistryMoldDetail,
+  fetchRegistryMolds,
   fetchRegistryPartDetail,
+  fetchRegistryParts,
   fetchRegistryProjectDetail,
   fetchRegistryRevisionDetail,
+  fetchRegistryRevisions,
   RegistryError,
   updateArtifactGovernance,
   updateMold,
@@ -32,8 +35,9 @@ const props = withDefaults(defineProps<{
   domain: "molds" | "cad-artifacts";
   path: string;
   canManage?: boolean;
+  registryMode?: boolean;
   masterDataOptions?: MasterDataOptions;
-}>(), { masterDataOptions: emptyMasterDataOptions });
+}>(), { masterDataOptions: emptyMasterDataOptions, registryMode: false });
 const emit = defineEmits<{ navigate: [path: string] }>();
 const { t } = useI18n();
 const loading = ref(false);
@@ -61,8 +65,15 @@ const location = computed(() => new URL(props.path, window.location.origin));
 const segments = computed(() => location.value.pathname.split("/").filter(Boolean));
 const activeTab = computed(() => location.value.searchParams.get("tab") || "overview");
 const registryView = computed(() => location.value.searchParams.get("view") || "molds");
-const registryKind = computed(() => ["projects", "parts", "revisions"].includes(segments.value[2]) ? segments.value[2] : "molds");
-const recordId = computed(() => registryKind.value === "molds" ? (segments.value[2] || "") : (segments.value[3] || ""));
+const registryBase = computed(() => props.registryMode ? "/governance/mold-registry" : "/data/molds");
+const registryKind = computed(() => {
+  if (props.registryMode) return segments.value[2] || "molds";
+  return ["projects", "parts", "revisions"].includes(segments.value[2]) ? segments.value[2] : "molds";
+});
+const recordId = computed(() => {
+  if (props.registryMode) return segments.value[3] || "";
+  return registryKind.value === "molds" ? (segments.value[2] || "") : (segments.value[3] || "");
+});
 const cadId = computed(() => segments.value[2] || "");
 const cadModels = computed(() =>
   (artifact.value?.jobs || []).filter(isCADModelJob).map((job) => job.result),
@@ -92,6 +103,29 @@ function pretty(value: unknown): string {
 function setTab(tab: string): void {
   const base = props.domain === "cad-artifacts" ? `/data/cad-artifacts/${cadId.value}` : location.value.pathname;
   emit("navigate", `${base}?tab=${tab}`);
+}
+
+function registryPath(kind: string, id?: string): string {
+  if (!id) return registryBase.value;
+  return `${registryBase.value}/${kind}/${id}`;
+}
+
+function selectedId(record: Record<string, unknown>): string {
+  return String(record.id || "");
+}
+
+const detailTabs = computed(() => [
+  { id: "overview", label: t("Overview") },
+  { id: "versions", label: t("Versions"), count: revision.value ? 1 : (mold.value?.revisions?.length || revisions.value.length) },
+  { id: "cad", label: t("CAD & drawings"), count: revision.value?.artifacts?.length || mold.value?.artifact_count || revisions.value.reduce((total, item) => total + item.artifact_count, 0) },
+  { id: "engineering-history", label: t("Engineering history") },
+]);
+
+const partRevisions = computed(() => (part.value?.molds || []).flatMap((item) => item.revisions || []));
+
+function engineeringContextMessage(): string {
+  const code = project.value?.code || part.value?.part_number || mold.value?.mold_code || (revision.value ? `${revision.value.mold_code}@${revision.value.revision_code}` : "");
+  return t("Engineering records for {code} will appear here when a governed workflow references this canonical record.", { code });
 }
 
 function initializeForms(): void {
@@ -151,6 +185,10 @@ async function load(): Promise<void> {
   part.value = null;
   mold.value = null;
   revision.value = null;
+  projects.value = [];
+  parts.value = [];
+  molds.value = [];
+  revisions.value = [];
   artifact.value = null;
   requestedLargePreviews.value = {};
   try {
@@ -165,6 +203,14 @@ async function load(): Promise<void> {
       revisions.value = payload.revisions;
     } else if (registryKind.value === "projects") {
       project.value = await fetchRegistryProjectDetail(recordId.value);
+      const [relatedParts, relatedMolds, relatedRevisions] = await Promise.all([
+        fetchRegistryParts({ project_id: recordId.value, page_size: 100 }),
+        fetchRegistryMolds({ project_id: recordId.value, page_size: 100 }),
+        fetchRegistryRevisions({ project_id: recordId.value, page_size: 100 }),
+      ]);
+      parts.value = relatedParts.items;
+      molds.value = relatedMolds.items;
+      revisions.value = relatedRevisions.items;
     } else if (registryKind.value === "parts") {
       part.value = await fetchRegistryPartDetail(recordId.value);
     } else if (registryKind.value === "revisions") {
@@ -188,7 +234,7 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
     <div class="history-list-heading">
       <div><p class="eyebrow">{{ t("Historical data") }}</p><h2>{{ t(domain === "molds" ? "Molds & revisions" : "CAD artifacts") }}</h2></div>
       <div class="history-list-actions">
-        <button v-if="recordId || cadId" type="button" class="text-button" @click="emit('navigate', domain === 'molds' ? '/data/molds' : '/data/cad-artifacts')">← {{ t("Back to records") }}</button>
+        <button v-if="recordId || cadId" type="button" class="text-button" @click="emit('navigate', domain === 'molds' ? registryBase : '/data/cad-artifacts')">← {{ t("Back to records") }}</button>
         <button type="button" :disabled="loading" @click="load">{{ t("Refresh data") }}</button>
       </div>
     </div>
@@ -201,37 +247,59 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
       <div class="registry-history-tabs">
         <button v-for="view in ['projects', 'parts', 'molds', 'revisions']" :key="view" type="button" :class="{ active: registryView === view }" @click="emit('navigate', `/data/molds?view=${view}`)">{{ t(view[0].toUpperCase() + view.slice(1)) }}</button>
       </div>
-      <DataTable v-if="registryView === 'projects'" :columns="[{ key: 'code', label: t('Project code') }, { key: 'name', label: t('Project name') }, { key: 'parts', label: t('Parts') }, { key: 'molds', label: t('Molds') }, { key: 'status', label: t('Status') }]" :items="projects.map((item) => ({ id: item.id, code: item.code, name: item.name, parts: item.part_count, molds: item.mold_count, status: item.status }))" @select="emit('navigate', `/data/molds/projects/${$event.id}`)" />
-      <DataTable v-else-if="registryView === 'parts'" :columns="[{ key: 'number', label: t('Part number') }, { key: 'name', label: t('Name') }, { key: 'project', label: t('Project') }, { key: 'product', label: t('Product type') }, { key: 'material', label: t('Material') }]" :items="parts.map((item) => ({ id: item.id, number: item.part_number, name: item.name, project: item.project_code, product: item.product_type, material: item.material_code }))" @select="emit('navigate', `/data/molds/parts/${$event.id}`)" />
-      <DataTable v-else-if="registryView === 'revisions'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'mold', label: t('Mold') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="revisions.map((item) => ({ id: item.id, revision: item.revision_code, mold: item.mold_code, summary: item.change_summary, artifacts: item.artifact_count, status: item.status }))" @select="emit('navigate', `/data/molds/revisions/${$event.id}`)" />
-      <DataTable v-else :columns="[{ key: 'code', label: t('Mold code') }, { key: 'name', label: t('Name') }, { key: 'part', label: t('Part number') }, { key: 'type', label: t('Mold type') }, { key: 'cavities', label: t('Cavities') }, { key: 'revisions', label: t('Revisions') }, { key: 'status', label: t('Status') }]" :items="molds.map((item) => ({ id: item.id, code: item.mold_code, name: item.name, part: item.part_number, type: item.mold_type, cavities: item.cavity_count, revisions: item.revision_count, status: item.status }))" @select="emit('navigate', `/data/molds/${$event.id}`)" />
+      <DataTable v-if="registryView === 'projects'" :columns="[{ key: 'code', label: t('Project code') }, { key: 'name', label: t('Project name') }, { key: 'parts', label: t('Parts') }, { key: 'molds', label: t('Molds') }, { key: 'status', label: t('Status') }]" :items="projects.map((item) => ({ id: item.id, code: item.code, name: item.name, parts: item.part_count, molds: item.mold_count, status: item.status }))" @select="emit('navigate', registryPath('projects', selectedId($event)))" />
+      <DataTable v-else-if="registryView === 'parts'" :columns="[{ key: 'number', label: t('Part number') }, { key: 'name', label: t('Name') }, { key: 'project', label: t('Project') }, { key: 'product', label: t('Product type') }, { key: 'material', label: t('Material') }]" :items="parts.map((item) => ({ id: item.id, number: item.part_number, name: item.name, project: item.project_code, product: item.product_type, material: item.material_code }))" @select="emit('navigate', registryPath('parts', selectedId($event)))" />
+      <DataTable v-else-if="registryView === 'revisions'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'mold', label: t('Mold') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="revisions.map((item) => ({ id: item.id, revision: item.revision_code, mold: item.mold_code, summary: item.change_summary, artifacts: item.artifact_count, status: item.status }))" @select="emit('navigate', registryPath('revisions', selectedId($event)))" />
+      <DataTable v-else :columns="[{ key: 'code', label: t('Mold code') }, { key: 'name', label: t('Name') }, { key: 'part', label: t('Part number') }, { key: 'type', label: t('Mold type') }, { key: 'cavities', label: t('Cavities') }, { key: 'revisions', label: t('Revisions') }, { key: 'status', label: t('Status') }]" :items="molds.map((item) => ({ id: item.id, code: item.mold_code, name: item.name, part: item.part_number, type: item.mold_type, cavities: item.cavity_count, revisions: item.revision_count, status: item.status }))" @select="emit('navigate', registryPath('molds', selectedId($event)))" />
     </template>
 
     <template v-else-if="project">
       <RecordHeader :title="project.name" :identifier="project.code" :status="project.status" :version="`row ${project.row_version}`" />
-      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The canonical project code remains immutable; this change increments row_version and creates audit evidence.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Description") }}</span><textarea v-model="registryForm.description" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
-      <PropertyGrid :items="[{ label: t('Description'), value: project.description }, { label: t('Scope'), value: project.scope }, { label: t('Classification'), value: project.classification }, { label: t('Parts'), value: project.part_count }, { label: t('Molds'), value: project.mold_count }, { label: t('Updated'), value: project.updated_at ? new Date(project.updated_at).toLocaleString() : '—' }]" />
+      <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
+      <template v-if="activeTab === 'overview'">
+        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The canonical project code remains immutable; this change increments row_version and creates audit evidence.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Description") }}</span><textarea v-model="registryForm.description" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <PropertyGrid :items="[{ label: t('Description'), value: project.description }, { label: t('Scope'), value: project.scope }, { label: t('Classification'), value: project.classification }, { label: t('Parts'), value: project.part_count }, { label: t('Molds'), value: project.mold_count }, { label: t('Updated'), value: project.updated_at ? new Date(project.updated_at).toLocaleString() : '—' }]" />
+      </template>
+      <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'number', label: t('Part number') }, { key: 'name', label: t('Name') }, { key: 'molds', label: t('Molds') }, { key: 'status', label: t('Status') }]" :items="parts.map((item) => ({ id: item.id, number: item.part_number, name: item.name, molds: item.mold_count || 0, status: item.status }))" :empty-text="t('No related parts are available.')" @select="emit('navigate', registryPath('parts', selectedId($event)))" />
+      <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'mold', label: t('Mold') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="revisions.map((item) => ({ id: item.id, revision: item.revision_code, mold: item.mold_code, artifacts: item.artifact_count, status: item.status }))" :empty-text="t('No CAD-linked revisions are available.')" @select="emit('navigate', `${registryPath('revisions', selectedId($event))}?tab=cad`)" />
+      <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 
     <template v-else-if="part">
       <RecordHeader :title="part.name" :identifier="part.part_number" :status="part.status" :version="`row ${part.row_version}`" />
-      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The part number remains immutable; linked molds and revisions are not rewritten.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label><span>{{ t("Product type") }}</span><input v-model="registryForm.product_type" /></label><label><span>{{ t("Material") }}</span><input v-model="registryForm.material_code" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
-      <PropertyGrid :items="[{ label: t('Project'), value: part.project_code }, { label: t('Product type'), value: part.product_type }, { label: t('Material'), value: part.material_code }, { label: t('Molds'), value: part.mold_count || part.molds?.length || 0 }]" />
-      <DataTable :columns="[{ key: 'code', label: t('Mold code') }, { key: 'name', label: t('Name') }, { key: 'revisions', label: t('Revisions') }, { key: 'status', label: t('Status') }]" :items="(part.molds || []).map((item) => ({ id: item.id, code: item.mold_code, name: item.name, revisions: item.revision_count, status: item.status }))" @select="emit('navigate', `/data/molds/${$event.id}`)" />
+      <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
+      <template v-if="activeTab === 'overview'">
+        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The part number remains immutable; linked molds and revisions are not rewritten.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label><span>{{ t("Product type") }}</span><input v-model="registryForm.product_type" /></label><label><span>{{ t("Material") }}</span><input v-model="registryForm.material_code" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <PropertyGrid :items="[{ label: t('Project'), value: part.project_code }, { label: t('Product type'), value: part.product_type }, { label: t('Material'), value: part.material_code }, { label: t('Molds'), value: part.mold_count || part.molds?.length || 0 }]" />
+      </template>
+      <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'code', label: t('Mold code') }, { key: 'name', label: t('Name') }, { key: 'revisions', label: t('Revisions') }, { key: 'status', label: t('Status') }]" :items="(part.molds || []).map((item) => ({ id: item.id, code: item.mold_code, name: item.name, revisions: item.revision_count, status: item.status }))" :empty-text="t('No related molds are available.')" @select="emit('navigate', registryPath('molds', selectedId($event)))" />
+      <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'mold', label: t('Mold') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="partRevisions.map((item) => ({ id: item.id, revision: item.revision_code, mold: item.mold_code, artifacts: item.artifact_count, status: item.status }))" :empty-text="t('No CAD-linked revisions are available.')" @select="emit('navigate', `${registryPath('revisions', selectedId($event))}?tab=cad`)" />
+      <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 
     <template v-else-if="mold">
       <RecordHeader :title="mold.name" :identifier="mold.mold_code" :status="mold.status" :version="`row ${mold.row_version}`" />
-      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
-      <PropertyGrid :items="[{ label: t('Project'), value: mold.project_code }, { label: t('Part number'), value: mold.part_number }, { label: t('Mold type'), value: mold.mold_type }, { label: t('Cavities'), value: mold.cavity_count }, { label: t('Revisions'), value: mold.revisions?.length || 0 }]" />
-      <DataTable :columns="[{ key: 'code', label: t('Revision') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'released', label: t('Released at') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, artifacts: item.artifact_count, released: item.released_at ? new Date(item.released_at).toLocaleString() : '—', status: item.status }))" @select="emit('navigate', `/data/molds/revisions/${$event.id}`)" />
+      <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
+      <template v-if="activeTab === 'overview'">
+        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <PropertyGrid :items="[{ label: t('Project'), value: mold.project_code }, { label: t('Part number'), value: mold.part_number }, { label: t('Mold type'), value: mold.mold_type }, { label: t('Cavities'), value: mold.cavity_count }, { label: t('Current released revision'), value: mold.current_revision_code || '—' }, { label: t('CAD artifacts'), value: mold.artifact_count }]" />
+        <DataTable :columns="[{ key: 'code', label: t('Recent revision') }, { key: 'summary', label: t('Change summary') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).slice(0, 3).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, status: item.status }))" :empty-text="t('No mold revisions are available.')" @select="emit('navigate', registryPath('revisions', selectedId($event)))" />
+      </template>
+      <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'code', label: t('Revision') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'released', label: t('Released at') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, artifacts: item.artifact_count, released: item.released_at ? new Date(item.released_at).toLocaleString() : '—', status: item.status }))" :empty-text="t('No mold revisions are available.')" @select="emit('navigate', registryPath('revisions', selectedId($event)))" />
+      <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, revision: item.revision_code, artifacts: item.artifact_count, status: item.status }))" :empty-text="t('No CAD-linked revisions are available.')" @select="emit('navigate', `${registryPath('revisions', selectedId($event))}?tab=cad`)" />
+      <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 
     <template v-else-if="revision">
       <RecordHeader :title="`${revision.mold_code}@${revision.revision_code}`" :identifier="revision.id" :status="revision.status" :version="`row ${revision.row_version}`" />
-      <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Update revision lifecycle") }}</summary><p class="history-impact">{{ t("The revision code is immutable; release time and status transitions remain traceable.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="draft">draft</option><option value="released">released</option><option value="superseded">superseded</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change summary") }}</span><textarea v-model="registryForm.change_summary" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
-      <PropertyGrid :items="[{ label: t('Change summary'), value: revision.change_summary }, { label: t('Source system'), value: revision.source_system }, { label: t('Source revision ID'), value: revision.source_revision_id }, { label: t('Released at'), value: revision.released_at ? new Date(revision.released_at).toLocaleString() : '—' }]" />
-      <DataTable :columns="[{ key: 'name', label: t('Artifact name') }, { key: 'versions', label: t('Versions') }, { key: 'jobs', label: t('Jobs') }, { key: 'features', label: t('Feature sets') }, { key: 'reviews', label: t('Design reviews') }, { key: 'quality', label: t('Quality') }, { key: 'status', label: t('Status') }]" :items="(revision.artifacts || []).map((item) => ({ id: item.artifact_id, name: item.name, versions: item.references.versions, jobs: item.references.jobs, features: item.references.feature_sets, reviews: item.references.design_reviews, quality: item.quality_status, status: item.lifecycle_status }))" @select="emit('navigate', `/data/cad-artifacts/${$event.id}`)" />
+      <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
+      <template v-if="activeTab === 'overview'">
+        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Update revision lifecycle") }}</summary><p class="history-impact">{{ t("The revision code is immutable; release time and status transitions remain traceable.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="draft">draft</option><option value="released">released</option><option value="superseded">superseded</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change summary") }}</span><textarea v-model="registryForm.change_summary" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <PropertyGrid :items="[{ label: t('Change summary'), value: revision.change_summary }, { label: t('Source system'), value: revision.source_system }, { label: t('Source revision ID'), value: revision.source_revision_id }, { label: t('Released at'), value: revision.released_at ? new Date(revision.released_at).toLocaleString() : '—' }]" />
+      </template>
+      <PropertyGrid v-else-if="activeTab === 'versions'" :items="[{ label: t('Mold'), value: revision.mold_code }, { label: t('Revision'), value: revision.revision_code }, { label: t('Lifecycle status'), value: revision.status }, { label: t('Row version'), value: revision.row_version }]" />
+      <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'name', label: t('Artifact name') }, { key: 'versions', label: t('Versions') }, { key: 'jobs', label: t('Jobs') }, { key: 'features', label: t('Feature sets') }, { key: 'reviews', label: t('Design reviews') }, { key: 'quality', label: t('Quality') }, { key: 'status', label: t('Status') }]" :items="(revision.artifacts || []).map((item) => ({ id: item.artifact_id, name: item.name, versions: item.references.versions, jobs: item.references.jobs, features: item.references.feature_sets, reviews: item.references.design_reviews, quality: item.quality_status, status: item.lifecycle_status }))" :empty-text="t('No CAD artifacts are linked to this revision.')" @select="emit('navigate', `/data/cad-artifacts/${$event.id}`)" />
+      <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 
     <template v-else-if="domain === 'cad-artifacts' && !cadId">

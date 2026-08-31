@@ -362,3 +362,7 @@ Stage 33 Phase 1 changes Mold Registry into a mold-first discovery workspace wit
 server-side search and filters, pagination, reproducible URL state, table/hierarchy views,
 responsive cards and an on-demand governed creation drawer. See
 [`stage-33-phase-1-mold-registry-discovery.md`](stage-33-phase-1-mold-registry-discovery.md).
+
+Stage 34 Phase 2 adds stable Project, Part, Mold and Revision detail routes with reloadable
+Overview, Versions, CAD and Engineering History tabs while preserving the legacy Data Library
+routes. See [`stage-34-phase-2-mold-registry-details.md`](stage-34-phase-2-mold-registry-details.md).

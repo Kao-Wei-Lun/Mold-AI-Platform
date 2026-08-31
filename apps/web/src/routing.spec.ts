@@ -7,6 +7,12 @@ describe("Engineering Workspace routes", () => {
     expect(resolveWorkspaceRoute("/governance/rules/").id).toBe("rules");
     expect(resolveWorkspaceRoute("/governance/identity").id).toBe("identity");
     expect(resolveWorkspaceRoute("/governance/mold-registry").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/projects/project-1").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/parts/part-1/").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/molds/mold-1").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/revisions/revision-1").id).toBe("mold_registry");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/unknown/id").id).toBe("not_found");
+    expect(resolveWorkspaceRoute("/governance/mold-registry/molds").id).toBe("not_found");
     expect(resolveWorkspaceRoute("/governance/engineering-data").id).toBe("engineering_data");
     expect(resolveWorkspaceRoute("/engineering/knowledge-search").id).toBe("knowledge_search");
     expect(resolveWorkspaceRoute("/governance/knowledge").id).toBe("knowledge");

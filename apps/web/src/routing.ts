@@ -205,6 +205,14 @@ export function resolveWorkspaceRoute(pathname: string): WorkspaceRoute {
   if (normalized === "/data" || normalized.startsWith("/data/")) {
     return workspaceRoutes.find((route) => route.id === "history_data") || notFoundRoute;
   }
+  if (normalized.startsWith("/governance/mold-registry/")) {
+    const segments = normalized.split("/").filter(Boolean);
+    const validKinds = new Set(["projects", "parts", "molds", "revisions"]);
+    if (segments.length === 4 && validKinds.has(segments[2]) && segments[3]) {
+      return workspaceRoutes.find((route) => route.id === "mold_registry") || notFoundRoute;
+    }
+    return notFoundRoute;
+  }
   return workspaceRoutes.find((route) => route.path === normalized) || notFoundRoute;
 }
 

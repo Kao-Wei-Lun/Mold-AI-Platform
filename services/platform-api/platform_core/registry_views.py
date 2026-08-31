@@ -268,9 +268,7 @@ class RegistryOverviewView(APIView):
                     "active_projects": projects.filter(status=Project.Status.ACTIVE).count(),
                     "active_molds": molds.filter(status=Mold.Status.ACTIVE).count(),
                     "released_revisions": released.count(),
-                    "draft_revisions": revisions.filter(
-                        status=MoldRevision.Status.DRAFT
-                    ).count(),
+                    "draft_revisions": revisions.filter(status=MoldRevision.Status.DRAFT).count(),
                     "released_without_cad": released.filter(artifacts__isnull=True).count(),
                     "pending_mapping": molds.filter(
                         status=Mold.Status.ACTIVE, product_part__isnull=True

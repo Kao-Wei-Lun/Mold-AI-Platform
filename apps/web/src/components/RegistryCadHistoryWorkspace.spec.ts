@@ -26,6 +26,22 @@ describe("RegistryCadHistoryWorkspace", () => {
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/data/molds/revisions/revision-1"]);
   });
 
+  it("supports stable registry detail routes and tab deep links", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response({
+      id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: "part-1", part_number: "PART-001", mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "active", row_version: 1, revision_count: 1, current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 2,
+      revisions: [{ id: "revision-1", mold_id: "mold-1", mold_code: "MOLD-001", revision_code: "A", status: "released", change_summary: "Initial release", source_system: "platform_demo", source_revision_id: null, row_version: 1, released_at: "2026-08-29T00:00:00Z", artifact_count: 2 }],
+    })));
+    const wrapper = mount(RegistryCadHistoryWorkspace, {
+      props: { domain: "molds", path: "/governance/mold-registry/molds/mold-1?tab=versions", registryMode: true },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Initial release");
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toContain("Versions");
+    await wrapper.find("tbody tr").trigger("click");
+    expect(wrapper.emitted("navigate")?.[0]).toEqual(["/governance/mold-registry/revisions/revision-1"]);
+  });
+
   it("shows CAD versions, geometry, feature indexes, jobs and lineage", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       artifact_id: "artifact-1", name: "Housing A", kind: "cad_source", classification: "public_demo", dataset_id: "curated", product_type: "housing", material_code: "ABS", mold_revision_id: "revision-1", mold_revision: { revision_code: "A", mold_id: "mold-1", mold_code: "MOLD-001" }, lifecycle_status: "active", quality_status: "validated", created_at: "2026-08-29T00:00:00Z", source: null,

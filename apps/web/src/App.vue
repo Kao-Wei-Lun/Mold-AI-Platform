@@ -20,6 +20,7 @@ import KnowledgeWorkspace from "./components/KnowledgeWorkspace.vue";
 import KnowledgeSearchWorkspace from "./components/KnowledgeSearchWorkspace.vue";
 import MasterDataWorkspace from "./components/MasterDataWorkspace.vue";
 import MoldPlanningWorkspace from "./components/MoldPlanningWorkspace.vue";
+import RegistryCadHistoryWorkspace from "./components/RegistryCadHistoryWorkspace.vue";
 import MoldRegistryWorkspace from "./components/MoldRegistryWorkspace.vue";
 import NavigationIcon from "./components/NavigationIcon.vue";
 import ProcessTrialWorkspace from "./components/ProcessTrialWorkspace.vue";
@@ -63,6 +64,7 @@ const initialPath = deepLinkState.context
   : window.location.pathname;
 const currentRoute = ref<WorkspaceRoute>(initialRoute);
 const currentPath = ref(`${initialPath}${window.location.search}`);
+const isRegistryDetailPath = computed(() => /^\/governance\/mold-registry\/(projects|parts|molds|revisions)\/[^/]+\/?$/.test(new URL(currentPath.value, window.location.origin).pathname));
 const assistantContext = ref<AssistantContext>({
   context_version: "1.0",
   page: "engineering_workspace",
@@ -418,6 +420,15 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           v-else-if="currentRoute.id === 'master_data' && accessReady"
           :current-account="currentAccount"
           @changed="refreshMasterData"
+        />
+        <RegistryCadHistoryWorkspace
+          v-else-if="currentRoute.id === 'mold_registry' && accessReady && isRegistryDetailPath"
+          domain="molds"
+          :path="currentPath"
+          registry-mode
+          :can-manage="currentAccount?.permissions.includes('registry:manage') || false"
+          :master-data-options="masterDataOptions"
+          @navigate="navigatePath"
         />
         <MoldRegistryWorkspace
           v-else-if="currentRoute.id === 'mold_registry' && accessReady"

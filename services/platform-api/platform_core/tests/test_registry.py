@@ -281,6 +281,35 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(immutable.status_code, 409)
 
+    def test_stable_detail_contracts_return_related_data_and_hide_missing_records(self):
+        project, part, mold, revision = self.create_hierarchy()
+
+        project_detail = self.client.get(f"/api/v1/registry/projects/{project['id']}")
+        part_detail = self.client.get(f"/api/v1/registry/parts/{part['id']}")
+        mold_detail = self.client.get(f"/api/v1/registry/molds/{mold['id']}")
+        revision_detail = self.client.get(f"/api/v1/registry/revisions/{revision['id']}")
+
+        self.assertEqual(project_detail.status_code, 200)
+        self.assertEqual(part_detail.json()["molds"][0]["id"], mold["id"])
+        self.assertEqual(mold_detail.json()["revisions"][0]["id"], revision["id"])
+        self.assertEqual(revision_detail.json()["artifacts"], [])
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/registry/molds/00000000-0000-0000-0000-000000000000"
+            ).status_code,
+            404,
+        )
+
+        no_access = get_user_model().objects.create_user(
+            username="registry-no-access", password="Registry-No-Access-2026!"
+        )
+        ensure_account_profile(no_access)
+        self.client.force_login(no_access)
+        self.assertEqual(
+            self.client.get(f"/api/v1/registry/molds/{mold['id']}").status_code,
+            403,
+        )
+
     def test_artifact_can_be_linked_and_archived_without_hard_delete(self):
         _, _, _, revision = self.create_hierarchy()
         artifact = Artifact.objects.create(
