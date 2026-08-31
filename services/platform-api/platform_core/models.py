@@ -1767,3 +1767,194 @@ class HMIExport(models.Model):
 
     def __str__(self) -> str:
         return f"HMI export {self.id}"
+
+
+class MoldPlan(models.Model):
+    class Purpose(models.TextChoices):
+        NEW_MOLD = "new_mold", "New mold"
+        MODIFICATION = "modification", "Modification"
+        DESIGN_CHANGE = "design_change", "Design change"
+        TRIAL_IMPROVEMENT = "trial_improvement", "Trial improvement"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        READY = "ready", "Ready"
+        COMPLETED = "completed", "Completed"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan_code = models.CharField(max_length=64)
+    name = models.CharField(max_length=120)
+    purpose = models.CharField(max_length=32, choices=Purpose.choices)
+    project = models.ForeignKey(Project, related_name="mold_plans", on_delete=models.PROTECT)
+    part = models.ForeignKey(
+        ProductPart,
+        related_name="mold_plans",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    mold = models.ForeignKey(Mold, related_name="mold_plans", on_delete=models.PROTECT)
+    mold_revision = models.ForeignKey(
+        MoldRevision, related_name="mold_plans", on_delete=models.PROTECT
+    )
+    cad_artifact_version = models.ForeignKey(
+        ArtifactVersion,
+        related_name="mold_plans",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    owner_id = models.CharField(max_length=128)
+    scope = models.ForeignKey(DataScope, related_name="mold_plans", on_delete=models.PROTECT)
+    classification = models.CharField(max_length=32, default="public_demo")
+    row_version = models.PositiveIntegerField(default=1)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archive_reason = models.CharField(max_length=512, blank=True)
+    created_by = models.CharField(max_length=128)
+    updated_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["scope", "plan_code"], name="unique_mold_plan_code")
+        ]
+        indexes = [
+            models.Index(
+                fields=["scope", "status", "updated_at"],
+                name="mold_plan_scope_status_idx",
+            ),
+            models.Index(fields=["mold_revision", "status"], name="mold_plan_revision_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.plan_code}: {self.name}"
+
+
+class MoldPlanContext(models.Model):
+    class SourceType(models.TextChoices):
+        REGISTRY = "registry", "Registry"
+        CAD = "cad", "CAD"
+        REFERENCE_DATA = "reference_data", "Reference data"
+        USER_CONFIRMED = "user_confirmed", "User confirmed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.ForeignKey(MoldPlan, related_name="context_entries", on_delete=models.PROTECT)
+    dimension = models.CharField(max_length=32)
+    value_code = models.CharField(max_length=128)
+    source_type = models.CharField(max_length=24, choices=SourceType.choices)
+    source_ref = models.CharField(max_length=255)
+    confirmed_by = models.CharField(max_length=128, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["dimension"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "dimension"], name="unique_mold_plan_context")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.plan.plan_code}: {self.dimension}={self.value_code}"
+
+
+class MoldPlanResolution(models.Model):
+    IMMUTABLE_FIELDS = (
+        "plan_id",
+        "resolution_number",
+        "context_checksum",
+        "selected_profile_id",
+        "ruleset_checksum",
+        "applicability_checksum",
+        "selection_mode",
+        "reason",
+        "override_reason",
+        "context_snapshot",
+        "candidate_snapshot",
+        "exclusion_summary",
+        "resolved_by",
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plan = models.ForeignKey(MoldPlan, related_name="resolutions", on_delete=models.PROTECT)
+    resolution_number = models.PositiveIntegerField()
+    context_checksum = models.CharField(max_length=64)
+    selected_profile = models.ForeignKey(
+        RuleProfile, related_name="mold_plan_resolutions", on_delete=models.PROTECT
+    )
+    ruleset_checksum = models.CharField(max_length=64)
+    applicability_checksum = models.CharField(max_length=64)
+    selection_mode = models.CharField(max_length=24)
+    reason = models.TextField()
+    override_reason = models.CharField(max_length=512, blank=True)
+    context_snapshot = models.JSONField(default=dict)
+    candidate_snapshot = models.JSONField(default=list)
+    exclusion_summary = models.JSONField(default=list)
+    resolved_by = models.CharField(max_length=128)
+    resolved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["plan", "-resolution_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "resolution_number"], name="unique_mold_plan_resolution"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.plan.plan_code} resolution {self.resolution_number}"
+
+    def save(self, *args, **kwargs) -> None:
+        if self.pk and MoldPlanResolution.objects.filter(pk=self.pk).exists():
+            persisted = MoldPlanResolution.objects.get(pk=self.pk)
+            changed = [
+                field
+                for field in self.IMMUTABLE_FIELDS
+                if getattr(persisted, field) != getattr(self, field)
+            ]
+            if changed:
+                message = f"Immutable fields cannot change: {', '.join(changed)}"
+                raise ValidationError(
+                    {"mold_plan_resolution": message}
+                )
+        super().save(*args, **kwargs)
+
+
+class MoldPlanRequirement(models.Model):
+    class RequirementType(models.TextChoices):
+        MUST = "must", "Must"
+        SHOULD = "should", "Should"
+        MANUAL_CONFIRMATION = "manual_confirmation", "Manual confirmation"
+
+    class PlanningStatus(models.TextChoices):
+        NOT_CHECKED = "not_checked", "Not checked"
+        INSUFFICIENT_DATA = "insufficient_data", "Insufficient data"
+        READY_FOR_REVIEW = "ready_for_review", "Ready for review"
+        MANUAL_CONFIRMATION = "manual_confirmation", "Manual confirmation"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    resolution = models.ForeignKey(
+        MoldPlanResolution, related_name="requirements", on_delete=models.PROTECT
+    )
+    rule_version = models.ForeignKey(
+        RuleVersion, related_name="mold_plan_requirements", on_delete=models.PROTECT
+    )
+    requirement_type = models.CharField(max_length=24, choices=RequirementType.choices)
+    evidence_requirement = models.JSONField(default=dict)
+    planning_status = models.CharField(max_length=32, choices=PlanningStatus.choices)
+    source_reference_snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["rule_version__rule_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["resolution", "rule_version"], name="unique_mold_plan_requirement"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.resolution}: {self.rule_version.rule_id}"

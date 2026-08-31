@@ -65,15 +65,32 @@
 .catalog-applicability { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .catalog-applicability small { border-radius: 999px; padding: 0.2rem 0.4rem; color: #28578f; background: #e8f1ff; font-size: 0.6rem; }
 
+.mold-plan-catalog { border: 1px solid var(--color-border); border-radius: 16px; padding: 1rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.mold-plan-catalog h3 { margin: 0.2rem 0 0; }
+.plan-catalog-actions { display: flex; gap: 0.55rem; }
+.mold-plan-card-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin-top: 0.9rem; }
+.mold-plan-card-list > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.45rem; border: 1px solid var(--color-border); border-radius: 12px; padding: 0.8rem; color: inherit; background: #f9fbfe; text-align: left; }
+.mold-plan-card-list > button.active { border: 2px solid var(--color-accent); background: #edf3ff; }
+.mold-plan-card-list span { display: grid; gap: 0.2rem; }
+.mold-plan-card-list small { color: var(--color-text-muted); font-size: 0.65rem; }
+.mold-plan-card-list > button > small { grid-column: 1 / -1; }
+.mold-plan-card-list em { align-self: start; border-radius: 999px; padding: 0.2rem 0.45rem; font-size: 0.62rem; font-style: normal; font-weight: 800; }
+.catalog-empty-note { margin: 0.8rem 0 0; color: var(--color-text-muted); }
+.planning-form-grid .form-wide { grid-column: 1 / -1; }
+.plan-save-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1rem; border-top: 1px solid var(--color-border); padding-top: 1rem; }
+
 @media (max-width: 1050px) {
   .comparison-card-grid,
-  .rule-catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rule-catalog-grid,
+  .mold-plan-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 680px) {
   .comparison-card-grid,
   .rule-catalog-grid,
-  .rule-catalog-toolbar { grid-template-columns: 1fr; }
+  .rule-catalog-toolbar,
+  .mold-plan-card-list { grid-template-columns: 1fr; }
+  .plan-catalog-actions { align-items: stretch; flex-direction: column; }
 }
 
 button:focus-visible,

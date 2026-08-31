@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Artifact, ArtifactVersion, MasterDataItem, MoldRevision, RuleProfile
+from .identity import audit_identity_event
+from .models import (
+    Artifact,
+    ArtifactVersion,
+    MasterDataItem,
+    MoldPlan,
+    MoldPlanContext,
+    MoldPlanResolution,
+    MoldRevision,
+    RuleProfile,
+)
+from .pagination import PaginationValueError, paginate
 from .rule_resolution import (
     RuleResolutionError,
     planning_context_for_revision,
@@ -28,6 +44,105 @@ def _error(request: Request, code: str, message: str, status: int, **detail) -> 
         },
         status=status,
     )
+
+
+def _actor(request: Request) -> str:
+    return str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+
+
+def _require(request: Request, permission: str) -> Response | None:
+    if permission in getattr(request._request, "mold_ai_permissions", set()):
+        return None
+    return _error(request, "ACCESS_DENIED", f"The account does not grant {permission}.", 403)
+
+
+def _scopes(request: Request) -> set[str]:
+    return set(getattr(request._request, "mold_ai_data_scopes", set())) or {"public-demo"}
+
+
+def _resolution_payload(resolution: MoldPlanResolution) -> dict[str, object]:
+    return {
+        "resolution_id": str(resolution.id),
+        "resolution_number": resolution.resolution_number,
+        "context_checksum": resolution.context_checksum,
+        "selected_profile_id": str(resolution.selected_profile_id),
+        "selected_profile_key": resolution.selected_profile.profile_key,
+        "selected_profile_version": resolution.selected_profile.version,
+        "ruleset_checksum": resolution.ruleset_checksum,
+        "applicability_checksum": resolution.applicability_checksum,
+        "selection_mode": resolution.selection_mode,
+        "reason": resolution.reason,
+        "override_reason": resolution.override_reason or None,
+        "context": resolution.context_snapshot,
+        "candidates": resolution.candidate_snapshot,
+        "excluded_summary": resolution.exclusion_summary,
+        "resolved_by": resolution.resolved_by,
+        "resolved_at": resolution.resolved_at.isoformat(),
+    }
+
+
+def mold_plan_payload(plan: MoldPlan, *, detail: bool = False) -> dict[str, object]:
+    latest = next(iter(plan.resolutions.all()), None)
+    payload: dict[str, object] = {
+        "plan_id": str(plan.id),
+        "plan_code": plan.plan_code,
+        "name": plan.name,
+        "purpose": plan.purpose,
+        "project_id": str(plan.project_id),
+        "project_code": plan.project.code,
+        "part_id": str(plan.part_id) if plan.part_id else None,
+        "part_number": plan.part.part_number if plan.part_id else None,
+        "mold_id": str(plan.mold_id),
+        "mold_code": plan.mold.mold_code,
+        "mold_revision_id": str(plan.mold_revision_id),
+        "mold_revision": plan.mold_revision.revision_code,
+        "cad_artifact_version_id": (
+            str(plan.cad_artifact_version_id) if plan.cad_artifact_version_id else None
+        ),
+        "status": plan.status,
+        "owner_id": plan.owner_id,
+        "scope": plan.scope.code,
+        "classification": plan.classification,
+        "row_version": plan.row_version,
+        "latest_resolution": _resolution_payload(latest) if latest else None,
+        "created_at": plan.created_at.isoformat(),
+        "updated_at": plan.updated_at.isoformat(),
+        "archived_at": plan.archived_at.isoformat() if plan.archived_at else None,
+        "archive_reason": plan.archive_reason or None,
+    }
+    if detail:
+        payload["context"] = {
+            item.dimension: {
+                "value_code": item.value_code,
+                "source_type": item.source_type,
+                "source_ref": item.source_ref,
+                "confirmed_by": item.confirmed_by or None,
+                "confirmed_at": item.confirmed_at.isoformat() if item.confirmed_at else None,
+            }
+            for item in plan.context_entries.all()
+        }
+        payload["resolutions"] = [_resolution_payload(item) for item in plan.resolutions.all()]
+    return payload
+
+
+def mold_plan_queryset(request: Request):
+    return (
+        MoldPlan.objects.select_related(
+            "project", "part", "mold", "mold_revision", "cad_artifact_version", "scope"
+        )
+        .prefetch_related(
+            "context_entries",
+            "resolutions__selected_profile",
+            "resolutions__requirements",
+        )
+        .filter(scope__code__in=_scopes(request))
+    )
+
+
+def _context_checksum(context: dict[str, str]) -> str:
+    return hashlib.sha256(
+        json.dumps(context, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 class MoldPlanningResolutionPreviewView(APIView):
@@ -288,3 +403,334 @@ class MoldPlanningCandidateComparisonView(APIView):
                 ],
             }
         )
+
+
+class MoldPlanListCreateView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        if denied := _require(request, "mold-planning:read"):
+            return denied
+        plans = mold_plan_queryset(request)
+        if query := request.query_params.get("q"):
+            plans = plans.filter(
+                Q(plan_code__icontains=query)
+                | Q(name__icontains=query)
+                | Q(mold__mold_code__icontains=query)
+            )
+        if status_filter := request.query_params.get("status"):
+            plans = plans.filter(status=status_filter)
+        if owner := request.query_params.get("owner"):
+            plans = plans.filter(owner_id=owner)
+        try:
+            records, page = paginate(
+                request,
+                plans,
+                allowed_sort={
+                    "updated_at": "updated_at",
+                    "created_at": "created_at",
+                    "name": "name",
+                    "plan_code": "plan_code",
+                },
+                default_sort="-updated_at",
+            )
+        except PaginationValueError as exc:
+            return _error(request, "VALIDATION_PAGINATION", str(exc), 400)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "items": [mold_plan_payload(plan) for plan in records],
+                "page": page,
+            }
+        )
+
+    def post(self, request: Request) -> Response:
+        if denied := _require(request, "mold-planning:create"):
+            return denied
+        name = str(request.data.get("name", "")).strip()
+        purpose = str(request.data.get("purpose", "")).strip()
+        if not 3 <= len(name) <= 120:
+            return _error(
+                request,
+                "VALIDATION_PLAN_NAME",
+                "name must contain between 3 and 120 characters.",
+                400,
+            )
+        if purpose not in MoldPlan.Purpose.values:
+            return _error(request, "VALIDATION_PLAN_PURPOSE", "purpose is invalid.", 400)
+        preview = MoldPlanningResolutionPreviewView().post(request)
+        if preview.status_code >= 400:
+            return preview
+        revision = MoldRevision.objects.select_related(
+            "mold__project__scope", "mold__product_part"
+        ).get(id=preview.data["mold_revision_id"])
+        artifact_version = None
+        if preview.data["cad_artifact_version_id"]:
+            artifact_version = ArtifactVersion.objects.get(
+                id=preview.data["cad_artifact_version_id"]
+            )
+        actor = _actor(request)
+        with transaction.atomic():
+            plan = MoldPlan.objects.create(
+                plan_code=f"MP-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}",
+                name=name,
+                purpose=purpose,
+                project=revision.mold.project,
+                part=revision.mold.product_part,
+                mold=revision.mold,
+                mold_revision=revision,
+                cad_artifact_version=artifact_version,
+                owner_id=str(request.data.get("owner_id") or actor)[:128],
+                scope=revision.mold.project.scope,
+                classification=revision.mold.project.classification,
+                created_by=actor,
+                updated_by=actor,
+            )
+            MoldPlanContext.objects.bulk_create(
+                [
+                    MoldPlanContext(
+                        plan=plan,
+                        dimension=dimension,
+                        value_code=value,
+                        source_type=preview.data["sources"][dimension]["source_type"],
+                        source_ref=preview.data["sources"][dimension]["source_ref"],
+                        confirmed_by=(
+                            actor
+                            if preview.data["sources"][dimension]["source_type"]
+                            == "user_confirmed"
+                            else ""
+                        ),
+                        confirmed_at=(
+                            timezone.now()
+                            if preview.data["sources"][dimension]["source_type"]
+                            == "user_confirmed"
+                            else None
+                        ),
+                    )
+                    for dimension, value in preview.data["context"].items()
+                ]
+            )
+            audit_identity_event(
+                "mold_plan.create.v1",
+                actor_id=actor,
+                target_refs=[str(plan.id), str(revision.id)],
+                detail={"plan_code": plan.plan_code, "purpose": purpose},
+            )
+        plan = mold_plan_queryset(request).get(id=plan.id)
+        return Response(mold_plan_payload(plan, detail=True), status=201)
+
+
+class MoldPlanDetailView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, plan_id: uuid.UUID) -> Response:
+        if denied := _require(request, "mold-planning:read"):
+            return denied
+        plan = mold_plan_queryset(request).filter(id=plan_id).first()
+        if plan is None:
+            return _error(request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404)
+        return Response(mold_plan_payload(plan, detail=True))
+
+    def patch(self, request: Request, plan_id: uuid.UUID) -> Response:
+        if denied := _require(request, "mold-planning:create"):
+            return denied
+        with transaction.atomic():
+            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            if plan is None:
+                return _error(
+                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
+                )
+            if plan.status != MoldPlan.Status.DRAFT:
+                return _error(
+                    request,
+                    "MOLD_PLAN_IMMUTABLE",
+                    "Only draft mold plans can be edited.",
+                    409,
+                )
+            if int(request.data.get("row_version", 0)) != plan.row_version:
+                return _error(
+                    request,
+                    "CONCURRENCY_CONFLICT",
+                    "The mold plan changed after it was loaded.",
+                    409,
+                    current=mold_plan_payload(plan),
+                )
+            name = str(request.data.get("name", plan.name)).strip()
+            purpose = str(request.data.get("purpose", plan.purpose)).strip()
+            if not 3 <= len(name) <= 120 or purpose not in MoldPlan.Purpose.values:
+                return _error(
+                    request,
+                    "VALIDATION_MOLD_PLAN",
+                    "The plan name or purpose is invalid.",
+                    400,
+                )
+            plan.name = name
+            plan.purpose = purpose
+            plan.owner_id = str(request.data.get("owner_id", plan.owner_id))[:128]
+            plan.updated_by = _actor(request)
+            plan.row_version += 1
+            plan.save(
+                update_fields=[
+                    "name",
+                    "purpose",
+                    "owner_id",
+                    "updated_by",
+                    "row_version",
+                    "updated_at",
+                ]
+            )
+            audit_identity_event(
+                "mold_plan.update.v1",
+                actor_id=_actor(request),
+                target_refs=[str(plan.id)],
+                detail={"row_version": plan.row_version},
+            )
+        return Response(mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True))
+
+
+class MoldPlanResolveView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, plan_id: uuid.UUID) -> Response:
+        if denied := _require(request, "mold-planning:create"):
+            return denied
+        with transaction.atomic():
+            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            if plan is None:
+                return _error(
+                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
+                )
+            if plan.status in {MoldPlan.Status.COMPLETED, MoldPlan.Status.ARCHIVED}:
+                return _error(
+                    request,
+                    "MOLD_PLAN_IMMUTABLE",
+                    "Completed or archived plans cannot be resolved again.",
+                    409,
+                )
+            context = {item.dimension: item.value_code for item in plan.context_entries.all()}
+            try:
+                resolution = resolve_rule_profile_for_context(
+                    context,
+                    scope=plan.scope,
+                    classification=plan.classification,
+                )
+            except RuleResolutionError as exc:
+                return _error(
+                    request,
+                    exc.code,
+                    exc.user_message,
+                    409 if exc.code == "RULE_PROFILE_AMBIGUOUS" else 422,
+                    candidates=exc.candidates,
+                )
+            snapshot = resolution.snapshot
+            record = MoldPlanResolution.objects.create(
+                plan=plan,
+                resolution_number=plan.resolutions.count() + 1,
+                context_checksum=_context_checksum(context),
+                selected_profile=resolution.profile,
+                ruleset_checksum=resolution.profile.ruleset_checksum,
+                applicability_checksum=snapshot["applicability_checksum"],
+                selection_mode=snapshot["selection_mode"],
+                reason=snapshot["reason"],
+                override_reason=snapshot.get("override_reason") or "",
+                context_snapshot=context,
+                candidate_snapshot=snapshot["candidates"],
+                exclusion_summary=snapshot.get("excluded_summary", []),
+                resolved_by=_actor(request),
+            )
+            plan.status = MoldPlan.Status.READY
+            plan.updated_by = _actor(request)
+            plan.row_version += 1
+            plan.save(update_fields=["status", "updated_by", "row_version", "updated_at"])
+            audit_identity_event(
+                "mold_plan.resolve.v1",
+                actor_id=_actor(request),
+                target_refs=[str(plan.id), str(record.id), str(resolution.profile.id)],
+                detail={
+                    "resolution_number": record.resolution_number,
+                    "context_checksum": record.context_checksum,
+                    "selection_mode": record.selection_mode,
+                },
+            )
+        return Response(
+            mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True)
+        )
+
+
+class MoldPlanActionView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, plan_id: uuid.UUID) -> Response:
+        action = str(request.data.get("action", ""))
+        permission = (
+            "mold-planning:manage"
+            if action in {"reopen", "archive"}
+            else "mold-planning:complete"
+        )
+        if denied := _require(request, permission):
+            return denied
+        reason = str(request.data.get("reason", "")).strip()
+        if not 3 <= len(reason) <= 512:
+            return _error(
+                request,
+                "VALIDATION_REASON_REQUIRED",
+                "A reason between 3 and 512 characters is required.",
+                400,
+            )
+        transitions = {
+            MoldPlan.Status.DRAFT: {"archive": MoldPlan.Status.ARCHIVED},
+            MoldPlan.Status.READY: {
+                "complete": MoldPlan.Status.COMPLETED,
+                "archive": MoldPlan.Status.ARCHIVED,
+            },
+            MoldPlan.Status.COMPLETED: {"reopen": MoldPlan.Status.DRAFT},
+            MoldPlan.Status.ARCHIVED: {"reopen": MoldPlan.Status.DRAFT},
+        }
+        with transaction.atomic():
+            plan = mold_plan_queryset(request).select_for_update().filter(id=plan_id).first()
+            if plan is None:
+                return _error(
+                    request, "MOLD_PLAN_NOT_FOUND", "The mold plan is unavailable.", 404
+                )
+            if int(request.data.get("row_version", 0)) != plan.row_version:
+                return _error(
+                    request,
+                    "CONCURRENCY_CONFLICT",
+                    "The mold plan changed after it was loaded.",
+                    409,
+                )
+            target = transitions.get(plan.status, {}).get(action)
+            if target is None:
+                return _error(
+                    request,
+                    "INVALID_MOLD_PLAN_TRANSITION",
+                    f"Cannot {action} a {plan.status} plan.",
+                    409,
+                )
+            previous = plan.status
+            plan.status = target
+            plan.archived_at = timezone.now() if target == MoldPlan.Status.ARCHIVED else None
+            plan.archive_reason = reason if target == MoldPlan.Status.ARCHIVED else ""
+            plan.updated_by = _actor(request)
+            plan.row_version += 1
+            plan.save(
+                update_fields=[
+                    "status",
+                    "archived_at",
+                    "archive_reason",
+                    "updated_by",
+                    "row_version",
+                    "updated_at",
+                ]
+            )
+            audit_identity_event(
+                f"mold_plan.{action}.v1",
+                actor_id=_actor(request),
+                target_refs=[str(plan.id)],
+                detail={"from": previous, "to": target, "reason": reason},
+            )
+        return Response(mold_plan_payload(mold_plan_queryset(request).get(id=plan.id), detail=True))

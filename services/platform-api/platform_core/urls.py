@@ -61,8 +61,12 @@ from .ingestion_views import (
 )
 from .master_data_views import MasterDataDetailView, MasterDataListCreateView, MasterDataOptionsView
 from .mold_planning_views import (
+    MoldPlanActionView,
+    MoldPlanDetailView,
+    MoldPlanListCreateView,
     MoldPlanningCandidateComparisonView,
     MoldPlanningResolutionPreviewView,
+    MoldPlanResolveView,
 )
 from .registry_views import (
     ArtifactGovernanceView,
@@ -138,6 +142,18 @@ urlpatterns = [
         "mold-plans/candidates/compare",
         MoldPlanningCandidateComparisonView.as_view(),
         name="mold-planning-candidate-comparison",
+    ),
+    path("mold-plans", MoldPlanListCreateView.as_view(), name="mold-plan-list-create"),
+    path("mold-plans/<uuid:plan_id>", MoldPlanDetailView.as_view(), name="mold-plan-detail"),
+    path(
+        "mold-plans/<uuid:plan_id>/resolve",
+        MoldPlanResolveView.as_view(),
+        name="mold-plan-resolve",
+    ),
+    path(
+        "mold-plans/<uuid:plan_id>/actions",
+        MoldPlanActionView.as_view(),
+        name="mold-plan-actions",
     ),
     path("registry/projects", ProjectListCreateView.as_view(), name="registry-project-list"),
     path(

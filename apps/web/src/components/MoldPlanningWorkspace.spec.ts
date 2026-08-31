@@ -30,6 +30,12 @@ const compareResolution = vi.fn(async (_input: unknown) => ({
     { profile_id: "profile-2", profile_key: "general-standard", display_name: "General Standard", version: "1.0", priority: 5, is_default: false, owner: "owner", approved_by: "approver", effective_from: null, effective_to: null, applicability: [], enabled_rule_count: 2, risk_categories: [], high_risk_rules: [], difference_summary: { baseline_profile_id: "profile-1", added: [], removed: ["RULE-1"], modified: [] } },
   ],
 }));
+const storedPlan = {
+  plan_id: "plan-1", plan_code: "MP-1", name: "Housing plan", purpose: "new_mold", project_id: "project-1", project_code: "DEMO", part_id: "part-1", part_number: "PART-1", mold_id: "mold-1", mold_code: "MOLD-1", mold_revision_id: "revision-1", mold_revision: "A", cad_artifact_version_id: "version-1", status: "draft", owner_id: "owner", scope: "public-demo", classification: "public_demo", row_version: 1, latest_resolution: null, created_at: "2026-08-31T00:00:00Z", updated_at: "2026-08-31T00:00:00Z", archived_at: null, archive_reason: null,
+} as const;
+const fetchPlans = vi.fn(async () => ({ items: [], page: { page: 1, page_size: 25, total: 0 } }));
+const createPlan = vi.fn(async (_input: unknown) => storedPlan);
+const resolvePlan = vi.fn(async (_id: string) => ({ ...storedPlan, status: "ready", row_version: 2, latest_resolution: null }));
 
 vi.mock("../api/registry", () => ({ fetchRegistry: () => fetchRegistry() }));
 vi.mock("../api/cad", () => ({ fetchRecentCAD: () => fetchRecentCAD() }));
@@ -39,6 +45,12 @@ vi.mock("../api/moldPlanning", async (importOriginal) => {
     ...actual,
     previewMoldPlanningResolution: (input: unknown) => previewResolution(input),
     compareMoldPlanningCandidates: (input: unknown) => compareResolution(input),
+    fetchMoldPlans: () => fetchPlans(),
+    fetchMoldPlan: async () => storedPlan,
+    createMoldPlan: (input: unknown) => createPlan(input),
+    updateMoldPlan: async () => storedPlan,
+    resolveMoldPlan: (id: string) => resolvePlan(id),
+    transitionMoldPlan: async () => storedPlan,
   };
 });
 
@@ -49,7 +61,7 @@ options.material = [{ id: "md-material", code: "ABS-GENERAL", name_en: "ABS", na
 options.molding_process = [{ id: "md-process", code: "injection", name_en: "Injection", name_zh_tw: "射出成型", attributes: {}, row_version: 1 }];
 
 describe("MoldPlanningWorkspace", () => {
-  beforeEach(() => { fetchRegistry.mockClear(); fetchRecentCAD.mockClear(); previewResolution.mockClear(); compareResolution.mockClear(); });
+  beforeEach(() => { fetchRegistry.mockClear(); fetchRecentCAD.mockClear(); previewResolution.mockClear(); compareResolution.mockClear(); fetchPlans.mockClear(); createPlan.mockClear(); resolvePlan.mockClear(); });
 
   it("loads a governed mold context without asking for a profile key", async () => {
     const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
@@ -93,5 +105,18 @@ describe("MoldPlanningWorkspace", () => {
     expect(compareResolution).toHaveBeenCalledOnce();
     expect(wrapper.findAll(".comparison-card-grid article")).toHaveLength(2);
     expect(wrapper.text()).toContain("General Standard");
+  });
+
+  it("persists a draft and immutable resolution after preview", async () => {
+    const wrapper = mount(MoldPlanningWorkspace, { props: { masterDataOptions: options } });
+    await flushPromises();
+    await wrapper.get('input[required]').setValue("Housing plan");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    await wrapper.get(".plan-save-actions button").trigger("click");
+    await flushPromises();
+
+    expect(createPlan).toHaveBeenCalledOnce();
+    expect(resolvePlan).toHaveBeenCalledWith("plan-1");
   });
 });

@@ -48,6 +48,11 @@ PLATFORM_ADMIN_PERMISSIONS = {
     "ingestion:commit",
     "ingestion:cancel",
     "ingestion:template-manage",
+    "mold-planning:read",
+    "mold-planning:create",
+    "mold-planning:manage",
+    "mold-planning:complete",
+    "rules:override",
 }
 
 
