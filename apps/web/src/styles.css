@@ -4612,6 +4612,20 @@ button:not(:disabled):active { transform: translateY(0); }
 .enterprise-bulk-panel h3,
 .enterprise-bulk-panel p { margin: 0; }
 .history-detail-card { display: grid; gap: 0.75rem; border: 1px solid #d9e3ec; border-radius: 15px; padding: 1rem; background: #fff; }
+.large-cad-preview-notice {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #bfd3ef;
+  border-radius: 13px;
+  padding: 1rem;
+  background: #f3f7fd;
+}
+.large-cad-preview-notice strong,
+.large-cad-preview-notice p { margin: 0; }
+.large-cad-preview-notice p { margin-top: 0.3rem; color: #5b6f88; }
+.large-cad-preview-notice button { flex: 0 0 auto; }
 .history-detail-card h3,
 .history-detail-card h4 { margin: 0; }
 .history-detail-card h3 { display: flex; gap: 0.5rem; align-items: center; }
@@ -4779,6 +4793,8 @@ button:not(:disabled):active { transform: translateY(0); }
   .history-export-list article { grid-template-columns: 1fr; }
   .history-mutation-grid { grid-template-columns: 1fr; }
   .history-mutation-grid .form-wide { grid-column: auto; }
+  .large-cad-preview-notice { align-items: stretch; flex-direction: column; }
+  .large-cad-preview-notice button { width: 100%; }
   .history-diff span { transform: rotate(90deg); text-align: center; }
   .ingestion-result-list article { grid-template-columns: 1fr; }
   .detail-drawer { width: 100vw; }

@@ -4,6 +4,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from "vue
 import {
   fetchCADJob,
   fetchRecentCAD,
+  isCADModelJob,
   type CADArtifactSummary,
   type CADJob,
   type CADModelResult,
@@ -227,11 +228,10 @@ async function browseRecent(curated = false): Promise<void> {
     catalogLabel.value = curated ? "curated Demo queries" : "recent processed CAD";
     recentJobs.value = artifacts.flatMap((artifact) =>
       artifact.jobs
+        .filter(isCADModelJob)
         .filter(
           (candidate) =>
-            candidate.capability.startsWith("cad.parse@") &&
-            candidate.state === "succeeded" &&
-            candidate.result?.similarity_index?.status === "indexed" &&
+            candidate.result.similarity_index?.status === "indexed" &&
             (!curated || artifact.source?.role === "query"),
         )
         .map((candidate) => ({

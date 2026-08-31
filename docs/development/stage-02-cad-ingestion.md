@@ -58,6 +58,24 @@ Upload fields:
   presenting an unreliable number.
 - Preview output keys are deterministic, allowing safe replay of the same Job handler.
 
+## History viewer resilience
+
+Artifact history is intentionally broader than the CAD parser result. The same ArtifactVersion can
+be referenced by parse, similarity, design review, and later engineering jobs. Their `result`
+payloads are polymorphic and must be interpreted using the Job capability plus a runtime shape
+guard.
+
+The Web history detail therefore projects geometry only from successful `cad.parse@*` jobs. This
+keeps the Geometry count accurate and prevents similarity or review payloads from being rendered as
+`CADModelResult`. If no valid parse result exists, the page shows an empty state that directs the
+operator to the complete Jobs evidence instead of rendering a blank detail page.
+
+Derived STL previews smaller than 12 MiB continue to load automatically. Larger previews show
+their download size and require an explicit `Load 3D preview` action. Bounding box, volume, surface
+area, parser identity, topology counts, quality flags, and feature index evidence remain visible
+before the large mesh is downloaded and parsed by Three.js. This is a UI responsiveness safeguard;
+it does not alter or discard the immutable source or derived preview.
+
 ## Current security boundary
 
 Stage 2 enforces supported extensions, STEP/STL content signatures, file-size limits, safe logical
@@ -85,3 +103,7 @@ HTTP API, CAD queue, parsers, database, lineage, and preview download:
 ```powershell
 .\scripts\smoke.ps1
 ```
+
+The Web regression suite also covers an artifact containing both `mold.similarity_search` and
+`cad.parse` results, verifies that only the parse result appears in Geometry, and verifies the
+large-preview confirmation path.

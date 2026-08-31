@@ -55,7 +55,7 @@ export type CADModelResult = {
   }>;
 };
 
-export type CADJob = {
+type CADJobBase = {
   schema_version: "1.0";
   job_id: string;
   capability: string;
@@ -72,9 +72,31 @@ export type CADJob = {
   attempt: number;
   artifact_version_id: string;
   correlation_id: string;
-  result: CADModelResult | null;
   error: { code: string; message: string; retryable: boolean; correlation_id: string } | null;
 };
+
+export type CADJob = CADJobBase & {
+  result: CADModelResult | null;
+};
+
+export type CADArtifactJob = CADJobBase & {
+  // Artifact history contains capability-dependent results, including similarity and review payloads.
+  result: unknown;
+};
+
+export function isCADModelJob(job: CADArtifactJob): job is CADJob & { result: CADModelResult } {
+  if (!job.capability.startsWith("cad.parse@") || job.state !== "succeeded") return false;
+  if (!job.result || typeof job.result !== "object") return false;
+  const result = job.result as Partial<CADModelResult>;
+  return (
+    typeof result.cad_model_id === "string" &&
+    typeof result.artifact_version_id === "string" &&
+    typeof result.geometry_status === "string" &&
+    typeof result.parser?.name === "string" &&
+    typeof result.parser?.version === "string" &&
+    Array.isArray(result.quality_flags)
+  );
+}
 
 export type CADUploadAccepted = {
   status: "accepted";
@@ -120,7 +142,7 @@ export type CADArtifactSummary = {
     rank_group?: string;
     dataset_version?: string;
   } | null;
-  jobs: CADJob[];
+  jobs: CADArtifactJob[];
   versions?: ArtifactVersion[];
   lineage?: CADLineageEdge[];
 };

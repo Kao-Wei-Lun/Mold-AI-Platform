@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, reactive, ref, watch } from "vue";
 
-import { fetchCADArtifactDetail, fetchCADHistory, type CADArtifactSummary, type CADHistorySummary } from "../api/cad";
+import { fetchCADArtifactDetail, fetchCADHistory, isCADModelJob, type CADArtifactSummary, type CADHistorySummary, type CADModelResult } from "../api/cad";
 import {
   fetchRegistry,
   fetchRegistryMoldDetail,
@@ -25,6 +25,7 @@ import DataTable from "./DataTable.vue";
 import DetailTabs from "./DetailTabs.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RecordHeader from "./RecordHeader.vue";
+import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 const props = withDefaults(defineProps<{
@@ -53,6 +54,8 @@ const mutationNotice = ref<string | null>(null);
 const reason = ref("");
 const registryForm = reactive({ name: "", description: "", product_type: "", material_code: "", mold_type: "", cavity_count: 1, status: "active", change_summary: "" });
 const artifactForm = reactive({ name: "", product_type: "", material_code: "", lifecycle_status: "active", quality_status: "pending" });
+const requestedLargePreviews = ref<Record<string, boolean>>({});
+const LARGE_PREVIEW_BYTES = 12 * 1024 * 1024;
 
 const location = computed(() => new URL(props.path, window.location.origin));
 const segments = computed(() => location.value.pathname.split("/").filter(Boolean));
@@ -61,7 +64,25 @@ const registryView = computed(() => location.value.searchParams.get("view") || "
 const registryKind = computed(() => ["projects", "parts", "revisions"].includes(segments.value[2]) ? segments.value[2] : "molds");
 const recordId = computed(() => registryKind.value === "molds" ? (segments.value[2] || "") : (segments.value[3] || ""));
 const cadId = computed(() => segments.value[2] || "");
-const cadModels = computed(() => (artifact.value?.jobs || []).flatMap((job) => job.result ? [job.result] : []));
+const cadModels = computed(() =>
+  (artifact.value?.jobs || []).filter(isCADModelJob).map((job) => job.result),
+);
+
+function previewRequiresConfirmation(model: CADModelResult): boolean {
+  return Boolean(model.preview?.size_bytes && model.preview.size_bytes >= LARGE_PREVIEW_BYTES);
+}
+
+function shouldLoadPreview(model: CADModelResult): boolean {
+  return !previewRequiresConfirmation(model) || requestedLargePreviews.value[model.cad_model_id] === true;
+}
+
+function loadLargePreview(model: CADModelResult): void {
+  requestedLargePreviews.value = { ...requestedLargePreviews.value, [model.cad_model_id]: true };
+}
+
+function previewSize(model: CADModelResult): string {
+  return `${((model.preview?.size_bytes || 0) / 1024 / 1024).toFixed(1)} MB`;
+}
 
 function pretty(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
@@ -131,6 +152,7 @@ async function load(): Promise<void> {
   mold.value = null;
   revision.value = null;
   artifact.value = null;
+  requestedLargePreviews.value = {};
   try {
     if (props.domain === "cad-artifacts") {
       if (cadId.value) artifact.value = await fetchCADArtifactDetail(cadId.value);
@@ -223,8 +245,23 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
       <PropertyGrid v-if="activeTab === 'overview'" :items="[{ label: t('Dataset'), value: artifact.dataset_id }, { label: t('Mold revision'), value: artifact.mold_revision ? `${artifact.mold_revision.mold_code}@${artifact.mold_revision.revision_code}` : '—' }, { label: t('Product type'), value: artifact.product_type }, { label: t('Material'), value: artifact.material_code }, { label: t('Classification'), value: artifact.classification }, { label: t('Quality'), value: artifact.quality_status }, { label: t('Created'), value: new Date(artifact.created_at).toLocaleString() }]" />
       <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'version', label: t('Version') }, { key: 'file', label: t('File') }, { key: 'format', label: t('Format') }, { key: 'size', label: t('Size') }, { key: 'sha', label: 'SHA-256' }, { key: 'screening', label: t('Malware status') }, { key: 'source', label: t('Source system') }]" :items="(artifact.versions || []).map((item) => ({ id: item.artifact_version_id, version: item.version_number, file: item.original_filename, format: item.format, size: item.size_bytes, sha: item.sha256, screening: item.malware_status, source: item.source_system }))" />
       <div v-else-if="activeTab === 'geometry'" class="history-stack">
+        <WorkspaceEmptyState
+          v-if="!cadModels.length"
+          :eyebrow="t('Geometry')"
+          :title="t('No processed geometry is available')"
+          :message="t('This record has no successful CAD parsing result. Review its Jobs tab for processing status or errors.')"
+          :action-label="t('Open Jobs')"
+          @action="setTab('jobs')"
+        />
         <article v-for="model in cadModels" :key="model.cad_model_id" class="history-detail-card">
-          <CadPreview v-if="model.preview?.download_url" :source="model.preview.download_url" />
+          <section v-if="model.preview?.download_url && !shouldLoadPreview(model)" class="large-cad-preview-notice" role="status">
+            <div>
+              <strong>{{ t("Large 3D preview") }}</strong>
+              <p>{{ t("This preview is {size}. Load it on demand to keep the history page responsive.", { size: previewSize(model) }) }}</p>
+            </div>
+            <button type="button" @click="loadLargePreview(model)">{{ t("Load 3D preview") }}</button>
+          </section>
+          <CadPreview v-else-if="model.preview?.download_url" :source="model.preview.download_url" />
           <PropertyGrid :items="[{ label: t('Geometry status'), value: model.geometry_status }, { label: t('Parser'), value: `${model.parser.name}@${model.parser.version}` }, { label: t('Unit system'), value: model.unit_system }, { label: t('Bounding box'), value: pretty(model.bounding_box) }, { label: t('Volume'), value: model.volume }, { label: t('Surface area'), value: model.surface_area }, { label: t('Faces / Edges'), value: `${model.face_count} / ${model.edge_count}` }, { label: t('Quality flags'), value: model.quality_flags.join(', ') || '—' }]" />
           <DataTable :columns="[{ key: 'schema', label: t('Feature schema') }, { key: 'extractor', label: t('Extractor') }, { key: 'collection', label: t('Index collection') }, { key: 'version', label: t('Index version') }, { key: 'status', label: t('Status') }]" :items="(model.feature_sets || []).map((item) => ({ id: item.feature_set_id, schema: item.schema_version, extractor: item.extractor_version, collection: item.index_collection, version: item.index_version, status: item.status }))" :empty-text="t('No feature sets recorded.')" />
         </article>

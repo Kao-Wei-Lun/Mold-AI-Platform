@@ -30,7 +30,10 @@ describe("RegistryCadHistoryWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       artifact_id: "artifact-1", name: "Housing A", kind: "cad_source", classification: "public_demo", dataset_id: "curated", product_type: "housing", material_code: "ABS", mold_revision_id: "revision-1", mold_revision: { revision_code: "A", mold_id: "mold-1", mold_code: "MOLD-001" }, lifecycle_status: "active", quality_status: "validated", created_at: "2026-08-29T00:00:00Z", source: null,
       versions: [{ artifact_version_id: "version-1", version_number: 1, original_filename: "housing.stl", media_type: "model/stl", format: "stl", size_bytes: 512, sha256: "abc", classification: "public_demo", malware_status: "basic_screened", source_system: "curated", supersedes_id: null, created_at: "2026-08-29T00:00:00Z", download_url: "/download/version-1" }],
-      jobs: [{ schema_version: "1.0", job_id: "job-1", capability: "cad.parse@1.0.0", state: "succeeded", stage: "completed", progress: 100, attempt: 1, artifact_version_id: "version-1", correlation_id: "correlation-1", error: null, result: { cad_model_id: "cad-1", artifact_version_id: "version-1", cad_format: "stl", unit_system: "mm", parser: { name: "trimesh", version: "4" }, geometry_status: "succeeded", bounding_box: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 }, size: { x: 1, y: 1, z: 1 } }, volume: 1, surface_area: 6, face_count: 12, edge_count: 18, surface_type_histogram: { triangle: 12 }, quality_flags: [], preview: { artifact_version_id: "preview-1", original_filename: "preview.stl", media_type: "model/stl", format: "stl", size_bytes: 256, sha256: "def", download_url: "/download/preview-1" }, similarity_index: null, feature_sets: [{ feature_set_id: "feature-1", schema_version: "1.0", extractor_version: "1", index_collection: "cad", index_version: "v1", status: "indexed", error_code: null, created_at: "2026-08-29T00:00:00Z" }] } }],
+      jobs: [
+        { schema_version: "1.0", job_id: "search-1", capability: "mold.similarity_search@1.0.0", state: "succeeded", stage: "completed", progress: 100, attempt: 1, artifact_version_id: "version-1", correlation_id: "correlation-search", error: null, result: { search_id: "search-1", query_ref: {}, results: [] } },
+        { schema_version: "1.0", job_id: "job-1", capability: "cad.parse@1.0.0", state: "succeeded", stage: "completed", progress: 100, attempt: 1, artifact_version_id: "version-1", correlation_id: "correlation-1", error: null, result: { cad_model_id: "cad-1", artifact_version_id: "version-1", cad_format: "stl", unit_system: "mm", parser: { name: "trimesh", version: "4" }, geometry_status: "succeeded", bounding_box: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 }, size: { x: 1, y: 1, z: 1 } }, volume: 1, surface_area: 6, face_count: 12, edge_count: 18, surface_type_histogram: { triangle: 12 }, quality_flags: [], preview: { artifact_version_id: "preview-1", original_filename: "preview.stl", media_type: "model/stl", format: "stl", size_bytes: 20 * 1024 * 1024, sha256: "def", download_url: "/download/preview-1" }, similarity_index: null, feature_sets: [{ feature_set_id: "feature-1", schema_version: "1.0", extractor_version: "1", index_collection: "cad", index_version: "v1", status: "indexed", error_code: null, created_at: "2026-08-29T00:00:00Z" }] } },
+      ],
       lineage: [{ edge_id: "edge-1", from_artifact_version_id: "version-1", to_artifact_version_id: "preview-1", relationship: "derived_from", job_id: "job-1", direction: "outbound", created_at: "2026-08-29T00:00:00Z" }],
     })));
     const wrapper = mount(RegistryCadHistoryWorkspace, {
@@ -41,6 +44,13 @@ describe("RegistryCadHistoryWorkspace", () => {
 
     expect(wrapper.text()).toContain("trimesh@4");
     expect(wrapper.text()).toContain("indexed");
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toContain("1");
+    expect(wrapper.findAll(".history-detail-card")).toHaveLength(1);
+    expect(wrapper.text()).toContain("Large 3D preview");
+    expect(wrapper.find("cad-preview-stub").exists()).toBe(false);
+    await wrapper.get(".large-cad-preview-notice button").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("cad-preview-stub").exists()).toBe(true);
     await wrapper.setProps({ path: "/data/cad-artifacts/artifact-1?tab=lineage" });
     await flushPromises();
     expect(wrapper.text()).toContain("derived_from");

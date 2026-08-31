@@ -124,6 +124,25 @@ All detail responses contain this envelope in addition to domain content:
 The server is authoritative for `capabilities`; the client still handles `403` and lifecycle
 conflicts because hidden buttons are not an authorization boundary.
 
+### 5.1 CAD geometry detail projection
+
+`Artifact.jobs[].result` is capability-dependent. A CAD artifact detail can contain `cad.parse`,
+`mold.similarity_search`, `mold.design_review`, and future engineering job results in the same
+history envelope. Clients must not cast every non-null Job result to `CADModel`.
+
+The Geometry tab follows these rules:
+
+- include only successful `cad.parse@*` jobs whose result passes the `CADModelResult` shape guard;
+- calculate the Geometry tab count from that filtered collection, not from all non-null Job results;
+- ignore non-CAD results without failing or hiding the rest of the record detail;
+- show a governed empty state linked to the Jobs tab when no successful parsed geometry exists;
+- preserve geometry metadata and FeatureSet evidence even when a preview is absent or deferred;
+- require explicit user confirmation before downloading a preview of 12 MiB or larger, so a large
+  tessellated STEP preview cannot block the history page before metadata is visible.
+
+This is a client projection rule; Job history remains complete and immutable. Similarity, review,
+and other analysis results remain available through their own tabs and historical result routes.
+
 ## 6. Mutation contract
 
 Mutable requests include optimistic concurrency and a reason:
@@ -261,3 +280,14 @@ Every error includes `code`, `message`, `request_id`, safe `details` and optiona
 | H5 | Rule/Knowledge version contracts |
 | H6 | Analysis, Job, Audit and Lineage contracts |
 | H7 | Pagination at scale, isolation, bulk and enterprise controls |
+
+## 14. CAD geometry regression acceptance
+
+- An artifact with one successful `cad.parse` job and one successful similarity job displays a
+  Geometry count of `1` and renders exactly one geometry card.
+- A capability result without `cad_model_id`, parser identity, geometry status, and quality flags
+  is not rendered as geometry.
+- A large preview first shows its size and a `Load 3D preview` action; metadata remains usable
+  before the user starts the download.
+- Selecting Geometry must never remove the artifact header or the rest of the detail workspace
+  because another Job returned a different result schema.
