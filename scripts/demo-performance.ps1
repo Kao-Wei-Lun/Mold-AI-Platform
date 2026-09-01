@@ -38,7 +38,9 @@ $endpointDefinitions = @(
     [ordered]@{ name = "cad_artifacts"; path = "/api/v1/cad-artifacts"; authenticated = $true; max_p95_ms = $MaxP95Ms },
     [ordered]@{ name = "trial_cases"; path = "/api/v1/trial-cases"; authenticated = $true; max_p95_ms = $MaxP95Ms },
     [ordered]@{ name = "cae_studies"; path = "/api/v1/cae-studies"; authenticated = $true; max_p95_ms = $MaxP95Ms },
-    [ordered]@{ name = "mold_plans"; path = "/api/v1/mold-plans?page=1&page_size=25"; authenticated = $true; max_p95_ms = 1000 }
+    [ordered]@{ name = "mold_plans"; path = "/api/v1/mold-plans?page=1&page_size=25"; authenticated = $true; max_p95_ms = 1000 },
+    [ordered]@{ name = "registry_molds"; path = "/api/v1/registry/molds?page=1&page_size=25&sort=-updated_at"; authenticated = $true; max_p95_ms = 1500 },
+    [ordered]@{ name = "registry_data_quality"; path = "/api/v1/registry/data-quality"; authenticated = $true; max_p95_ms = 1500 }
 )
 $metrics = @()
 foreach ($definition in $endpointDefinitions) {

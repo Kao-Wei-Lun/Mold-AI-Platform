@@ -1,12 +1,16 @@
 # 模具台帳工作區與完整模具履歷改善規劃
 
-版本：1.0 Proposed Baseline
+版本：1.1 Implemented Demo Baseline
 
 日期：2026-08-31
 
-狀態：待確認後分階段實作
+狀態：Demo Phase 1–6 已完成
 
 適用範圍：Mold AI Platform Demo 與未來 Enterprise 版本
+
+實作完成日期：2026-09-01
+
+實作紀錄：Phase 1–6 已依本文件完成；各階段均在測試通過後建立獨立 Git Commit。Enterprise Connector、SSO、正式容量規劃與公司資料 UAT 仍屬未來企業導入範圍。
 
 ## 1. 文件目的
 

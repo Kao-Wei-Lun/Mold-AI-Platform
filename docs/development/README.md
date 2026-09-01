@@ -379,3 +379,8 @@ the Embedded Engineering Assistant context. See
 Stage 37 Phase 5 connects the Registry workspace to the governed CSV/XLSX ingestion flow and adds
 an authorized, actionable data-quality dashboard with correction links and import batch evidence.
 See [`stage-37-phase-5-registry-import-quality.md`](stage-37-phase-5-registry-import-quality.md).
+
+Stage 38 Phase 6 releases the completed Mold Registry workspace to the owner-only external Demo,
+adds Registry performance probes, verifies the Sites/MCP security boundary and retains one current
+Mold AI application image. See
+[`stage-38-phase-6-mold-registry-release.md`](stage-38-phase-6-mold-registry-release.md).
