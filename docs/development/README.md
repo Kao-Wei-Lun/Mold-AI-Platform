@@ -384,3 +384,8 @@ Stage 38 Phase 6 releases the completed Mold Registry workspace to the owner-onl
 adds Registry performance probes, verifies the Sites/MCP security boundary and retains one current
 Mold AI application image. See
 [`stage-38-phase-6-mold-registry-release.md`](stage-38-phase-6-mold-registry-release.md).
+
+Stage 39 fixes Registry engineering-history loading for molds linked to Design Review or
+Similarity Search jobs, preserves legacy job compatibility and replaces raw HTML/JSON parser
+errors with a governed Web message. See
+[`stage-39-registry-engineering-history-hotfix.md`](stage-39-registry-engineering-history-hotfix.md).

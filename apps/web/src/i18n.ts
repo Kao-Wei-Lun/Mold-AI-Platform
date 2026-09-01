@@ -466,6 +466,7 @@ const zhTW: Record<string, string> = {
   "Back to records": "返回記錄清單",
   "Loading complete historical record…": "正在載入完整歷史記錄…",
   "Unable to load historical data.": "無法載入歷史資料。",
+  "The Registry service returned an invalid response. Please retry or contact the administrator.": "模具台帳服務傳回無效回應，請重試或聯絡系統管理員。",
   "No trial history found.": "找不到試模歷史記錄。",
   "No CAE history found.": "找不到 CAE 歷史記錄。",
   "No HMI extraction history found.": "找不到 HMI 擷取歷史記錄。",

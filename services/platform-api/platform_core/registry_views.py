@@ -18,6 +18,7 @@ from .models import (
     BulkImportBatch,
     CAEStudy,
     DataScope,
+    Job,
     MasterDataItem,
     Mold,
     MoldPlan,
@@ -279,6 +280,12 @@ def _visible_acl_record(request: Request, record: CAEStudy | TrialCase) -> bool:
     return bool(_allowed_scope_codes(request).intersection(set(record.acl_scopes or [])))
 
 
+def _job_requester(job: Job) -> str:
+    snapshot = job.input_snapshot if isinstance(job.input_snapshot, dict) else {}
+    requester = str(snapshot.get("requested_by") or "").strip()
+    return requester[:128] or "system"
+
+
 def _registry_engineering_records(
     request: Request, mold: Mold, revision: MoldRevision | None = None
 ) -> list[dict[str, object]]:
@@ -334,7 +341,7 @@ def _registry_engineering_records(
                 "record_id": str(review.id),
                 "title": f"{review.profile.profile_key}@{review.profile.version}",
                 "status": review.review_status,
-                "owner": review.job.created_by,
+                "owner": _job_requester(review.job),
                 "revision_ref": f"{mold.mold_code}@{linked_revision.revision_code}",
                 "created_at": review.created_at.isoformat(),
                 "updated_at": (review.completed_at or review.created_at).isoformat(),
@@ -358,7 +365,7 @@ def _registry_engineering_records(
                 "record_id": str(search.id),
                 "title": f"Similarity · top {search.top_k}",
                 "status": search.job.state,
-                "owner": search.job.created_by,
+                "owner": _job_requester(search.job),
                 "revision_ref": f"{mold.mold_code}@{linked_revision.revision_code}",
                 "created_at": search.created_at.isoformat(),
                 "updated_at": (search.completed_at or search.created_at).isoformat(),

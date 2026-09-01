@@ -356,7 +356,9 @@ class AnalysisDetailView(APIView):
             return Response(_analysis_detail(record_type, record_id))
         if action != "rerun":
             return _error(request, "VALIDATION_ACTION", "Use rerun, archive or restore.", 400)
-        new_type, new_id, job_id = _rerun_analysis(record_type, record_id)
+        new_type, new_id, job_id = _rerun_analysis(
+            record_type, record_id, requested_by=_actor(request)
+        )
         if not new_id:
             return _error(request, "ANALYSIS_RERUN_UNSUPPORTED", "Analysis cannot be rerun.", 409)
         audit_identity_event(
@@ -370,7 +372,9 @@ class AnalysisDetailView(APIView):
         )
 
 
-def _rerun_analysis(record_type: str, record_id: str) -> tuple[str, str, str | None]:
+def _rerun_analysis(
+    record_type: str, record_id: str, *, requested_by: str = "system"
+) -> tuple[str, str, str | None]:
     if record_type == "similarity":
         source = (
             SimilaritySearch.objects.select_related("query_feature_set__cad_model")
@@ -382,6 +386,7 @@ def _rerun_analysis(record_type: str, record_id: str) -> tuple[str, str, str | N
                 source.query_feature_set.cad_model.artifact_version,
                 top_k=source.top_k,
                 filters=source.filters,
+                requested_by=requested_by,
             )
             run_similarity_job.apply_async(args=[str(records.job.id)], queue="cad")
             return record_type, str(records.search.id), str(records.job.id)
@@ -389,7 +394,9 @@ def _rerun_analysis(record_type: str, record_id: str) -> tuple[str, str, str | N
         source = ReviewRun.objects.select_related("cad_model").filter(id=record_id).first()
         if source:
             records = create_design_review_records(
-                source.cad_model.artifact_version, context=source.context
+                source.cad_model.artifact_version,
+                context=source.context,
+                requested_by=requested_by,
             )
             run_design_review_job.apply_async(args=[str(records.job.id)], queue="cad")
             return record_type, str(records.review.id), str(records.job.id)
@@ -521,7 +528,7 @@ class JobHistoryDetailView(APIView):
                 if record_type == "similarity"
                 else str(job.design_review.id)
             )
-            _, _, new_job_id = _rerun_analysis(record_type, source_id)
+            _, _, new_job_id = _rerun_analysis(record_type, source_id, requested_by=_actor(request))
             new_job = Job.objects.prefetch_related("events").get(id=new_job_id)
         elif job.capability_id in {"cad.parse", "knowledge.ingest"}:
             new_job = Job.objects.create(

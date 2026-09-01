@@ -870,6 +870,7 @@ class MoldPlanHandoffView(APIView):
                     plan.cad_artifact_version,
                     idempotency_key=f"mold-plan:{plan.id}:resolution:{resolution.id}:review",
                     pinned_resolution=resolution,
+                    requested_by=_actor(request),
                 )
             except DesignReviewValidationError as exc:
                 return _error(request, exc.code, exc.user_message, 409)

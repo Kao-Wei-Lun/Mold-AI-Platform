@@ -1344,6 +1344,7 @@ class DesignReviewListCreateView(APIView):
                 requested_profile_id=(str(requested_profile_id) if requested_profile_id else None),
                 override_reason=str(request.data.get("override_reason", "")),
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
+                requested_by=str(getattr(request._request, "mold_ai_actor_id", "anonymous")),
             )
         except DesignReviewValidationError as exc:
             conflict = (
@@ -1513,6 +1514,7 @@ class SimilaritySearchListCreateView(APIView):
                 top_k=top_k,
                 filters=filters,
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
+                requested_by=str(getattr(request._request, "mold_ai_actor_id", "anonymous")),
             )
         except SimilarityValidationError as exc:
             conflict = exc.code.startswith("CONFLICT_")

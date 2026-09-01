@@ -374,7 +374,9 @@ async function load(): Promise<void> {
       });
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t("Unable to load historical data.");
+    error.value = caught instanceof RegistryError && caught.code === "REGISTRY_RESPONSE_INVALID"
+      ? t("The Registry service returned an invalid response. Please retry or contact the administrator.")
+      : caught instanceof Error ? caught.message : t("Unable to load historical data.");
   } finally {
     loading.value = false;
   }

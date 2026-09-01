@@ -127,6 +127,31 @@ describe("RegistryCadHistoryWorkspace", () => {
     expect(wrapper.text()).toContain("Create mold");
   });
 
+  it("shows a governed message when the Registry returns HTML instead of JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("engineering-history")) return new Response(
+        "<!doctype html><title>Server Error</title>",
+        { status: 500, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+      return response({
+        id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: null,
+        part_number: null, mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection",
+        cavity_count: 2, status: "active", row_version: 1, revision_count: 1,
+        current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 1,
+        revisions: [],
+      });
+    }));
+    const wrapper = mount(RegistryCadHistoryWorkspace, {
+      props: { domain: "molds", path: "/governance/mold-registry/molds/mold-1", registryMode: true },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      "The Registry service returned an invalid response. Please retry or contact the administrator.",
+    );
+    expect(wrapper.text()).not.toContain("Unexpected token");
+  });
+
   it("shows CAD versions, geometry, feature indexes, jobs and lineage", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       artifact_id: "artifact-1", name: "Housing A", kind: "cad_source", classification: "public_demo", dataset_id: "curated", product_type: "housing", material_code: "ABS", mold_revision_id: "revision-1", mold_revision: { revision_code: "A", mold_id: "mold-1", mold_code: "MOLD-001" }, lifecycle_status: "active", quality_status: "validated", created_at: "2026-08-29T00:00:00Z", source: null,

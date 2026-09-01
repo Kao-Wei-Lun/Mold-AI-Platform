@@ -206,6 +206,7 @@ def create_similarity_records(
     top_k: int = 10,
     filters: dict[str, object] | None = None,
     idempotency_key: str | None = None,
+    requested_by: str = "system",
 ) -> SimilarityRecords:
     if not 1 <= top_k <= 50:
         raise SimilarityValidationError("VALIDATION_TOP_K", "top_k must be between 1 and 50.")
@@ -265,6 +266,7 @@ def create_similarity_records(
             input_artifact_version=query_version,
             input_snapshot={
                 "schema_version": "1.0",
+                "requested_by": (requested_by.strip() or "system")[:128],
                 "cad_artifact_version_id": str(query_version.id),
                 "profile": profile.profile_key,
                 "filters": normalized_filters,

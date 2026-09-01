@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from tempfile import TemporaryDirectory
 from time import perf_counter
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
+from platform_core.design_review import create_design_review_records
 from platform_core.identity import ensure_account_profile
+from platform_core.ingestion import create_upload_records
 from platform_core.models import (
     AccessRole,
     Artifact,
@@ -23,6 +27,8 @@ from platform_core.models import (
     RoleAssignment,
     TrialCase,
 )
+from platform_core.tasks import process_cad_job
+from platform_core.tests.fixtures import ASCII_TETRAHEDRON_STL
 
 
 def account(username: str, role_code: str):
@@ -197,6 +203,34 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(revision_response.status_code, 200)
         self.assertEqual(revision_response.json()["subject"]["revision_id"], str(revision.id))
+
+    def test_engineering_history_handles_job_requesters_and_legacy_jobs(self):
+        _, _, mold_payload, revision_payload = self.create_hierarchy()
+        revision = MoldRevision.objects.get(id=revision_payload["id"])
+        with (
+            TemporaryDirectory() as media_root,
+            self.settings(MEDIA_ROOT=media_root, SIMILARITY_AUTO_INDEX=False),
+        ):
+            upload = SimpleUploadedFile(
+                "registry-review.stl", ASCII_TETRAHEDRON_STL, content_type="model/stl"
+            )
+            upload_records = create_upload_records(upload, artifact_name="Registry review")
+            upload_records.artifact.mold_revision = revision
+            upload_records.artifact.save(update_fields=["mold_revision"])
+            process_cad_job.run(str(upload_records.job.id))
+            create_design_review_records(upload_records.version, requested_by="registry-engineer")
+            create_design_review_records(upload_records.version)
+
+            response = self.client.get(
+                f"/api/v1/registry/molds/{mold_payload['id']}/engineering-history"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        reviews = [
+            item for item in response.json()["items"] if item["record_type"] == "design_review"
+        ]
+        self.assertEqual(len(reviews), 2)
+        self.assertEqual({item["owner"] for item in reviews}, {"registry-engineer", "system"})
 
     def test_data_quality_connects_registry_issues_and_authorized_import_batches(self):
         _, _, mold_payload, revision_payload = self.create_hierarchy()

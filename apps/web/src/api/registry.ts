@@ -217,7 +217,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set("Accept", "application/json");
   if (init.body) headers.set("Content-Type", "application/json");
   const response = await apiFetch(`${apiBaseUrl}${path}`, { ...init, headers });
-  const payload = await response.json();
+  const contentType = response.headers?.get?.("content-type") || "";
+  if (contentType && !contentType.toLowerCase().includes("json")) {
+    throw new RegistryError(
+      `Registry service returned an invalid response (HTTP ${response.status}).`,
+      response.status,
+      "REGISTRY_RESPONSE_INVALID",
+    );
+  }
+  let payload: any;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new RegistryError(
+      `Registry service returned an invalid response (HTTP ${response.status}).`,
+      response.status,
+      "REGISTRY_RESPONSE_INVALID",
+    );
+  }
   if (!response.ok) {
     const message = payload?.error?.message || `Registry returned HTTP ${response.status}`;
     throw new RegistryError(message, response.status, payload?.error?.code || "REGISTRY_ERROR");

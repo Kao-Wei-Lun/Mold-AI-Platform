@@ -356,6 +356,7 @@ def create_design_review_records(
     override_reason: str = "",
     idempotency_key: str | None = None,
     pinned_resolution: MoldPlanResolution | None = None,
+    requested_by: str = "system",
 ) -> DesignReviewRecords:
     try:
         cad_model = CADModel.objects.select_related("artifact_version__artifact").get(
@@ -438,6 +439,7 @@ def create_design_review_records(
     rules = list(profile.rules.filter(enabled=True))
     snapshot = {
         "schema_version": "1.0",
+        "requested_by": (requested_by.strip() or "system")[:128],
         "cad_artifact_version_id": str(artifact_version.id),
         "cad_sha256": artifact_version.sha256,
         "cad_parser": f"{cad_model.parser_name}@{cad_model.parser_version}",
