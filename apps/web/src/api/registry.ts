@@ -47,6 +47,7 @@ export type RegistryMold = {
   current_revision_id: string | null;
   current_revision_code: string | null;
   artifact_count: number;
+  allowed_actions?: Array<"edit" | "create_revision" | "retire" | "reactivate" | "archive">;
   revisions?: RegistryRevision[];
   created_at?: string;
   updated_at?: string;
@@ -106,6 +107,7 @@ export type RegistryRevision = {
   row_version: number;
   released_at: string | null;
   artifact_count: number;
+  allowed_actions?: Array<"edit" | "release" | "archive">;
   artifacts?: RegistryArtifactGovernance[];
   created_at?: string;
   updated_at?: string;
@@ -124,6 +126,25 @@ export type RegistryArtifactGovernance = {
   updated_at: string;
   references: { versions: number; jobs: number; feature_sets: number; design_reviews: number };
   hard_delete_allowed: boolean;
+};
+
+export type RegistryMoldImpact = {
+  schema_version: "1.0";
+  mold_id: string;
+  mold_code: string;
+  status: RegistryMold["status"];
+  row_version: number;
+  impact: {
+    draft_revisions: number;
+    released_revisions: number;
+    cad_artifacts: number;
+    mold_plans: number;
+    design_reviews: number;
+    similarity_searches: number;
+    cae_studies: number;
+    trial_cases: number;
+  };
+  allowed_actions: NonNullable<RegistryMold["allowed_actions"]>;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
@@ -254,6 +275,42 @@ export function createRevision(input: {
   reason: string;
 }): Promise<RegistryRevision> {
   return request("/api/v1/registry/revisions", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function createNextRevision(
+  moldId: string,
+  input: { revision_code?: string; change_summary: string; reason: string },
+): Promise<RegistryRevision & { suggested_revision_code?: string }> {
+  return request(`/api/v1/registry/molds/${moldId}/revisions`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchMoldImpactPreview(id: string): Promise<RegistryMoldImpact> {
+  return request(`/api/v1/registry/molds/${id}/impact-preview`);
+}
+
+export function transitionMold(
+  mold: RegistryMold,
+  action: "retire" | "reactivate" | "archive",
+  reason: string,
+): Promise<RegistryMold & { impact: RegistryMoldImpact["impact"] }> {
+  return request(`/api/v1/registry/molds/${mold.id}/actions`, {
+    method: "POST",
+    body: JSON.stringify({ action, reason, row_version: mold.row_version }),
+  });
+}
+
+export function transitionRevision(
+  revision: RegistryRevision,
+  action: "release" | "archive",
+  reason: string,
+): Promise<RegistryRevision & { warnings?: Array<{ code: string; message: string }>; superseded_revision_id?: string | null }> {
+  return request(`/api/v1/registry/revisions/${revision.id}/actions`, {
+    method: "POST",
+    body: JSON.stringify({ action, reason, row_version: revision.row_version }),
+  });
 }
 
 export function updateRevision(

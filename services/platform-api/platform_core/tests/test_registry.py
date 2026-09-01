@@ -126,6 +126,104 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(MoldRevision.objects.get(id=first["id"]).status, "superseded")
 
+    def test_governed_revision_actions_create_release_supersede_and_archive(self):
+        _, _, mold, first = self.create_hierarchy()
+        self.client.post(
+            f"/api/v1/registry/revisions/{first['id']}/actions",
+            {"action": "release", "row_version": 1, "reason": "Release baseline"},
+            content_type="application/json",
+        )
+
+        created = self.client.post(
+            f"/api/v1/registry/molds/{mold['id']}/revisions",
+            {"change_summary": "Next governed design", "reason": "Start next version"},
+            content_type="application/json",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["revision_code"], "B")
+        self.assertEqual(created.json()["source_revision_id"], first["id"])
+
+        released = self.client.post(
+            f"/api/v1/registry/revisions/{created.json()['id']}/actions",
+            {"action": "release", "row_version": 1, "reason": "Approve new design"},
+            content_type="application/json",
+        )
+        self.assertEqual(released.status_code, 200)
+        self.assertEqual(released.json()["status"], "released")
+        self.assertEqual(released.json()["superseded_revision_id"], first["id"])
+        self.assertEqual(released.json()["warnings"][0]["code"], "RELEASED_WITHOUT_CAD")
+        self.assertEqual(MoldRevision.objects.get(id=first["id"]).status, "superseded")
+
+        immutable = self.client.patch(
+            f"/api/v1/registry/revisions/{created.json()['id']}",
+            {
+                "change_summary": "Rewrite released history",
+                "row_version": 2,
+                "reason": "Must be rejected",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(immutable.status_code, 409)
+        self.assertEqual(immutable.json()["error"]["code"], "RELEASED_REVISION_IMMUTABLE")
+
+        current_archive = self.client.post(
+            f"/api/v1/registry/revisions/{created.json()['id']}/actions",
+            {"action": "archive", "row_version": 2, "reason": "Must be rejected"},
+            content_type="application/json",
+        )
+        self.assertEqual(current_archive.status_code, 409)
+        self.assertEqual(current_archive.json()["error"]["code"], "INVALID_LIFECYCLE_TRANSITION")
+
+        archived = self.client.post(
+            f"/api/v1/registry/revisions/{first['id']}/actions",
+            {"action": "archive", "row_version": 3, "reason": "Archive superseded baseline"},
+            content_type="application/json",
+        )
+        self.assertEqual(archived.status_code, 200)
+        self.assertEqual(archived.json()["status"], "archived")
+
+    def test_mold_impact_and_lifecycle_actions_enforce_state_and_row_version(self):
+        _, _, mold, revision = self.create_hierarchy()
+        preview = self.client.get(f"/api/v1/registry/molds/{mold['id']}/impact-preview")
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.json()["impact"]["draft_revisions"], 1)
+        self.assertIn("retire", preview.json()["allowed_actions"])
+
+        stale = self.client.post(
+            f"/api/v1/registry/molds/{mold['id']}/actions",
+            {"action": "retire", "row_version": 999, "reason": "Stale request"},
+            content_type="application/json",
+        )
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()["error"]["code"], "VERSION_CONFLICT")
+
+        retired = self.client.post(
+            f"/api/v1/registry/molds/{mold['id']}/actions",
+            {"action": "retire", "row_version": 1, "reason": "End new planning"},
+            content_type="application/json",
+        )
+        self.assertEqual(retired.status_code, 200)
+        self.assertEqual(retired.json()["status"], "retired")
+        self.assertEqual(retired.json()["impact"]["draft_revisions"], 1)
+
+        invalid = self.client.post(
+            f"/api/v1/registry/molds/{mold['id']}/revisions",
+            {"revision_code": "B", "reason": "Must fail while retired"},
+            content_type="application/json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+        reactivated = self.client.post(
+            f"/api/v1/registry/molds/{mold['id']}/actions",
+            {"action": "reactivate", "row_version": 2, "reason": "Resume governed work"},
+            content_type="application/json",
+        )
+        self.assertEqual(reactivated.status_code, 200)
+        self.assertEqual(reactivated.json()["status"], "active")
+        event = AuditEvent.objects.get(event_type="registry.mold.reactivate.v1")
+        self.assertIn(f"mold:{mold['id']}", event.target_refs)
+        self.assertTrue(MoldRevision.objects.filter(id=revision["id"]).exists())
+
     def test_mold_discovery_filters_tree_and_overview_are_governed(self):
         project, part, mold, revision = self.create_hierarchy()
 

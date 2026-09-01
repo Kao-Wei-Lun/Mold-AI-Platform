@@ -366,3 +366,7 @@ responsive cards and an on-demand governed creation drawer. See
 Stage 34 Phase 2 adds stable Project, Part, Mold and Revision detail routes with reloadable
 Overview, Versions, CAD and Engineering History tabs while preserving the legacy Data Library
 routes. See [`stage-34-phase-2-mold-registry-details.md`](stage-34-phase-2-mold-registry-details.md).
+
+Stage 35 Phase 3 adds governed detail editing, next-revision creation, release/supersede,
+mold retire/reactivate/archive actions, impact previews, optimistic locking and Audit evidence.
+See [`stage-35-phase-3-mold-registry-lifecycle.md`](stage-35-phase-3-mold-registry-lifecycle.md).

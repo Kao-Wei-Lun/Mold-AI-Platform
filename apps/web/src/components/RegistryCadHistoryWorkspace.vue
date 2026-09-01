@@ -4,6 +4,8 @@ import { computed, defineAsyncComponent, reactive, ref, watch } from "vue";
 import { fetchCADArtifactDetail, fetchCADHistory, isCADModelJob, type CADArtifactSummary, type CADHistorySummary, type CADModelResult } from "../api/cad";
 import {
   fetchRegistry,
+  createNextRevision,
+  fetchMoldImpactPreview,
   fetchRegistryMoldDetail,
   fetchRegistryMolds,
   fetchRegistryPartDetail,
@@ -12,12 +14,15 @@ import {
   fetchRegistryRevisionDetail,
   fetchRegistryRevisions,
   RegistryError,
+  transitionMold,
+  transitionRevision,
   updateArtifactGovernance,
   updateMold,
   updatePart,
   updateProject,
   updateRevision,
   type RegistryMold,
+  type RegistryMoldImpact,
   type RegistryPart,
   type RegistryProject,
   type RegistryRevision,
@@ -25,10 +30,12 @@ import {
 import { useI18n } from "../i18n";
 import { emptyMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import DataTable from "./DataTable.vue";
+import DetailDrawer from "./DetailDrawer.vue";
 import DetailTabs from "./DetailTabs.vue";
 import PropertyGrid from "./PropertyGrid.vue";
 import RecordHeader from "./RecordHeader.vue";
 import WorkspaceEmptyState from "./WorkspaceEmptyState.vue";
+import { pushToast } from "../toast";
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 const props = withDefaults(defineProps<{
@@ -59,6 +66,9 @@ const reason = ref("");
 const registryForm = reactive({ name: "", description: "", product_type: "", material_code: "", mold_type: "", cavity_count: 1, status: "active", change_summary: "" });
 const artifactForm = reactive({ name: "", product_type: "", material_code: "", lifecycle_status: "active", quality_status: "pending" });
 const requestedLargePreviews = ref<Record<string, boolean>>({});
+const drawerAction = ref<"edit" | "create_revision" | "retire" | "reactivate" | "archive" | "release" | null>(null);
+const moldImpact = ref<RegistryMoldImpact | null>(null);
+const nextRevisionForm = reactive({ revision_code: "", change_summary: "" });
 const LARGE_PREVIEW_BYTES = 12 * 1024 * 1024;
 
 const location = computed(() => new URL(props.path, window.location.origin));
@@ -126,6 +136,101 @@ const partRevisions = computed(() => (part.value?.molds || []).flatMap((item) =>
 function engineeringContextMessage(): string {
   const code = project.value?.code || part.value?.part_number || mold.value?.mold_code || (revision.value ? `${revision.value.mold_code}@${revision.value.revision_code}` : "");
   return t("Engineering records for {code} will appear here when a governed workflow references this canonical record.", { code });
+}
+
+const drawerTitle = computed(() => {
+  const labels: Record<string, string> = {
+    edit: "Edit basic data",
+    create_revision: "Create next revision",
+    retire: "Retire mold",
+    reactivate: "Reactivate mold",
+    archive: revision.value ? "Archive revision" : "Archive mold",
+    release: "Release revision",
+  };
+  return t(drawerAction.value ? labels[drawerAction.value] : "Registry action");
+});
+
+function fallbackMoldActions(item: RegistryMold): NonNullable<RegistryMold["allowed_actions"]> {
+  if (item.status === "active") return ["edit", "create_revision", "retire", "archive"];
+  if (item.status === "retired") return ["edit", "reactivate", "archive"];
+  return [];
+}
+
+function fallbackRevisionActions(item: RegistryRevision): NonNullable<RegistryRevision["allowed_actions"]> {
+  if (item.status === "draft") return ["edit", "release", "archive"];
+  if (item.status === "superseded" || (item.status === "released" && mold.value?.status !== "active")) return ["archive"];
+  return [];
+}
+
+async function openDrawer(action: typeof drawerAction.value): Promise<void> {
+  drawerAction.value = action;
+  mutationError.value = null;
+  mutationNotice.value = null;
+  reason.value = "";
+  if (action === "create_revision") {
+    nextRevisionForm.revision_code = "";
+    nextRevisionForm.change_summary = "";
+  }
+  if (mold.value && ["retire", "reactivate", "archive"].includes(action || "")) {
+    try {
+      moldImpact.value = await fetchMoldImpactPreview(mold.value.id);
+    } catch (caught) {
+      mutationError.value = caught instanceof Error ? caught.message : t("Unable to load impact preview.");
+    }
+  }
+}
+
+function closeDrawer(): void {
+  drawerAction.value = null;
+  moldImpact.value = null;
+  mutationError.value = null;
+}
+
+async function saveFromDrawer(): Promise<void> {
+  await saveControlledRecord();
+  if (!mutationError.value) {
+    pushToast(t("Controlled metadata saved with audit evidence."), "success");
+    closeDrawer();
+  }
+}
+
+async function submitGovernedAction(): Promise<void> {
+  if (!reason.value.trim()) {
+    mutationError.value = t("A change reason is required.");
+    return;
+  }
+  mutating.value = true;
+  mutationError.value = null;
+  try {
+    if (drawerAction.value === "create_revision" && mold.value) {
+      const created = await createNextRevision(mold.value.id, {
+        revision_code: nextRevisionForm.revision_code.trim() || undefined,
+        change_summary: nextRevisionForm.change_summary,
+        reason: reason.value,
+      });
+      pushToast(t("Revision created."), "success");
+      closeDrawer();
+      emit("navigate", registryPath("revisions", created.id));
+      return;
+    }
+    if (mold.value && ["retire", "reactivate", "archive"].includes(drawerAction.value || "")) {
+      mold.value = await transitionMold(mold.value, drawerAction.value as "retire" | "reactivate" | "archive", reason.value);
+    } else if (revision.value && ["release", "archive"].includes(drawerAction.value || "")) {
+      const updated = await transitionRevision(revision.value, drawerAction.value as "release" | "archive", reason.value);
+      revision.value = updated;
+      if (updated.warnings?.length) pushToast(t(updated.warnings[0].message), "info");
+    }
+    pushToast(t("Registry lifecycle updated."), "success");
+    closeDrawer();
+    initializeForms();
+  } catch (caught) {
+    mutationError.value = caught instanceof RegistryError && ["VERSION_CONFLICT", "CONCURRENT_MODIFICATION"].includes(caught.code)
+      ? t("This record changed after loading. Refresh it before saving again.")
+      : caught instanceof Error ? caught.message : t("Unable to update registry lifecycle.");
+    pushToast(mutationError.value, "error");
+  } finally {
+    mutating.value = false;
+  }
 }
 
 function initializeForms(): void {
@@ -254,10 +359,10 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
     </template>
 
     <template v-else-if="project">
-      <RecordHeader :title="project.name" :identifier="project.code" :status="project.status" :version="`row ${project.row_version}`" />
+      <RecordHeader :title="project.name" :identifier="project.code" :status="project.status" :version="`row ${project.row_version}`"><template v-if="registryMode && canManage" #actions><button type="button" class="secondary-button" @click="openDrawer('edit')">{{ t("Edit basic data") }}</button></template></RecordHeader>
       <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
       <template v-if="activeTab === 'overview'">
-        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The canonical project code remains immutable; this change increments row_version and creates audit evidence.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Description") }}</span><textarea v-model="registryForm.description" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <details v-if="canManage && !registryMode" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The canonical project code remains immutable; this change increments row_version and creates audit evidence.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Description") }}</span><textarea v-model="registryForm.description" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
         <PropertyGrid :items="[{ label: t('Description'), value: project.description }, { label: t('Scope'), value: project.scope }, { label: t('Classification'), value: project.classification }, { label: t('Parts'), value: project.part_count }, { label: t('Molds'), value: project.mold_count }, { label: t('Updated'), value: project.updated_at ? new Date(project.updated_at).toLocaleString() : '—' }]" />
       </template>
       <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'number', label: t('Part number') }, { key: 'name', label: t('Name') }, { key: 'molds', label: t('Molds') }, { key: 'status', label: t('Status') }]" :items="parts.map((item) => ({ id: item.id, number: item.part_number, name: item.name, molds: item.mold_count || 0, status: item.status }))" :empty-text="t('No related parts are available.')" @select="emit('navigate', registryPath('parts', selectedId($event)))" />
@@ -266,10 +371,10 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
     </template>
 
     <template v-else-if="part">
-      <RecordHeader :title="part.name" :identifier="part.part_number" :status="part.status" :version="`row ${part.row_version}`" />
+      <RecordHeader :title="part.name" :identifier="part.part_number" :status="part.status" :version="`row ${part.row_version}`"><template v-if="registryMode && canManage" #actions><button type="button" class="secondary-button" @click="openDrawer('edit')">{{ t("Edit basic data") }}</button></template></RecordHeader>
       <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
       <template v-if="activeTab === 'overview'">
-        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The part number remains immutable; linked molds and revisions are not rewritten.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label><span>{{ t("Product type") }}</span><input v-model="registryForm.product_type" /></label><label><span>{{ t("Material") }}</span><input v-model="registryForm.material_code" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <details v-if="canManage && !registryMode" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The part number remains immutable; linked molds and revisions are not rewritten.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label><label><span>{{ t("Product type") }}</span><input v-model="registryForm.product_type" /></label><label><span>{{ t("Material") }}</span><input v-model="registryForm.material_code" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
         <PropertyGrid :items="[{ label: t('Project'), value: part.project_code }, { label: t('Product type'), value: part.product_type }, { label: t('Material'), value: part.material_code }, { label: t('Molds'), value: part.mold_count || part.molds?.length || 0 }]" />
       </template>
       <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'code', label: t('Mold code') }, { key: 'name', label: t('Name') }, { key: 'revisions', label: t('Revisions') }, { key: 'status', label: t('Status') }]" :items="(part.molds || []).map((item) => ({ id: item.id, code: item.mold_code, name: item.name, revisions: item.revision_count, status: item.status }))" :empty-text="t('No related molds are available.')" @select="emit('navigate', registryPath('molds', selectedId($event)))" />
@@ -278,10 +383,18 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
     </template>
 
     <template v-else-if="mold">
-      <RecordHeader :title="mold.name" :identifier="mold.mold_code" :status="mold.status" :version="`row ${mold.row_version}`" />
+      <RecordHeader :title="mold.name" :identifier="mold.mold_code" :status="mold.status" :version="`row ${mold.row_version}`">
+        <template v-if="registryMode && canManage" #actions>
+          <button v-if="(mold.allowed_actions || fallbackMoldActions(mold)).includes('edit')" type="button" class="secondary-button" @click="openDrawer('edit')">{{ t("Edit basic data") }}</button>
+          <button v-if="(mold.allowed_actions || fallbackMoldActions(mold)).includes('create_revision')" type="button" @click="openDrawer('create_revision')">{{ t("Create next revision") }}</button>
+          <button v-if="(mold.allowed_actions || fallbackMoldActions(mold)).includes('retire')" type="button" class="secondary-button" @click="openDrawer('retire')">{{ t("Retire mold") }}</button>
+          <button v-if="(mold.allowed_actions || fallbackMoldActions(mold)).includes('reactivate')" type="button" @click="openDrawer('reactivate')">{{ t("Reactivate mold") }}</button>
+          <button v-if="(mold.allowed_actions || fallbackMoldActions(mold)).includes('archive')" type="button" class="danger-button" @click="openDrawer('archive')">{{ t("Archive mold") }}</button>
+        </template>
+      </RecordHeader>
       <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
       <template v-if="activeTab === 'overview'">
-        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <details v-if="canManage && !registryMode" class="history-mutation-panel"><summary>{{ t("Edit controlled metadata") }}</summary><p class="history-impact">{{ t("The mold code remains immutable; released revisions and CAD evidence stay unchanged.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Name") }}</span><input v-model="registryForm.name" /></label><label><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label><label><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="retired">retired</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
         <PropertyGrid :items="[{ label: t('Project'), value: mold.project_code }, { label: t('Part number'), value: mold.part_number }, { label: t('Mold type'), value: mold.mold_type }, { label: t('Cavities'), value: mold.cavity_count }, { label: t('Current released revision'), value: mold.current_revision_code || '—' }, { label: t('CAD artifacts'), value: mold.artifact_count }]" />
         <DataTable :columns="[{ key: 'code', label: t('Recent revision') }, { key: 'summary', label: t('Change summary') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).slice(0, 3).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, status: item.status }))" :empty-text="t('No mold revisions are available.')" @select="emit('navigate', registryPath('revisions', selectedId($event)))" />
       </template>
@@ -291,10 +404,16 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
     </template>
 
     <template v-else-if="revision">
-      <RecordHeader :title="`${revision.mold_code}@${revision.revision_code}`" :identifier="revision.id" :status="revision.status" :version="`row ${revision.row_version}`" />
+      <RecordHeader :title="`${revision.mold_code}@${revision.revision_code}`" :identifier="revision.id" :status="revision.status" :version="`row ${revision.row_version}`">
+        <template v-if="registryMode && canManage" #actions>
+          <button v-if="(revision.allowed_actions || fallbackRevisionActions(revision)).includes('edit')" type="button" class="secondary-button" @click="openDrawer('edit')">{{ t("Edit basic data") }}</button>
+          <button v-if="(revision.allowed_actions || fallbackRevisionActions(revision)).includes('release')" type="button" @click="openDrawer('release')">{{ t("Release revision") }}</button>
+          <button v-if="(revision.allowed_actions || fallbackRevisionActions(revision)).includes('archive')" type="button" class="danger-button" @click="openDrawer('archive')">{{ t("Archive revision") }}</button>
+        </template>
+      </RecordHeader>
       <DetailTabs :tabs="detailTabs" :active="activeTab" @update:active="setTab" />
       <template v-if="activeTab === 'overview'">
-        <details v-if="canManage" class="history-mutation-panel"><summary>{{ t("Update revision lifecycle") }}</summary><p class="history-impact">{{ t("The revision code is immutable; release time and status transitions remain traceable.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="draft">draft</option><option value="released">released</option><option value="superseded">superseded</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change summary") }}</span><textarea v-model="registryForm.change_summary" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
+        <details v-if="canManage && !registryMode" class="history-mutation-panel"><summary>{{ t("Update revision lifecycle") }}</summary><p class="history-impact">{{ t("The revision code is immutable; release time and status transitions remain traceable.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="draft">draft</option><option value="released">released</option><option value="superseded">superseded</option><option value="archived">archived</option></select></label><label class="form-wide"><span>{{ t("Change summary") }}</span><textarea v-model="registryForm.change_summary" rows="3"></textarea></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" required /></label></div><button type="button" :disabled="mutating" @click="saveControlledRecord">{{ t("Save controlled change") }}</button></details>
         <PropertyGrid :items="[{ label: t('Change summary'), value: revision.change_summary }, { label: t('Source system'), value: revision.source_system }, { label: t('Source revision ID'), value: revision.source_revision_id }, { label: t('Released at'), value: revision.released_at ? new Date(revision.released_at).toLocaleString() : '—' }]" />
       </template>
       <PropertyGrid v-else-if="activeTab === 'versions'" :items="[{ label: t('Mold'), value: revision.mold_code }, { label: t('Revision'), value: revision.revision_code }, { label: t('Lifecycle status'), value: revision.status }, { label: t('Row version'), value: revision.row_version }]" />
@@ -337,5 +456,51 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
       <DataTable v-else-if="activeTab === 'jobs'" :columns="[{ key: 'capability', label: t('Capability') }, { key: 'stage', label: t('Stage') }, { key: 'progress', label: t('Progress') }, { key: 'attempt', label: t('Attempt') }, { key: 'state', label: t('Status') }, { key: 'error', label: t('Error') }]" :items="artifact.jobs.map((item) => ({ id: item.job_id, capability: item.capability, stage: item.stage, progress: `${item.progress}%`, attempt: item.attempt, state: item.state, error: item.error?.code || '—' }))" />
       <DataTable v-else :columns="[{ key: 'relation', label: t('Relationship') }, { key: 'from', label: t('From version') }, { key: 'to', label: t('To version') }, { key: 'direction', label: t('Direction') }, { key: 'job', label: t('Job') }]" :items="(artifact.lineage || []).map((item) => ({ id: item.edge_id, relation: item.relationship, from: item.from_artifact_version_id, to: item.to_artifact_version_id, direction: item.direction, job: item.job_id }))" :empty-text="t('No lineage edges recorded.')" />
     </template>
+
+    <DetailDrawer :open="Boolean(drawerAction)" :title="drawerTitle" :subtitle="t('Every governed change requires a reason and creates audit evidence.')" @close="closeDrawer">
+      <p v-if="mutationError" class="error-message" role="alert">{{ mutationError }}</p>
+
+      <div v-if="drawerAction === 'edit'" class="history-mutation-grid">
+        <label v-if="project || part || mold"><span>{{ t("Name") }} *</span><input v-model="registryForm.name" required /></label>
+        <label v-if="project || part"><span>{{ t("Status") }}</span><select v-model="registryForm.status"><option value="active">active</option><option value="archived">archived</option></select></label>
+        <label v-if="project" class="form-wide"><span>{{ t("Description") }}</span><textarea v-model="registryForm.description" rows="4"></textarea></label>
+        <label v-if="part"><span>{{ t("Product type") }}</span><input v-model="registryForm.product_type" /></label>
+        <label v-if="part"><span>{{ t("Material") }}</span><input v-model="registryForm.material_code" /></label>
+        <label v-if="mold"><span>{{ t("Mold type") }}</span><select v-model="registryForm.mold_type" required><option v-for="option in masterDataOptions.mold_type" :key="option.id" :value="option.code">{{ option.name_zh_tw || option.name_en }}</option></select></label>
+        <label v-if="mold"><span>{{ t("Cavities") }}</span><input v-model.number="registryForm.cavity_count" type="number" min="1" max="128" /></label>
+        <label v-if="revision" class="form-wide"><span>{{ t("Change summary") }}</span><textarea v-model="registryForm.change_summary" rows="4"></textarea></label>
+      </div>
+
+      <div v-else-if="drawerAction === 'create_revision'" class="history-stack">
+        <PropertyGrid v-if="mold" :items="[{ label: t('Source mold'), value: mold.mold_code }, { label: t('Current released revision'), value: mold.current_revision_code || '—' }, { label: t('CAD artifacts'), value: mold.artifact_count }]" />
+        <div class="history-mutation-grid">
+          <label><span>{{ t("Revision code") }}</span><input v-model="nextRevisionForm.revision_code" :placeholder="t('Leave blank to use the server suggestion')" /></label>
+          <label class="form-wide"><span>{{ t("Change summary") }} *</span><textarea v-model="nextRevisionForm.change_summary" rows="4" required></textarea></label>
+        </div>
+        <p class="history-impact">{{ t("The new revision starts as Draft and links to the current released revision without copying CAD binary files.") }}</p>
+      </div>
+
+      <div v-else class="history-stack">
+        <p class="history-impact">{{ t("Review the affected records before confirming this lifecycle change.") }}</p>
+        <PropertyGrid v-if="moldImpact" :items="[
+          { label: t('Draft revisions'), value: moldImpact.impact.draft_revisions },
+          { label: t('Released revisions'), value: moldImpact.impact.released_revisions },
+          { label: t('CAD artifacts'), value: moldImpact.impact.cad_artifacts },
+          { label: t('Mold planning records'), value: moldImpact.impact.mold_plans },
+          { label: t('Design reviews'), value: moldImpact.impact.design_reviews },
+          { label: t('Similarity searches'), value: moldImpact.impact.similarity_searches },
+          { label: t('CAE studies'), value: moldImpact.impact.cae_studies },
+          { label: t('Trial cases'), value: moldImpact.impact.trial_cases },
+        ]" />
+        <PropertyGrid v-else-if="revision" :items="[{ label: t('Revision'), value: `${revision.mold_code}@${revision.revision_code}` }, { label: t('Current status'), value: revision.status }, { label: t('CAD artifacts'), value: revision.artifact_count }]" />
+      </div>
+
+      <label class="history-json-field"><span>{{ t("Change reason") }} *</span><textarea v-model="reason" rows="3" required></textarea></label>
+      <template #footer>
+        <button type="button" class="secondary-button" :disabled="mutating" @click="closeDrawer">{{ t("Cancel") }}</button>
+        <button v-if="drawerAction === 'edit'" type="button" :disabled="mutating" @click="saveFromDrawer">{{ t("Save controlled change") }}</button>
+        <button v-else type="button" :class="{ 'danger-button': drawerAction === 'archive' || drawerAction === 'retire' }" :disabled="mutating || !reason.trim()" @click="submitGovernedAction">{{ t("Confirm governed action") }}</button>
+      </template>
+    </DetailDrawer>
   </section>
 </template>

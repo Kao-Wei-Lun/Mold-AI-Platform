@@ -12,7 +12,20 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .identity import audit_identity_event
-from .models import Artifact, DataScope, MasterDataItem, Mold, MoldRevision, ProductPart, Project
+from .models import (
+    Artifact,
+    CAEStudy,
+    DataScope,
+    MasterDataItem,
+    Mold,
+    MoldPlan,
+    MoldRevision,
+    ProductPart,
+    Project,
+    ReviewRun,
+    SimilaritySearch,
+    TrialCase,
+)
 from .pagination import PaginationValueError, paginate
 
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
@@ -177,6 +190,11 @@ def mold_payload(mold: Mold, *, include_revisions: bool = False) -> dict[str, ob
         "artifact_count": sum(len(list(item.artifacts.all())) for item in revisions),
         "created_at": mold.created_at.isoformat(),
         "updated_at": mold.updated_at.isoformat(),
+        "allowed_actions": {
+            Mold.Status.ACTIVE: ["edit", "create_revision", "retire", "archive"],
+            Mold.Status.RETIRED: ["edit", "reactivate", "archive"],
+            Mold.Status.ARCHIVED: [],
+        }[mold.status],
     }
     if include_revisions:
         payload["revisions"] = [revision_payload(item) for item in revisions]
@@ -198,7 +216,47 @@ def revision_payload(revision: MoldRevision) -> dict[str, object]:
         "artifact_count": revision.artifacts.count(),
         "created_at": revision.created_at.isoformat(),
         "updated_at": revision.updated_at.isoformat(),
+        "allowed_actions": {
+            MoldRevision.Status.DRAFT: ["edit", "release", "archive"],
+            MoldRevision.Status.RELEASED: (
+                ["archive"] if revision.mold.status != Mold.Status.ACTIVE else []
+            ),
+            MoldRevision.Status.SUPERSEDED: ["archive"],
+            MoldRevision.Status.ARCHIVED: [],
+        }[revision.status],
     }
+
+
+def _mold_impact(mold: Mold) -> dict[str, int]:
+    revisions = MoldRevision.objects.filter(mold=mold)
+    artifact_filter = Q(cad_model__artifact_version__artifact__mold_revision__mold=mold)
+    return {
+        "draft_revisions": revisions.filter(status=MoldRevision.Status.DRAFT).count(),
+        "released_revisions": revisions.filter(status=MoldRevision.Status.RELEASED).count(),
+        "cad_artifacts": Artifact.objects.filter(mold_revision__mold=mold).count(),
+        "mold_plans": MoldPlan.objects.filter(mold=mold).count(),
+        "design_reviews": ReviewRun.objects.filter(artifact_filter).distinct().count(),
+        "similarity_searches": SimilaritySearch.objects.filter(
+            query_feature_set__cad_model__artifact_version__artifact__mold_revision__mold=mold
+        ).count(),
+        "cae_studies": CAEStudy.objects.filter(
+            mold_revision_ref__startswith=f"{mold.mold_code}@"
+        ).count(),
+        "trial_cases": TrialCase.objects.filter(
+            mold_revision_ref__startswith=f"{mold.mold_code}@"
+        ).count(),
+    }
+
+
+def _suggest_revision_code(source: MoldRevision | None) -> str:
+    if source is None:
+        return "A"
+    code = source.revision_code.strip()
+    if len(code) == 1 and code.isalpha() and code.upper() != "Z":
+        return chr(ord(code.upper()) + 1)
+    if code.isdigit():
+        return str(int(code) + 1).zfill(len(code))
+    return f"{code}.1"
 
 
 def artifact_governance_payload(artifact: Artifact) -> dict[str, object]:
@@ -714,6 +772,19 @@ class MoldDetailView(APIView):
             return _error(request, "CONCURRENT_MODIFICATION", "Mold changed after loading.", 409)
         if "status" in request.data and request.data["status"] not in Mold.Status.values:
             return _error(request, "VALIDATION_STATUS", "Mold status is invalid.", 400)
+        requested_status = str(request.data.get("status", mold.status))
+        allowed_statuses = {
+            Mold.Status.ACTIVE: {Mold.Status.ACTIVE, Mold.Status.RETIRED, Mold.Status.ARCHIVED},
+            Mold.Status.RETIRED: {Mold.Status.RETIRED, Mold.Status.ACTIVE, Mold.Status.ARCHIVED},
+            Mold.Status.ARCHIVED: {Mold.Status.ARCHIVED},
+        }
+        if requested_status not in allowed_statuses[mold.status]:
+            return _error(
+                request,
+                "INVALID_LIFECYCLE_TRANSITION",
+                "The requested mold lifecycle transition is invalid.",
+                409,
+            )
         if "mold_type" in request.data:
             mold_type, invalid = _governed_mold_type(
                 request, mold.project, request.data["mold_type"]
@@ -744,6 +815,254 @@ class MoldDetailView(APIView):
             detail={"reason": reason, "status": mold.status},
         )
         return Response(mold_payload(mold))
+
+
+class MoldImpactPreviewView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request, mold_id: str) -> Response:
+        if denied := _require(request, "registry:read"):
+            return denied
+        mold = (
+            Mold.objects.select_related("project")
+            .filter(id=mold_id, project__scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
+        if mold is None:
+            return _error(request, "NOT_FOUND", "Mold not found.", 404)
+        return Response(
+            {
+                "schema_version": "1.0",
+                "mold_id": str(mold.id),
+                "mold_code": mold.mold_code,
+                "status": mold.status,
+                "row_version": mold.row_version,
+                "impact": _mold_impact(mold),
+                "allowed_actions": mold_payload(mold)["allowed_actions"],
+            }
+        )
+
+
+class MoldActionView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, mold_id: str) -> Response:
+        if denied := _require(request, "registry:manage"):
+            return denied
+        mold = (
+            Mold.objects.select_related("project")
+            .filter(id=mold_id, project__scope__code__in=_allowed_scope_codes(request))
+            .first()
+        )
+        if mold is None:
+            return _error(request, "NOT_FOUND", "Mold not found.", 404)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        try:
+            row_version = int(request.data.get("row_version", 0))
+        except (TypeError, ValueError):
+            row_version = 0
+        if row_version != mold.row_version:
+            return _error(request, "VERSION_CONFLICT", "Mold changed after loading.", 409)
+        action = str(request.data.get("action", "")).strip()
+        transitions = {
+            (Mold.Status.ACTIVE, "retire"): Mold.Status.RETIRED,
+            (Mold.Status.ACTIVE, "archive"): Mold.Status.ARCHIVED,
+            (Mold.Status.RETIRED, "reactivate"): Mold.Status.ACTIVE,
+            (Mold.Status.RETIRED, "archive"): Mold.Status.ARCHIVED,
+        }
+        target = transitions.get((mold.status, action))
+        if target is None:
+            return _error(
+                request,
+                "INVALID_LIFECYCLE_TRANSITION",
+                (
+                    f"The {action or 'requested'} action is not allowed while "
+                    f"the mold is {mold.status}."
+                ),
+                409,
+                allowed_actions=mold_payload(mold)["allowed_actions"],
+            )
+        before = mold.status
+        mold.status = target
+        mold.row_version += 1
+        mold.updated_by = _actor(request)
+        mold.save(update_fields=["status", "row_version", "updated_by", "updated_at"])
+        impact = _mold_impact(mold)
+        audit_identity_event(
+            f"registry.mold.{action}.v1",
+            actor_id=_actor(request),
+            target_refs=[f"mold:{mold.id}"],
+            detail={"reason": reason, "before": before, "after": target, "impact": impact},
+        )
+        payload = mold_payload(mold, include_revisions=True)
+        payload["impact"] = impact
+        return Response(payload)
+
+
+class MoldRevisionCreateView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, mold_id: str) -> Response:
+        if denied := _require(request, "registry:manage"):
+            return denied
+        mold = (
+            Mold.objects.select_related("project")
+            .prefetch_related("revisions")
+            .filter(
+                id=mold_id,
+                status=Mold.Status.ACTIVE,
+                project__scope__code__in=_allowed_scope_codes(request),
+            )
+            .first()
+        )
+        if mold is None:
+            return _error(request, "VALIDATION_MOLD", "An active mold is required.", 400)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        source = (
+            next(
+                (
+                    item
+                    for item in mold.revisions.all()
+                    if item.status == MoldRevision.Status.RELEASED
+                ),
+                None,
+            )
+            or mold.revisions.order_by("-created_at").first()
+        )
+        requested_code = str(request.data.get("revision_code", "")).strip()
+        revision_code = requested_code or _suggest_revision_code(source)
+        if not CODE_RE.fullmatch(revision_code):
+            return _error(request, "VALIDATION_CODE", "revision_code is invalid.", 400)
+        if MoldRevision.objects.filter(mold=mold, revision_code=revision_code).exists():
+            return _error(request, "REVISION_CODE_CONFLICT", "Revision already exists.", 409)
+        actor = _actor(request)
+        revision = MoldRevision.objects.create(
+            mold=mold,
+            revision_code=revision_code,
+            status=MoldRevision.Status.DRAFT,
+            change_summary=str(request.data.get("change_summary", "")).strip(),
+            source_system="platform_demo",
+            source_revision_id=str(source.id) if source else "",
+            created_by=actor,
+            updated_by=actor,
+        )
+        audit_identity_event(
+            "registry.revision.created.v1",
+            actor_id=actor,
+            target_refs=[f"mold-revision:{revision.id}", f"mold:{mold.id}"],
+            detail={
+                "revision_code": revision_code,
+                "reason": reason,
+                "source_revision_id": str(source.id) if source else None,
+            },
+        )
+        payload = revision_payload(revision)
+        payload["suggested_revision_code"] = _suggest_revision_code(revision)
+        return Response(payload, status=201)
+
+
+class RevisionActionView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def post(self, request: Request, revision_id: str) -> Response:
+        if denied := _require(request, "registry:manage"):
+            return denied
+        revision = (
+            MoldRevision.objects.select_related("mold__project")
+            .prefetch_related("artifacts")
+            .filter(
+                id=revision_id,
+                mold__project__scope__code__in=_allowed_scope_codes(request),
+            )
+            .first()
+        )
+        if revision is None:
+            return _error(request, "NOT_FOUND", "Mold revision not found.", 404)
+        reason, invalid = _reason(request)
+        if invalid:
+            return invalid
+        try:
+            row_version = int(request.data.get("row_version", 0))
+        except (TypeError, ValueError):
+            row_version = 0
+        if row_version != revision.row_version:
+            return _error(request, "VERSION_CONFLICT", "Revision changed after loading.", 409)
+        action = str(request.data.get("action", "")).strip()
+        warnings: list[dict[str, str]] = []
+        superseded_id: str | None = None
+        with transaction.atomic():
+            if action == "release" and revision.status == MoldRevision.Status.DRAFT:
+                previous = (
+                    MoldRevision.objects.filter(
+                        mold=revision.mold, status=MoldRevision.Status.RELEASED
+                    )
+                    .exclude(id=revision.id)
+                    .first()
+                )
+                if previous:
+                    previous.status = MoldRevision.Status.SUPERSEDED
+                    previous.row_version += 1
+                    previous.updated_by = _actor(request)
+                    previous.save(
+                        update_fields=["status", "row_version", "updated_by", "updated_at"]
+                    )
+                    superseded_id = str(previous.id)
+                if revision.artifacts.count() == 0:
+                    warnings.append(
+                        {
+                            "code": "RELEASED_WITHOUT_CAD",
+                            "message": "Demo release completed without a linked CAD artifact.",
+                        }
+                    )
+                revision.status = MoldRevision.Status.RELEASED
+                revision.released_at = timezone.now()
+            elif action == "archive" and revision.status in {
+                MoldRevision.Status.DRAFT,
+                MoldRevision.Status.SUPERSEDED,
+            }:
+                revision.status = MoldRevision.Status.ARCHIVED
+            elif (
+                action == "archive"
+                and revision.status == MoldRevision.Status.RELEASED
+                and revision.mold.status != Mold.Status.ACTIVE
+            ):
+                revision.status = MoldRevision.Status.ARCHIVED
+            else:
+                return _error(
+                    request,
+                    "INVALID_LIFECYCLE_TRANSITION",
+                    (
+                        f"The {action or 'requested'} action is not allowed while "
+                        f"the revision is {revision.status}."
+                    ),
+                    409,
+                    allowed_actions=revision_payload(revision)["allowed_actions"],
+                )
+            revision.row_version += 1
+            revision.updated_by = _actor(request)
+            revision.save()
+            audit_identity_event(
+                f"registry.revision.{action}.v1",
+                actor_id=_actor(request),
+                target_refs=[f"mold-revision:{revision.id}", f"mold:{revision.mold_id}"],
+                detail={
+                    "reason": reason,
+                    "status": revision.status,
+                    "superseded_revision_id": superseded_id,
+                    "warnings": warnings,
+                },
+            )
+        payload = revision_payload(revision)
+        payload.update({"warnings": warnings, "superseded_revision_id": superseded_id})
+        return Response(payload)
 
 
 class RevisionListCreateView(APIView):
@@ -891,6 +1210,28 @@ class RevisionDetailView(APIView):
         if new_status not in allowed[revision.status]:
             return _error(
                 request, "INVALID_STATE_TRANSITION", "Revision transition is invalid.", 409
+            )
+        if (
+            new_status == MoldRevision.Status.ARCHIVED
+            and revision.status == MoldRevision.Status.RELEASED
+            and revision.mold.status == Mold.Status.ACTIVE
+        ):
+            return _error(
+                request,
+                "INVALID_LIFECYCLE_TRANSITION",
+                "The current released revision cannot be archived while its mold is active.",
+                409,
+            )
+        if (
+            "change_summary" in request.data
+            and revision.status != MoldRevision.Status.DRAFT
+            and str(request.data["change_summary"]).strip() != revision.change_summary
+        ):
+            return _error(
+                request,
+                "RELEASED_REVISION_IMMUTABLE",
+                "Released, superseded and archived revision content is immutable.",
+                409,
             )
         with transaction.atomic():
             if new_status == MoldRevision.Status.RELEASED and revision.status != new_status:

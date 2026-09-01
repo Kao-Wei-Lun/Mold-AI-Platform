@@ -42,6 +42,59 @@ describe("RegistryCadHistoryWorkspace", () => {
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/governance/mold-registry/revisions/revision-1"]);
   });
 
+  it("creates the next governed revision from the mold detail action drawer", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") return response({
+        id: "revision-2", mold_id: "mold-1", mold_code: "MOLD-001", revision_code: "B", status: "draft", change_summary: "Cooling update", source_system: "platform_demo", source_revision_id: "revision-1", row_version: 1, released_at: null, artifact_count: 0, allowed_actions: ["edit", "release", "archive"],
+      });
+      return response({
+        id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: "part-1", part_number: "PART-001", mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "active", row_version: 1, revision_count: 1, current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 1, allowed_actions: ["edit", "create_revision", "retire", "archive"],
+        revisions: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(RegistryCadHistoryWorkspace, {
+      props: { domain: "molds", path: "/governance/mold-registry/molds/mold-1", registryMode: true, canManage: true },
+      global: { stubs: { Teleport: true } },
+    });
+    await flushPromises();
+
+    await wrapper.findAll("button").find((button) => button.text() === "Create next revision")!.trigger("click");
+    await wrapper.findAll("textarea")[0].setValue("Cooling update");
+    await wrapper.findAll("textarea")[1].setValue("Start reviewed iteration");
+    await wrapper.findAll("button").find((button) => button.text() === "Confirm governed action")!.trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining("/api/v1/registry/molds/mold-1/revisions"), expect.objectContaining({ method: "POST" }));
+    expect(wrapper.emitted("navigate")?.at(-1)).toEqual(["/governance/mold-registry/revisions/revision-2"]);
+  });
+
+  it("previews mold impact before a lifecycle action", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("impact-preview")) return response({ schema_version: "1.0", mold_id: "mold-1", mold_code: "MOLD-001", status: "active", row_version: 1, allowed_actions: ["retire"], impact: { draft_revisions: 1, released_revisions: 1, cad_artifacts: 2, mold_plans: 3, design_reviews: 4, similarity_searches: 5, cae_studies: 6, trial_cases: 7 } });
+      if (init?.method === "POST") return response({ id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: null, part_number: null, mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "retired", row_version: 2, revision_count: 1, current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 2, allowed_actions: ["edit", "reactivate", "archive"], impact: {} });
+      return response({ id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: null, part_number: null, mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "active", row_version: 1, revision_count: 1, current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 2, allowed_actions: ["edit", "create_revision", "retire", "archive"], revisions: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(RegistryCadHistoryWorkspace, {
+      props: { domain: "molds", path: "/governance/mold-registry/molds/mold-1", registryMode: true, canManage: true },
+      global: { stubs: { Teleport: true } },
+    });
+    await flushPromises();
+
+    await wrapper.findAll("button").find((button) => button.text() === "Retire mold")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Mold planning records");
+    expect(wrapper.text()).toContain("3");
+    await wrapper.find("textarea").setValue("End new planning");
+    await wrapper.findAll("button").find((button) => button.text() === "Confirm governed action")!.trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining("/api/v1/registry/molds/mold-1/actions"), expect.objectContaining({ method: "POST" }));
+    expect(wrapper.text()).toContain("retired");
+  });
+
   it("shows CAD versions, geometry, feature indexes, jobs and lineage", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       artifact_id: "artifact-1", name: "Housing A", kind: "cad_source", classification: "public_demo", dataset_id: "curated", product_type: "housing", material_code: "ABS", mold_revision_id: "revision-1", mold_revision: { revision_code: "A", mold_id: "mold-1", mold_code: "MOLD-001" }, lifecycle_status: "active", quality_status: "validated", created_at: "2026-08-29T00:00:00Z", source: null,

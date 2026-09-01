@@ -72,13 +72,17 @@ from .mold_planning_views import (
 )
 from .registry_views import (
     ArtifactGovernanceView,
+    MoldActionView,
     MoldDetailView,
+    MoldImpactPreviewView,
     MoldListCreateView,
+    MoldRevisionCreateView,
     PartDetailView,
     PartListCreateView,
     ProjectDetailView,
     ProjectListCreateView,
     RegistryOverviewView,
+    RevisionActionView,
     RevisionDetailView,
     RevisionListCreateView,
 )
@@ -179,11 +183,31 @@ urlpatterns = [
     path("registry/parts/<uuid:part_id>", PartDetailView.as_view(), name="registry-part-detail"),
     path("registry/molds", MoldListCreateView.as_view(), name="registry-mold-list"),
     path("registry/molds/<uuid:mold_id>", MoldDetailView.as_view(), name="registry-mold-detail"),
+    path(
+        "registry/molds/<uuid:mold_id>/impact-preview",
+        MoldImpactPreviewView.as_view(),
+        name="registry-mold-impact-preview",
+    ),
+    path(
+        "registry/molds/<uuid:mold_id>/actions",
+        MoldActionView.as_view(),
+        name="registry-mold-actions",
+    ),
+    path(
+        "registry/molds/<uuid:mold_id>/revisions",
+        MoldRevisionCreateView.as_view(),
+        name="registry-mold-revision-create",
+    ),
     path("registry/revisions", RevisionListCreateView.as_view(), name="registry-revision-list"),
     path(
         "registry/revisions/<uuid:revision_id>",
         RevisionDetailView.as_view(),
         name="registry-revision-detail",
+    ),
+    path(
+        "registry/revisions/<uuid:revision_id>/actions",
+        RevisionActionView.as_view(),
+        name="registry-revision-actions",
     ),
     path(
         "registry/artifacts/<uuid:artifact_id>",
