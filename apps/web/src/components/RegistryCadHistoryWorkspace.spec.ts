@@ -95,6 +95,38 @@ describe("RegistryCadHistoryWorkspace", () => {
     expect(wrapper.text()).toContain("retired");
   });
 
+  it("shows governed engineering history, lineage, audit and preserves deep links", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("engineering-history")) return response({
+        schema_version: "1.0",
+        subject: { mold_id: "mold-1", mold_code: "MOLD-001", revision_id: null, revision_code: null },
+        counts: { mold_plan: 1, design_review: 0, similarity_search: 0, cae_study: 0, trial_case: 0 },
+        items: [{ record_type: "mold_plan", record_id: "plan-1", title: "PLAN-001 · Housing", status: "ready", owner: "engineer", revision_ref: "MOLD-001@A", created_at: "2026-08-29T00:00:00Z", updated_at: "2026-08-29T01:00:00Z", deep_link: "/engineering/mold-planning?deep_link_version=1.0&target=mold_plan&mold_plan_id=00000000-0000-4000-8000-000000000001" }],
+        page: { number: 1, size: 25, total: 1, has_next: false },
+        lineage: { nodes: [{ id: "mold-1", type: "mold", label: "MOLD-001", status: "active" }], edges: [] },
+        audit_events: [{ id: "audit-1", event_type: "registry.mold.created.v1", actor_id: "engineer", target_refs: ["mold:mold-1"], detail: { reason: "Create mold" }, payload_hash: "abcdef1234567890", created_at: "2026-08-29T00:00:00Z" }],
+      });
+      return response({ id: "mold-1", project_id: "project-1", project_code: "P-001", product_part_id: null, part_number: null, mold_code: "MOLD-001", name: "Housing mold", mold_type: "injection", cavity_count: 2, status: "active", row_version: 1, revision_count: 1, current_revision_id: "revision-1", current_revision_code: "A", artifact_count: 1, revisions: [] });
+    }));
+    const wrapper = mount(RegistryCadHistoryWorkspace, {
+      props: { domain: "molds", path: "/governance/mold-registry/molds/mold-1?tab=engineering-history", registryMode: true },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("PLAN-001 · Housing");
+    expect(wrapper.emitted("contextChange")?.[0]?.[0]).toMatchObject({ page: "mold_registry", mold_id: "mold-1" });
+    await wrapper.find("tbody tr").trigger("click");
+    expect(wrapper.emitted("navigate")?.at(-1)?.[0]).toContain("target=mold_plan");
+
+    await wrapper.setProps({ path: "/governance/mold-registry/molds/mold-1?tab=lineage" });
+    await flushPromises();
+    expect(wrapper.text()).toContain("MOLD-001");
+    await wrapper.setProps({ path: "/governance/mold-registry/molds/mold-1?tab=audit" });
+    await flushPromises();
+    expect(wrapper.text()).toContain("registry.mold.created.v1");
+    expect(wrapper.text()).toContain("Create mold");
+  });
+
   it("shows CAD versions, geometry, feature indexes, jobs and lineage", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       artifact_id: "artifact-1", name: "Housing A", kind: "cad_source", classification: "public_demo", dataset_id: "curated", product_type: "housing", material_code: "ABS", mold_revision_id: "revision-1", mold_revision: { revision_code: "A", mold_id: "mold-1", mold_code: "MOLD-001" }, lifecycle_status: "active", quality_status: "validated", created_at: "2026-08-29T00:00:00Z", source: null,

@@ -81,6 +81,7 @@ from .registry_views import (
     PartListCreateView,
     ProjectDetailView,
     ProjectListCreateView,
+    RegistryEngineeringHistoryView,
     RegistryOverviewView,
     RevisionActionView,
     RevisionDetailView,
@@ -198,6 +199,11 @@ urlpatterns = [
         MoldRevisionCreateView.as_view(),
         name="registry-mold-revision-create",
     ),
+    path(
+        "registry/molds/<uuid:mold_id>/engineering-history",
+        RegistryEngineeringHistoryView.as_view(),
+        name="registry-mold-engineering-history",
+    ),
     path("registry/revisions", RevisionListCreateView.as_view(), name="registry-revision-list"),
     path(
         "registry/revisions/<uuid:revision_id>",
@@ -208,6 +214,11 @@ urlpatterns = [
         "registry/revisions/<uuid:revision_id>/actions",
         RevisionActionView.as_view(),
         name="registry-revision-actions",
+    ),
+    path(
+        "registry/revisions/<uuid:revision_id>/engineering-history",
+        RegistryEngineeringHistoryView.as_view(),
+        name="registry-revision-engineering-history",
     ),
     path(
         "registry/artifacts/<uuid:artifact_id>",

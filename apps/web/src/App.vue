@@ -429,6 +429,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :can-manage="currentAccount?.permissions.includes('registry:manage') || false"
           :master-data-options="masterDataOptions"
           @navigate="navigatePath"
+          @context-change="assistantContext = $event"
         />
         <MoldRegistryWorkspace
           v-else-if="currentRoute.id === 'mold_registry' && accessReady"

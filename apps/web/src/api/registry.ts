@@ -147,6 +147,39 @@ export type RegistryMoldImpact = {
   allowed_actions: NonNullable<RegistryMold["allowed_actions"]>;
 };
 
+export type RegistryEngineeringRecord = {
+  record_type: "mold_plan" | "design_review" | "similarity_search" | "cae_study" | "trial_case";
+  record_id: string;
+  title: string;
+  status: string;
+  owner: string;
+  revision_ref: string;
+  created_at: string;
+  updated_at: string;
+  deep_link: string;
+};
+
+export type RegistryEngineeringHistory = {
+  schema_version: "1.0";
+  subject: { mold_id: string; mold_code: string; revision_id: string | null; revision_code: string | null };
+  counts: Record<RegistryEngineeringRecord["record_type"], number>;
+  items: RegistryEngineeringRecord[];
+  page: { number: number; size: number; total: number; has_next: boolean };
+  lineage: {
+    nodes: Array<{ id: string; type: string; label: string; status: string }>;
+    edges: Array<{ from: string; to: string; relationship: string }>;
+  };
+  audit_events: Array<{
+    id: string;
+    event_type: string;
+    actor_id: string;
+    target_refs: string[];
+    detail: Record<string, unknown>;
+    payload_hash: string;
+    created_at: string;
+  }>;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 export class RegistryError extends Error {
@@ -289,6 +322,13 @@ export function createNextRevision(
 
 export function fetchMoldImpactPreview(id: string): Promise<RegistryMoldImpact> {
   return request(`/api/v1/registry/molds/${id}/impact-preview`);
+}
+
+export function fetchRegistryEngineeringHistory(
+  kind: "molds" | "revisions",
+  id: string,
+): Promise<RegistryEngineeringHistory> {
+  return request(`/api/v1/registry/${kind}/${id}/engineering-history`);
 }
 
 export function transitionMold(

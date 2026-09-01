@@ -10,7 +10,8 @@ export type AssistantContext = {
     | "design_review"
     | "knowledge_search"
     | "process_trial"
-    | "cae";
+    | "cae"
+    | "mold_registry";
   query_artifact_version_id?: string;
   similarity_search_id?: string;
   selected_candidate_artifact_version_id?: string;
@@ -23,6 +24,7 @@ export type AssistantContext = {
   metric_code?: string;
   mold_plan_id?: string;
   mold_revision_id?: string;
+  mold_id?: string;
   cad_artifact_version_id?: string;
   resolution_id?: string;
   selected_profile_id?: string;

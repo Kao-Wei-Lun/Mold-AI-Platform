@@ -12,6 +12,7 @@ import {
   fetchRegistryParts,
   fetchRegistryProjectDetail,
   fetchRegistryRevisionDetail,
+  fetchRegistryEngineeringHistory,
   fetchRegistryRevisions,
   RegistryError,
   transitionMold,
@@ -26,7 +27,9 @@ import {
   type RegistryPart,
   type RegistryProject,
   type RegistryRevision,
+  type RegistryEngineeringHistory,
 } from "../api/registry";
+import type { AssistantContext } from "../api/assistant";
 import { useI18n } from "../i18n";
 import { emptyMasterDataOptions, type MasterDataOptions } from "../api/masterData";
 import DataTable from "./DataTable.vue";
@@ -45,7 +48,10 @@ const props = withDefaults(defineProps<{
   registryMode?: boolean;
   masterDataOptions?: MasterDataOptions;
 }>(), { masterDataOptions: emptyMasterDataOptions, registryMode: false });
-const emit = defineEmits<{ navigate: [path: string] }>();
+const emit = defineEmits<{
+  navigate: [path: string];
+  contextChange: [context: AssistantContext];
+}>();
 const { t } = useI18n();
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -68,6 +74,7 @@ const artifactForm = reactive({ name: "", product_type: "", material_code: "", l
 const requestedLargePreviews = ref<Record<string, boolean>>({});
 const drawerAction = ref<"edit" | "create_revision" | "retire" | "reactivate" | "archive" | "release" | null>(null);
 const moldImpact = ref<RegistryMoldImpact | null>(null);
+const engineeringHistory = ref<RegistryEngineeringHistory | null>(null);
 const nextRevisionForm = reactive({ revision_code: "", change_summary: "" });
 const LARGE_PREVIEW_BYTES = 12 * 1024 * 1024;
 
@@ -129,7 +136,37 @@ const detailTabs = computed(() => [
   { id: "versions", label: t("Versions"), count: revision.value ? 1 : (mold.value?.revisions?.length || revisions.value.length) },
   { id: "cad", label: t("CAD & drawings"), count: revision.value?.artifacts?.length || mold.value?.artifact_count || revisions.value.reduce((total, item) => total + item.artifact_count, 0) },
   { id: "engineering-history", label: t("Engineering history") },
+  ...((mold.value || revision.value) ? [
+    { id: "lineage", label: t("Lineage"), count: engineeringHistory.value?.lineage?.nodes?.length || 0 },
+    { id: "audit", label: t("Audit"), count: engineeringHistory.value?.audit_events?.length || 0 },
+  ] : []),
 ]);
+
+const engineeringRows = computed(() => (engineeringHistory.value?.items || []).map((item) => ({
+  id: item.deep_link,
+  type: item.record_type,
+  title: item.title,
+  revision: item.revision_ref,
+  owner: item.owner || "—",
+  updated: new Date(item.updated_at).toLocaleString(),
+  status: item.status,
+})));
+
+const lineageRows = computed(() => (engineeringHistory.value?.lineage?.nodes || []).map((item) => ({
+  id: item.id,
+  type: item.type,
+  label: item.label,
+  status: item.status,
+})));
+
+const auditRows = computed(() => (engineeringHistory.value?.audit_events || []).map((item) => ({
+  id: item.id,
+  event: item.event_type,
+  actor: item.actor_id,
+  reason: String(item.detail.reason || "—"),
+  time: new Date(item.created_at).toLocaleString(),
+  hash: item.payload_hash.slice(0, 12),
+})));
 
 const partRevisions = computed(() => (part.value?.molds || []).flatMap((item) => item.revisions || []));
 
@@ -295,6 +332,7 @@ async function load(): Promise<void> {
   molds.value = [];
   revisions.value = [];
   artifact.value = null;
+  engineeringHistory.value = null;
   requestedLargePreviews.value = {};
   try {
     if (props.domain === "cad-artifacts") {
@@ -320,10 +358,21 @@ async function load(): Promise<void> {
       part.value = await fetchRegistryPartDetail(recordId.value);
     } else if (registryKind.value === "revisions") {
       revision.value = await fetchRegistryRevisionDetail(recordId.value);
+      engineeringHistory.value = await fetchRegistryEngineeringHistory("revisions", recordId.value);
     } else {
       mold.value = await fetchRegistryMoldDetail(recordId.value);
+      engineeringHistory.value = await fetchRegistryEngineeringHistory("molds", recordId.value);
     }
     initializeForms();
+    if (mold.value || revision.value) {
+      emit("contextChange", {
+        context_version: "1.0",
+        page: "mold_registry",
+        mold_id: mold.value?.id || revision.value?.mold_id,
+        mold_revision_id: revision.value?.id,
+        ui_locale: document.documentElement.lang || "en",
+      });
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : t("Unable to load historical data.");
   } finally {
@@ -400,6 +449,9 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
       </template>
       <DataTable v-else-if="activeTab === 'versions'" :columns="[{ key: 'code', label: t('Revision') }, { key: 'summary', label: t('Change summary') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'released', label: t('Released at') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, code: item.revision_code, summary: item.change_summary, artifacts: item.artifact_count, released: item.released_at ? new Date(item.released_at).toLocaleString() : '—', status: item.status }))" :empty-text="t('No mold revisions are available.')" @select="emit('navigate', registryPath('revisions', selectedId($event)))" />
       <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'revision', label: t('Revision') }, { key: 'artifacts', label: t('CAD artifacts') }, { key: 'status', label: t('Status') }]" :items="(mold.revisions || []).map((item) => ({ id: item.id, revision: item.revision_code, artifacts: item.artifact_count, status: item.status }))" :empty-text="t('No CAD-linked revisions are available.')" @select="emit('navigate', `${registryPath('revisions', selectedId($event))}?tab=cad`)" />
+      <DataTable v-else-if="activeTab === 'engineering-history'" :columns="[{ key: 'type', label: t('Record type') }, { key: 'title', label: t('Record') }, { key: 'revision', label: t('Mold revision') }, { key: 'owner', label: t('Owner') }, { key: 'updated', label: t('Updated') }, { key: 'status', label: t('Status') }]" :items="engineeringRows" :empty-text="t('No linked engineering activity yet')" @select="emit('navigate', selectedId($event))" />
+      <DataTable v-else-if="activeTab === 'lineage'" :columns="[{ key: 'type', label: t('Type') }, { key: 'label', label: t('Record') }, { key: 'status', label: t('Status') }]" :items="lineageRows" :empty-text="t('No lineage nodes found.')" />
+      <DataTable v-else-if="activeTab === 'audit'" :columns="[{ key: 'event', label: t('Event') }, { key: 'actor', label: t('Actor') }, { key: 'reason', label: t('Change reason') }, { key: 'time', label: t('Time') }, { key: 'hash', label: t('Evidence hash') }]" :items="auditRows" :empty-text="t('No audit events found.')" />
       <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 
@@ -418,6 +470,9 @@ watch(() => [props.domain, location.value.pathname], load, { immediate: true });
       </template>
       <PropertyGrid v-else-if="activeTab === 'versions'" :items="[{ label: t('Mold'), value: revision.mold_code }, { label: t('Revision'), value: revision.revision_code }, { label: t('Lifecycle status'), value: revision.status }, { label: t('Row version'), value: revision.row_version }]" />
       <DataTable v-else-if="activeTab === 'cad'" :columns="[{ key: 'name', label: t('Artifact name') }, { key: 'versions', label: t('Versions') }, { key: 'jobs', label: t('Jobs') }, { key: 'features', label: t('Feature sets') }, { key: 'reviews', label: t('Design reviews') }, { key: 'quality', label: t('Quality') }, { key: 'status', label: t('Status') }]" :items="(revision.artifacts || []).map((item) => ({ id: item.artifact_id, name: item.name, versions: item.references.versions, jobs: item.references.jobs, features: item.references.feature_sets, reviews: item.references.design_reviews, quality: item.quality_status, status: item.lifecycle_status }))" :empty-text="t('No CAD artifacts are linked to this revision.')" @select="emit('navigate', `/data/cad-artifacts/${$event.id}`)" />
+      <DataTable v-else-if="activeTab === 'engineering-history'" :columns="[{ key: 'type', label: t('Record type') }, { key: 'title', label: t('Record') }, { key: 'revision', label: t('Mold revision') }, { key: 'owner', label: t('Owner') }, { key: 'updated', label: t('Updated') }, { key: 'status', label: t('Status') }]" :items="engineeringRows" :empty-text="t('No linked engineering activity yet')" @select="emit('navigate', selectedId($event))" />
+      <DataTable v-else-if="activeTab === 'lineage'" :columns="[{ key: 'type', label: t('Type') }, { key: 'label', label: t('Record') }, { key: 'status', label: t('Status') }]" :items="lineageRows" :empty-text="t('No lineage nodes found.')" />
+      <DataTable v-else-if="activeTab === 'audit'" :columns="[{ key: 'event', label: t('Event') }, { key: 'actor', label: t('Actor') }, { key: 'reason', label: t('Change reason') }, { key: 'time', label: t('Time') }, { key: 'hash', label: t('Evidence hash') }]" :items="auditRows" :empty-text="t('No audit events found.')" />
       <WorkspaceEmptyState v-else eyebrow="" :title="t('No linked engineering activity yet')" :message="engineeringContextMessage()" action-label="" />
     </template>
 

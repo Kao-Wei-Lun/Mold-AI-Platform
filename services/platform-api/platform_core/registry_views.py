@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from .identity import audit_identity_event
 from .models import (
     Artifact,
+    AuditEvent,
     CAEStudy,
     DataScope,
     MasterDataItem,
@@ -257,6 +258,307 @@ def _suggest_revision_code(source: MoldRevision | None) -> str:
     if code.isdigit():
         return str(int(code) + 1).zfill(len(code))
     return f"{code}.1"
+
+
+def _registry_subject(
+    request: Request, *, mold_id: str | None = None, revision_id: str | None = None
+) -> tuple[Mold | None, MoldRevision | None]:
+    revisions = MoldRevision.objects.select_related(
+        "mold__project__scope", "mold__product_part"
+    ).filter(mold__project__scope__code__in=_allowed_scope_codes(request))
+    revision = revisions.filter(id=revision_id).first() if revision_id else None
+    molds = Mold.objects.select_related("project__scope", "product_part").filter(
+        project__scope__code__in=_allowed_scope_codes(request)
+    )
+    mold = revision.mold if revision else molds.filter(id=mold_id).first()
+    return mold, revision
+
+
+def _visible_acl_record(request: Request, record: CAEStudy | TrialCase) -> bool:
+    return bool(_allowed_scope_codes(request).intersection(set(record.acl_scopes or [])))
+
+
+def _registry_engineering_records(
+    request: Request, mold: Mold, revision: MoldRevision | None = None
+) -> list[dict[str, object]]:
+    revision_filter = Q(mold_revision=revision) if revision else Q(mold=mold)
+    artifact_filter = (
+        Q(cad_model__artifact_version__artifact__mold_revision=revision)
+        if revision
+        else Q(cad_model__artifact_version__artifact__mold_revision__mold=mold)
+    )
+    search_filter = (
+        Q(query_feature_set__cad_model__artifact_version__artifact__mold_revision=revision)
+        if revision
+        else Q(query_feature_set__cad_model__artifact_version__artifact__mold_revision__mold=mold)
+    )
+    revision_refs = (
+        [f"{mold.mold_code}@{revision.revision_code}"]
+        if revision
+        else [
+            f"{mold.mold_code}@{code}"
+            for code in mold.revisions.values_list("revision_code", flat=True)
+        ]
+    )
+    records: list[dict[str, object]] = []
+
+    for plan in MoldPlan.objects.filter(revision_filter).order_by("-updated_at"):
+        records.append(
+            {
+                "record_type": "mold_plan",
+                "record_id": str(plan.id),
+                "title": f"{plan.plan_code} · {plan.name}",
+                "status": plan.status,
+                "owner": plan.owner_id,
+                "revision_ref": f"{mold.mold_code}@{plan.mold_revision.revision_code}",
+                "created_at": plan.created_at.isoformat(),
+                "updated_at": plan.updated_at.isoformat(),
+                "deep_link": (
+                    "/engineering/mold-planning?deep_link_version=1.0"
+                    f"&target=mold_plan&mold_plan_id={plan.id}"
+                ),
+            }
+        )
+    for review in (
+        ReviewRun.objects.select_related(
+            "profile", "cad_model__artifact_version__artifact__mold_revision"
+        )
+        .filter(artifact_filter)
+        .distinct()
+    ):
+        linked_revision = review.cad_model.artifact_version.artifact.mold_revision
+        records.append(
+            {
+                "record_type": "design_review",
+                "record_id": str(review.id),
+                "title": f"{review.profile.profile_key}@{review.profile.version}",
+                "status": review.review_status,
+                "owner": review.job.created_by,
+                "revision_ref": f"{mold.mold_code}@{linked_revision.revision_code}",
+                "created_at": review.created_at.isoformat(),
+                "updated_at": (review.completed_at or review.created_at).isoformat(),
+                "deep_link": (
+                    "/engineering/design-review?deep_link_version=1.0"
+                    f"&target=design_review&review_id={review.id}"
+                ),
+            }
+        )
+    for search in (
+        SimilaritySearch.objects.select_related(
+            "job", "query_feature_set__cad_model__artifact_version__artifact__mold_revision"
+        )
+        .filter(search_filter)
+        .distinct()
+    ):
+        linked_revision = search.query_feature_set.cad_model.artifact_version.artifact.mold_revision
+        records.append(
+            {
+                "record_type": "similarity_search",
+                "record_id": str(search.id),
+                "title": f"Similarity · top {search.top_k}",
+                "status": search.job.state,
+                "owner": search.job.created_by,
+                "revision_ref": f"{mold.mold_code}@{linked_revision.revision_code}",
+                "created_at": search.created_at.isoformat(),
+                "updated_at": (search.completed_at or search.created_at).isoformat(),
+                "deep_link": (
+                    "/engineering/similarity?deep_link_version=1.0"
+                    f"&target=similarity&search_id={search.id}"
+                ),
+            }
+        )
+    classifications = _allowed_classifications(request)
+    for study in CAEStudy.objects.filter(
+        mold_revision_ref__in=revision_refs, classification__in=classifications
+    ):
+        if not _visible_acl_record(request, study):
+            continue
+        records.append(
+            {
+                "record_type": "cae_study",
+                "record_id": str(study.id),
+                "title": study.study_code,
+                "status": study.lifecycle_status,
+                "owner": study.owner,
+                "revision_ref": study.mold_revision_ref,
+                "created_at": study.created_at.isoformat(),
+                "updated_at": study.updated_at.isoformat(),
+                "deep_link": f"/data/cae/{study.id}",
+            }
+        )
+    for trial in TrialCase.objects.filter(
+        mold_revision_ref__in=revision_refs, classification__in=classifications
+    ):
+        if not _visible_acl_record(request, trial):
+            continue
+        records.append(
+            {
+                "record_type": "trial_case",
+                "record_id": str(trial.id),
+                "title": trial.case_code,
+                "status": trial.lifecycle_status,
+                "owner": trial.operator_ref,
+                "revision_ref": trial.mold_revision_ref,
+                "created_at": trial.created_at.isoformat(),
+                "updated_at": trial.updated_at.isoformat(),
+                "deep_link": f"/data/trials/{trial.id}",
+            }
+        )
+    return sorted(records, key=lambda item: str(item["updated_at"]), reverse=True)
+
+
+def _registry_lineage(
+    mold: Mold,
+    revision: MoldRevision | None,
+    records: list[dict[str, object]],
+) -> dict[str, list[dict[str, object]]]:
+    revisions = [revision] if revision else list(mold.revisions.all())
+    nodes: list[dict[str, object]] = [
+        {
+            "id": str(mold.project_id),
+            "type": "project",
+            "label": mold.project.code,
+            "status": mold.project.status,
+        },
+        {"id": str(mold.id), "type": "mold", "label": mold.mold_code, "status": mold.status},
+    ]
+    edges: list[dict[str, object]] = [
+        {"from": str(mold.project_id), "to": str(mold.id), "relationship": "contains"}
+    ]
+    if mold.product_part_id:
+        nodes.append(
+            {
+                "id": str(mold.product_part_id),
+                "type": "part",
+                "label": mold.product_part.part_number,
+                "status": mold.product_part.status,
+            }
+        )
+        edges[0]["to"] = str(mold.product_part_id)
+        edges.append(
+            {"from": str(mold.product_part_id), "to": str(mold.id), "relationship": "contains"}
+        )
+    revision_ids: dict[str, str] = {}
+    for item in revisions:
+        if item is None:
+            continue
+        revision_ids[f"{mold.mold_code}@{item.revision_code}"] = str(item.id)
+        nodes.append(
+            {
+                "id": str(item.id),
+                "type": "mold_revision",
+                "label": f"{mold.mold_code}@{item.revision_code}",
+                "status": item.status,
+            }
+        )
+        edges.append({"from": str(mold.id), "to": str(item.id), "relationship": "has_revision"})
+        for artifact in item.artifacts.all():
+            nodes.append(
+                {
+                    "id": str(artifact.id),
+                    "type": "cad_artifact",
+                    "label": artifact.name,
+                    "status": artifact.lifecycle_status,
+                }
+            )
+            edges.append(
+                {"from": str(item.id), "to": str(artifact.id), "relationship": "has_artifact"}
+            )
+    for item in records:
+        node_id = str(item["record_id"])
+        nodes.append(
+            {
+                "id": node_id,
+                "type": item["record_type"],
+                "label": item["title"],
+                "status": item["status"],
+            }
+        )
+        parent_id = revision_ids.get(str(item["revision_ref"]), str(mold.id))
+        edges.append({"from": parent_id, "to": node_id, "relationship": "used_by"})
+    return {"nodes": nodes, "edges": edges}
+
+
+class RegistryEngineeringHistoryView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(
+        self,
+        request: Request,
+        mold_id: str | None = None,
+        revision_id: str | None = None,
+    ) -> Response:
+        if denied := _require(request, "registry:read"):
+            return denied
+        mold, revision = _registry_subject(request, mold_id=mold_id, revision_id=revision_id)
+        if mold is None or (revision_id and revision is None):
+            return _error(request, "NOT_FOUND", "Registry record not found.", 404)
+        records = _registry_engineering_records(request, mold, revision)
+        refs = {f"mold:{mold.id}"}
+        target_revisions = [revision] if revision else list(mold.revisions.all())
+        for item in target_revisions:
+            if item is None:
+                continue
+            refs.add(f"mold-revision:{item.id}")
+            refs.update(
+                f"artifact:{artifact_id}"
+                for artifact_id in item.artifacts.values_list("id", flat=True)
+            )
+        refs.update(
+            f"{item['record_type'].replace('_', '-')}:{item['record_id']}" for item in records
+        )
+        audit = [
+            {
+                "id": str(event.id),
+                "event_type": event.event_type,
+                "actor_id": event.actor_id,
+                "target_refs": event.target_refs,
+                "detail": event.detail,
+                "payload_hash": event.payload_hash,
+                "created_at": event.created_at.isoformat(),
+            }
+            for event in AuditEvent.objects.order_by("-created_at")
+            if refs.intersection(set(event.target_refs or []))
+        ]
+        try:
+            page_number = max(int(request.query_params.get("page", "1")), 1)
+            page_size = min(max(int(request.query_params.get("page_size", "25")), 1), 100)
+        except ValueError:
+            return _error(
+                request, "PAGINATION_INVALID", "page and page_size must be integers.", 400
+            )
+        offset = (page_number - 1) * page_size
+        return Response(
+            {
+                "schema_version": "1.0",
+                "subject": {
+                    "mold_id": str(mold.id),
+                    "mold_code": mold.mold_code,
+                    "revision_id": str(revision.id) if revision else None,
+                    "revision_code": revision.revision_code if revision else None,
+                },
+                "counts": {
+                    kind: sum(1 for item in records if item["record_type"] == kind)
+                    for kind in (
+                        "mold_plan",
+                        "design_review",
+                        "similarity_search",
+                        "cae_study",
+                        "trial_case",
+                    )
+                },
+                "items": records[offset : offset + page_size],
+                "page": {
+                    "number": page_number,
+                    "size": page_size,
+                    "total": len(records),
+                    "has_next": offset + page_size < len(records),
+                },
+                "lineage": _registry_lineage(mold, revision, records),
+                "audit_events": audit[:100],
+            }
+        )
 
 
 def artifact_governance_payload(artifact: Artifact) -> dict[str, object]:

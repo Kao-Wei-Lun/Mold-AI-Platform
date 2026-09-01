@@ -5,18 +5,22 @@ from time import perf_counter
 from django.contrib.auth import get_user_model
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from platform_core.identity import ensure_account_profile
 from platform_core.models import (
     AccessRole,
     Artifact,
     AuditEvent,
+    CAEStudy,
     DataScope,
     Mold,
+    MoldPlan,
     MoldRevision,
     ProductPart,
     Project,
     RoleAssignment,
+    TrialCase,
 )
 
 
@@ -102,6 +106,96 @@ class MoldRegistryApiTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(event_type="registry.revision.updated.v1").exists()
         )
+
+    def test_engineering_history_is_linked_traceable_and_scope_filtered(self):
+        _, _, mold_payload, revision_payload = self.create_hierarchy()
+        mold = Mold.objects.get(id=mold_payload["id"])
+        revision = MoldRevision.objects.get(id=revision_payload["id"])
+        plan = MoldPlan.objects.create(
+            plan_code="PLAN-001",
+            name="Housing review plan",
+            purpose=MoldPlan.Purpose.DESIGN_CHANGE,
+            project=mold.project,
+            part=mold.product_part,
+            mold=mold,
+            mold_revision=revision,
+            status=MoldPlan.Status.READY,
+            owner_id="registry-engineer",
+            scope=mold.project.scope,
+            classification="public_demo",
+            created_by="registry-engineer",
+            updated_by="registry-engineer",
+        )
+        study = CAEStudy.objects.create(
+            study_code="CAE-REG-001",
+            connector_key="test",
+            integration_level="structured_metadata",
+            source_record_id="cae-reg-1",
+            source_version="1",
+            source_hash="a" * 64,
+            mapping_version="1",
+            solver_name="Moldflow",
+            product_ref="PART-001",
+            mold_revision_ref="MOLD-001@A",
+            material_model_code="ABS-GENERAL",
+            mesh_family="3d",
+            objective="Check fill balance",
+            owner="cae-engineer",
+            classification="public_demo",
+            acl_scopes=["public-demo"],
+        )
+        private_study = CAEStudy.objects.create(
+            study_code="CAE-PRIVATE-001",
+            connector_key="test",
+            integration_level="structured_metadata",
+            source_record_id="cae-private-1",
+            source_version="1",
+            source_hash="b" * 64,
+            mapping_version="1",
+            solver_name="Moldflow",
+            product_ref="PART-001",
+            mold_revision_ref="MOLD-001@A",
+            material_model_code="ABS-GENERAL",
+            mesh_family="3d",
+            objective="Must not leak",
+            owner="private-engineer",
+            classification="public_demo",
+            acl_scopes=["company-private"],
+        )
+        trial = TrialCase.objects.create(
+            case_code="TRIAL-REG-001",
+            connector_key="test",
+            source_record_id="trial-reg-1",
+            source_version="1",
+            source_hash="c" * 64,
+            mapping_version="1",
+            classification="public_demo",
+            acl_scopes=["public-demo"],
+            mold_revision_ref="MOLD-001@A",
+            part_revision_ref="PART-001@A",
+            machine_code="MACHINE-001",
+            material_code="ABS-GENERAL",
+            product_type="housing",
+            purpose="First trial",
+            outcome="accepted",
+            started_at=timezone.now(),
+        )
+
+        response = self.client.get(f"/api/v1/registry/molds/{mold.id}/engineering-history")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        record_ids = {item["record_id"] for item in payload["items"]}
+        self.assertTrue({str(plan.id), str(study.id), str(trial.id)}.issubset(record_ids))
+        self.assertNotIn(str(private_study.id), record_ids)
+        self.assertEqual(payload["counts"]["mold_plan"], 1)
+        self.assertTrue(any(node["id"] == str(revision.id) for node in payload["lineage"]["nodes"]))
+        self.assertTrue(payload["audit_events"])
+
+        revision_response = self.client.get(
+            f"/api/v1/registry/revisions/{revision.id}/engineering-history"
+        )
+        self.assertEqual(revision_response.status_code, 200)
+        self.assertEqual(revision_response.json()["subject"]["revision_id"], str(revision.id))
 
     def test_new_release_supersedes_previous_release(self):
         _, _, mold, first = self.create_hierarchy()

@@ -370,3 +370,8 @@ routes. See [`stage-34-phase-2-mold-registry-details.md`](stage-34-phase-2-mold-
 Stage 35 Phase 3 adds governed detail editing, next-revision creation, release/supersede,
 mold retire/reactivate/archive actions, impact previews, optimistic locking and Audit evidence.
 See [`stage-35-phase-3-mold-registry-lifecycle.md`](stage-35-phase-3-mold-registry-lifecycle.md).
+
+Stage 36 Phase 4 connects Mold and Revision detail routes to authorized Mold Planning, Design
+Review, Similarity, CAE and Trial summaries, reloadable Lineage/Audit tabs, stable deep links and
+the Embedded Engineering Assistant context. See
+[`stage-36-phase-4-mold-registry-engineering-history.md`](stage-36-phase-4-mold-registry-engineering-history.md).
