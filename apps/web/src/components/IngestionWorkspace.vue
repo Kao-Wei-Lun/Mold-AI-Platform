@@ -50,7 +50,15 @@ const mappingFields = computed(() => {
 const sourceColumns = computed(() => Object.keys(selected.value?.records?.[0] || {}));
 const jobPending = computed(() => ["queued", "committing"].includes(selected.value?.status || ""));
 
+function applyRouteDefaults(): void {
+  const domain = new URL(props.path, window.location.origin).searchParams.get("domain") || "";
+  if (["master_data", "projects", "registry", "rule_profiles", "trials", "cae_results"].includes(domain)) {
+    form.value.domain = domain;
+  }
+}
+
 async function load(): Promise<void> {
+  applyRouteDefaults();
   loading.value = true; error.value = "";
   try {
     batches.value = await fetchIngestions(scope.value);
@@ -103,8 +111,8 @@ function selectBatch(item: Record<string, unknown>): void { emit("navigate", `/d
 function onFile(event: Event): void { upload.value = (event.target as HTMLInputElement).files?.[0] || null; }
 
 function resultPath(entityType: string, entityId: string): string {
-  if (entityType === "project") return `/data/molds/projects/${entityId}`;
-  if (entityType === "mold_revision") return `/data/molds/revisions/${entityId}`;
+  if (entityType === "project") return `/governance/mold-registry/projects/${entityId}`;
+  if (entityType === "mold_revision") return `/governance/mold-registry/revisions/${entityId}`;
   if (entityType === "cae_result") return "/data/cae";
   if (entityType === "process_parameter") return "/data/trials";
   if (entityType === "hmi_extraction") return `/data/hmi/${entityId}`;

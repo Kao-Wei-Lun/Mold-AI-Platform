@@ -375,3 +375,7 @@ Stage 36 Phase 4 connects Mold and Revision detail routes to authorized Mold Pla
 Review, Similarity, CAE and Trial summaries, reloadable Lineage/Audit tabs, stable deep links and
 the Embedded Engineering Assistant context. See
 [`stage-36-phase-4-mold-registry-engineering-history.md`](stage-36-phase-4-mold-registry-engineering-history.md).
+
+Stage 37 Phase 5 connects the Registry workspace to the governed CSV/XLSX ingestion flow and adds
+an authorized, actionable data-quality dashboard with correction links and import batch evidence.
+See [`stage-37-phase-5-registry-import-quality.md`](stage-37-phase-5-registry-import-quality.md).

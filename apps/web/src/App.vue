@@ -435,6 +435,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           v-else-if="currentRoute.id === 'mold_registry' && accessReady"
           :current-account="currentAccount"
           :master-data-options="masterDataOptions"
+          @navigate="navigatePath"
         />
         <EngineeringDataManagementWorkspace
           v-else-if="currentRoute.id === 'engineering_data' && accessReady"

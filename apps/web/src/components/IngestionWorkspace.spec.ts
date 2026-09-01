@@ -94,8 +94,19 @@ describe("IngestionWorkspace", () => {
     await wrapper.setProps({ path: committed.deep_link });
     await flushPromises();
     expect(wrapper.text()).toContain("Imported records");
+    await wrapper.get(".ingestion-result-list button").trigger("click");
+    expect(wrapper.emitted("navigate")?.some((event) => event[0] === "/governance/mold-registry/projects/project-1")).toBe(true);
     const actions = wrapper.findAll(".ingestion-evidence-links button");
     await actions[0].trigger("click");
     expect(wrapper.emitted("navigate")?.some((event) => event[0] === "/data/jobs/job-1")).toBe(true);
+  });
+
+  it("opens the import center with the registry contract preselected", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ items: [] }) })));
+    const wrapper = mount(IngestionWorkspace, { props: { path: "/data/imports?domain=registry", currentAccount: account } });
+    await flushPromises();
+
+    expect((wrapper.get('.ingestion-create-grid select').element as HTMLSelectElement).value).toBe("registry");
+    expect(wrapper.text()).toContain("Project, part, mold and revision registry");
   });
 });

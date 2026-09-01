@@ -15,6 +15,7 @@ from .identity import audit_identity_event
 from .models import (
     Artifact,
     AuditEvent,
+    BulkImportBatch,
     CAEStudy,
     DataScope,
     MasterDataItem,
@@ -557,6 +558,131 @@ class RegistryEngineeringHistoryView(APIView):
                 },
                 "lineage": _registry_lineage(mold, revision, records),
                 "audit_events": audit[:100],
+            }
+        )
+
+
+class RegistryDataQualityView(APIView):
+    authentication_classes = [SessionAuthentication]
+    permission_classes: list = []
+
+    def get(self, request: Request) -> Response:
+        if denied := _require(request, "registry:read"):
+            return denied
+        scopes = _allowed_scope_codes(request)
+        revisions = MoldRevision.objects.select_related("mold").filter(
+            mold__project__scope__code__in=scopes
+        )
+        molds = Mold.objects.select_related("project").filter(project__scope__code__in=scopes)
+        artifacts = Artifact.objects.select_related("mold_revision__mold").filter(
+            mold_revision__mold__project__scope__code__in=scopes
+        )
+        issues: list[dict[str, object]] = []
+        for revision in revisions.filter(
+            status=MoldRevision.Status.RELEASED, artifacts__isnull=True
+        ):
+            issues.append(
+                {
+                    "code": "RELEASED_WITHOUT_CAD",
+                    "severity": "warning",
+                    "title": f"{revision.mold.mold_code}@{revision.revision_code}",
+                    "message": "The released revision has no governed CAD artifact.",
+                    "entity_type": "mold_revision",
+                    "entity_id": str(revision.id),
+                    "action_path": f"/governance/mold-registry/revisions/{revision.id}?tab=cad",
+                }
+            )
+        for mold in molds.filter(status=Mold.Status.ACTIVE, product_part__isnull=True):
+            issues.append(
+                {
+                    "code": "MOLD_PART_MAPPING_REQUIRED",
+                    "severity": "warning",
+                    "title": mold.mold_code,
+                    "message": "The active mold is not assigned to a governed product or part.",
+                    "entity_type": "mold",
+                    "entity_id": str(mold.id),
+                    "action_path": f"/governance/mold-registry/molds/{mold.id}",
+                }
+            )
+        for revision in revisions.filter(status=MoldRevision.Status.DRAFT, change_summary=""):
+            issues.append(
+                {
+                    "code": "DRAFT_CHANGE_SUMMARY_MISSING",
+                    "severity": "info",
+                    "title": f"{revision.mold.mold_code}@{revision.revision_code}",
+                    "message": "Add a change summary before this draft is reviewed for release.",
+                    "entity_type": "mold_revision",
+                    "entity_id": str(revision.id),
+                    "action_path": f"/governance/mold-registry/revisions/{revision.id}",
+                }
+            )
+        for artifact in artifacts.filter(quality_status__in=["pending", "rejected"]):
+            issues.append(
+                {
+                    "code": "CAD_QUALITY_REVIEW_REQUIRED",
+                    "severity": "critical" if artifact.quality_status == "rejected" else "info",
+                    "title": artifact.name,
+                    "message": "CAD quality review is required before downstream use.",
+                    "entity_type": "artifact",
+                    "entity_id": str(artifact.id),
+                    "action_path": f"/data/cad-artifacts/{artifact.id}",
+                }
+            )
+        import_batches = BulkImportBatch.objects.filter(
+            scope__code__in=scopes, domain="registry"
+        ).prefetch_related("issues")
+        for batch in import_batches.filter(
+            status__in=[
+                BulkImportBatch.Status.MAPPING_REQUIRED,
+                BulkImportBatch.Status.VALIDATION_FAILED,
+                BulkImportBatch.Status.FAILED,
+            ]
+        ):
+            severity = (
+                "critical"
+                if batch.status
+                in {BulkImportBatch.Status.VALIDATION_FAILED, BulkImportBatch.Status.FAILED}
+                else "warning"
+            )
+            issues.append(
+                {
+                    "code": "REGISTRY_IMPORT_ATTENTION_REQUIRED",
+                    "severity": severity,
+                    "title": batch.source_name,
+                    "message": "Open the import batch to resolve its mapping or validation issues.",
+                    "entity_type": "ingestion_batch",
+                    "entity_id": str(batch.id),
+                    "action_path": f"/data/imports/{batch.id}",
+                }
+            )
+        severity_rank = {"critical": 0, "warning": 1, "info": 2}
+        issues.sort(key=lambda item: (severity_rank[str(item["severity"])], str(item["title"])))
+        recent_imports = [
+            {
+                "batch_id": str(batch.id),
+                "source_name": batch.source_name,
+                "status": batch.status,
+                "issue_count": batch.issues.count(),
+                "created_by": batch.created_by,
+                "created_at": batch.created_at.isoformat(),
+                "deep_link": f"/data/imports/{batch.id}",
+            }
+            for batch in import_batches[:10]
+        ]
+        return Response(
+            {
+                "schema_version": "1.0",
+                "summary": {
+                    "total": len(issues),
+                    "critical": sum(item["severity"] == "critical" for item in issues),
+                    "warning": sum(item["severity"] == "warning" for item in issues),
+                    "info": sum(item["severity"] == "info" for item in issues),
+                    "mapping_required": import_batches.filter(
+                        status=BulkImportBatch.Status.MAPPING_REQUIRED
+                    ).count(),
+                },
+                "items": issues[:100],
+                "recent_imports": recent_imports,
             }
         )
 

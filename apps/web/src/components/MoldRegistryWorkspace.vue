@@ -9,11 +9,13 @@ import {
   createProject,
   createRevision,
   fetchRegistryMolds,
+  fetchRegistryDataQuality,
   fetchRegistryOverview,
   fetchRegistryParts,
   fetchRegistryProjects,
   updateRevision,
   type RegistryMold,
+  type RegistryDataQuality,
   type RegistryOverview,
   type RegistryPage,
   type RegistryPart,
@@ -29,6 +31,7 @@ const props = defineProps<{
   currentAccount: LocalAccount | null;
   masterDataOptions: MasterDataOptions;
 }>();
+const emit = defineEmits<{ navigate: [path: string] }>();
 const { locale, t } = useI18n();
 
 type RegistryTab = "projects" | "parts" | "molds" | "revisions";
@@ -54,6 +57,7 @@ const projects = ref<RegistryProject[]>([]);
 const parts = ref<RegistryPart[]>([]);
 const molds = ref<RegistryMold[]>([]);
 const overview = ref<RegistryOverview>(emptyOverview());
+const dataQuality = ref<RegistryDataQuality | null>(null);
 const pageInfo = ref<RegistryPage>(emptyPage());
 const loading = ref(true);
 const busy = ref(false);
@@ -63,6 +67,7 @@ const createTab = ref<RegistryTab>("molds");
 const reason = ref("Demo registry maintenance");
 const searchInput = ref("");
 const view = ref<RegistryView>("table");
+const qualityOpen = ref(false);
 
 const filters = reactive({
   q: "",
@@ -84,6 +89,7 @@ const moldForm = reactive({ project_id: "", product_part_id: "", mold_code: "", 
 const revisionForm = reactive({ mold_id: "", revision_code: "", change_summary: "" });
 
 const canManage = computed(() => props.currentAccount?.permissions.includes("registry:manage") || false);
+const canImport = computed(() => props.currentAccount?.permissions.some((item) => ["ingestion:create", "bulk:manage"].includes(item)) || false);
 const availableParts = computed(() => parts.value.filter((item) => !filters.project_id || item.project_id === filters.project_id));
 const activeParts = computed(() => parts.value.filter((item) => !moldForm.project_id || item.project_id === moldForm.project_id));
 const activeFilterCount = computed(() => [
@@ -175,8 +181,9 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    const [overviewPayload, projectPayload, partPayload, moldPayload] = await Promise.all([
+    const [overviewPayload, qualityPayload, projectPayload, partPayload, moldPayload] = await Promise.all([
       fetchRegistryOverview(),
+      fetchRegistryDataQuality(),
       fetchRegistryProjects({ page_size: 100, sort: "code" }),
       fetchRegistryParts({ page_size: 100, sort: "part_number" }),
       fetchRegistryMolds({
@@ -196,6 +203,7 @@ async function load(): Promise<void> {
       }),
     ]);
     overview.value = overviewPayload;
+    dataQuality.value = qualityPayload;
     projects.value = projectPayload.items;
     parts.value = partPayload.items;
     molds.value = moldPayload.items;
@@ -339,6 +347,8 @@ onBeforeUnmount(() => window.removeEventListener("popstate", handlePopState));
         <p>{{ t("Manage mold identities, revisions and complete engineering history.") }}</p>
       </div>
       <div class="registry-primary-actions">
+        <button v-if="canImport" type="button" class="secondary-button" @click="emit('navigate', '/data/imports?domain=registry')">{{ t("Batch import") }}</button>
+        <button type="button" class="secondary-button" :aria-expanded="qualityOpen" @click="qualityOpen = !qualityOpen">{{ t("Data quality") }}</button>
         <button type="button" class="secondary-button" :disabled="loading" @click="load">{{ t("Refresh registry") }}</button>
         <button v-if="canManage" type="button" @click="openCreate('molds')">＋ {{ t("Add data") }}</button>
       </div>
@@ -352,6 +362,36 @@ onBeforeUnmount(() => window.removeEventListener("popstate", handlePopState));
       <button type="button" @click="filters.revision_status = 'released'; filters.has_cad = 'false'; applyFilters()"><span>{{ t("Released without CAD") }}</span><strong>{{ overview.counts.released_without_cad }}</strong></button>
       <button type="button" @click="filters.status = 'active'; filters.part_id = 'unassigned'; applyFilters()"><span>{{ t("Pending mapping") }}</span><strong>{{ overview.counts.pending_mapping }}</strong></button>
     </div>
+
+    <section v-if="dataQuality" class="registry-quality" aria-labelledby="registry-quality-title">
+      <div class="registry-quality-heading">
+        <div><p class="eyebrow">{{ t("Governed data quality") }}</p><h3 id="registry-quality-title">{{ t("Data quality dashboard") }}</h3><p>{{ t("Review incomplete records and registry import batches before downstream engineering use.") }}</p></div>
+        <button type="button" class="secondary-button" :aria-expanded="qualityOpen" @click="qualityOpen = !qualityOpen">{{ qualityOpen ? t("Hide details") : t("Review issues") }}</button>
+      </div>
+      <div class="registry-quality-summary">
+        <span><strong>{{ dataQuality.summary.total }}</strong>{{ t("Open issues") }}</span>
+        <span class="critical"><strong>{{ dataQuality.summary.critical }}</strong>{{ t("Critical") }}</span>
+        <span class="warning"><strong>{{ dataQuality.summary.warning }}</strong>{{ t("Warnings") }}</span>
+        <span><strong>{{ dataQuality.summary.mapping_required }}</strong>{{ t("Mapping required") }}</span>
+      </div>
+      <div v-if="qualityOpen" class="registry-quality-details">
+        <div class="registry-quality-list">
+          <article v-for="issue in dataQuality.items" :key="`${issue.code}:${issue.entity_id}`" :class="`quality-${issue.severity}`">
+            <div><code>{{ issue.code }}</code><strong>{{ issue.title }}</strong><p>{{ t(issue.message) }}</p></div>
+            <button type="button" class="secondary-button" @click="emit('navigate', issue.action_path)">{{ t("Open record") }}</button>
+          </article>
+          <WorkspaceEmptyState v-if="!dataQuality.items.length" eyebrow="" :title="t('No open data quality issues')" :message="t('The authorized registry currently passes the configured quality checks.')" action-label="" />
+        </div>
+        <div class="registry-import-history">
+          <div class="section-heading"><div><h4>{{ t("Recent registry imports") }}</h4><p>{{ t("Open a batch to inspect mapping, dry-run and reconciliation evidence.") }}</p></div><button v-if="canImport" type="button" class="text-button" @click="emit('navigate', '/data/imports?domain=registry')">{{ t("Start registry import") }}</button></div>
+          <article v-for="batch in dataQuality.recent_imports" :key="batch.batch_id">
+            <div><strong>{{ batch.source_name }}</strong><span>{{ t(batch.status) }} · {{ batch.issue_count }} {{ t("issues") }}</span></div>
+            <button type="button" class="text-button" @click="emit('navigate', batch.deep_link)">{{ t("Open batch") }}</button>
+          </article>
+          <p v-if="!dataQuality.recent_imports.length" class="workspace-state">{{ t("No registry import batches found.") }}</p>
+        </div>
+      </div>
+    </section>
 
     <section class="registry-discovery" aria-labelledby="registry-list-title">
       <div class="registry-discovery-heading">

@@ -93,6 +93,12 @@ describe("MoldRegistryWorkspace", () => {
         pending_mapping: 1,
       },
     });
+    vi.spyOn(registryApi, "fetchRegistryDataQuality").mockResolvedValue({
+      schema_version: "1.0",
+      summary: { total: 1, critical: 0, warning: 1, info: 0, mapping_required: 1 },
+      items: [{ code: "RELEASED_WITHOUT_CAD", severity: "warning", title: "DEMO-MOLD-001@A", message: "The released revision has no governed CAD artifact.", entity_type: "mold_revision", entity_id: "revision-1", action_path: "/governance/mold-registry/revisions/revision-1?tab=cad" }],
+      recent_imports: [{ batch_id: "batch-1", source_name: "registry.csv", status: "mapping_required", issue_count: 1, created_by: "engineer", created_at: "2026-08-30T00:00:00Z", deep_link: "/data/imports/batch-1" }],
+    });
     vi.spyOn(registryApi, "fetchRegistryProjects").mockResolvedValue({ schema_version: "1.0", items: [project], page });
     vi.spyOn(registryApi, "fetchRegistryParts").mockResolvedValue({ schema_version: "1.0", items: [], page: { ...page, total: 0 } });
     vi.spyOn(registryApi, "fetchRegistryMolds").mockResolvedValue({ schema_version: "1.0", items: [mold], page });
@@ -169,5 +175,22 @@ describe("MoldRegistryWorkspace", () => {
     expect(wrapper.text()).toContain("DEMO-MOLD-001");
     expect(wrapper.find(".registry-drawer-backdrop").exists()).toBe(false);
     expect(wrapper.findAll("button").some((button) => button.text().includes("新增資料"))).toBe(false);
+  });
+
+  it("opens quality corrections and the registry import flow from the workspace", async () => {
+    const wrapper = mountWorkspace({ ...account, permissions: [...account.permissions, "ingestion:create"] });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("資料品質儀表板");
+    const reviewButton = wrapper.findAll("button").find((button) => button.text() === "檢查問題");
+    await reviewButton?.trigger("click");
+    expect(wrapper.text()).toContain("DEMO-MOLD-001@A");
+
+    await wrapper.findAll(".registry-quality-list button")[0].trigger("click");
+    expect(wrapper.emitted("navigate")?.at(-1)).toEqual(["/governance/mold-registry/revisions/revision-1?tab=cad"]);
+
+    const importButton = wrapper.findAll("button").find((button) => button.text() === "批次匯入");
+    await importButton?.trigger("click");
+    expect(wrapper.emitted("navigate")?.at(-1)).toEqual(["/data/imports?domain=registry"]);
   });
 });

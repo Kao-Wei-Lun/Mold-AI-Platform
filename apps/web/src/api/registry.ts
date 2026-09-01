@@ -180,6 +180,29 @@ export type RegistryEngineeringHistory = {
   }>;
 };
 
+export type RegistryDataQuality = {
+  schema_version: "1.0";
+  summary: { total: number; critical: number; warning: number; info: number; mapping_required: number };
+  items: Array<{
+    code: string;
+    severity: "critical" | "warning" | "info";
+    title: string;
+    message: string;
+    entity_type: string;
+    entity_id: string;
+    action_path: string;
+  }>;
+  recent_imports: Array<{
+    batch_id: string;
+    source_name: string;
+    status: string;
+    issue_count: number;
+    created_by: string;
+    created_at: string;
+    deep_link: string;
+  }>;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 export class RegistryError extends Error {
@@ -215,6 +238,10 @@ function withQuery(path: string, query: RegistryQuery = {}): string {
 
 export function fetchRegistryOverview(): Promise<RegistryOverview> {
   return request("/api/v1/registry/overview");
+}
+
+export function fetchRegistryDataQuality(): Promise<RegistryDataQuality> {
+  return request("/api/v1/registry/data-quality");
 }
 
 export function fetchRegistryProjects(query: RegistryQuery = {}): Promise<RegistryListPayload<RegistryProject>> {

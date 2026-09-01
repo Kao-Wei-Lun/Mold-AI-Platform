@@ -12,6 +12,7 @@ from platform_core.models import (
     AccessRole,
     Artifact,
     AuditEvent,
+    BulkImportBatch,
     CAEStudy,
     DataScope,
     Mold,
@@ -196,6 +197,52 @@ class MoldRegistryApiTests(TestCase):
         )
         self.assertEqual(revision_response.status_code, 200)
         self.assertEqual(revision_response.json()["subject"]["revision_id"], str(revision.id))
+
+    def test_data_quality_connects_registry_issues_and_authorized_import_batches(self):
+        _, _, mold_payload, revision_payload = self.create_hierarchy()
+        revision = MoldRevision.objects.get(id=revision_payload["id"])
+        self.client.post(
+            f"/api/v1/registry/revisions/{revision.id}/actions",
+            {"action": "release", "row_version": 1, "reason": "Quality dashboard test"},
+            content_type="application/json",
+        )
+        public_scope = DataScope.objects.get(code="public-demo")
+        visible_batch = BulkImportBatch.objects.create(
+            scope=public_scope,
+            domain="registry",
+            source_name="registry-demo.csv",
+            idempotency_key="registry-quality-visible",
+            status=BulkImportBatch.Status.MAPPING_REQUIRED,
+            created_by="registry-engineer",
+        )
+        private_scope = DataScope.objects.create(
+            code="company-private", name="Company private", classification="confidential"
+        )
+        private_batch = BulkImportBatch.objects.create(
+            scope=private_scope,
+            domain="registry",
+            source_name="private-registry.csv",
+            idempotency_key="registry-quality-private",
+            status=BulkImportBatch.Status.FAILED,
+            created_by="private-user",
+        )
+
+        response = self.client.get("/api/v1/registry/data-quality")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        codes = {item["code"] for item in payload["items"]}
+        self.assertIn("RELEASED_WITHOUT_CAD", codes)
+        self.assertIn("REGISTRY_IMPORT_ATTENTION_REQUIRED", codes)
+        self.assertEqual(payload["summary"]["mapping_required"], 1)
+        batch_ids = {item["batch_id"] for item in payload["recent_imports"]}
+        self.assertIn(str(visible_batch.id), batch_ids)
+        self.assertNotIn(str(private_batch.id), batch_ids)
+        self.assertTrue(
+            any(
+                item["action_path"] == f"/governance/mold-registry/revisions/{revision.id}?tab=cad"
+                for item in payload["items"]
+            )
+        )
 
     def test_new_release_supersedes_previous_release(self):
         _, _, mold, first = self.create_hierarchy()
