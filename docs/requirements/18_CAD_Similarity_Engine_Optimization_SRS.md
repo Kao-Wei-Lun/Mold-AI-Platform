@@ -63,9 +63,14 @@ flowchart TD
    * 在網格表面依面積權重均勻採樣 4,096 點，計算隨機點對間的歐氏距離，生成 8 區間歸一化直方圖。
 4. **低階 3D 澤尼克矩（3D Zernike Moments）**：
    * 在 CPU 端透過體素化採樣，計算階數 $n \le 4$ 的 3D 澤尼克正交不變量（提供極佳的空間凹凸分佈描述能力，具旋轉不變性）。
-5. **向量資料庫架構升級**：
-   * Qdrant collection 更新為支援 32 維 Cosine 向量，版本標記為 `index_version: "2.0-geom32"`。
-   * 支援與舊版 `1.0` 向量平滑遷移與雙版本相容讀取。
+5. **向量資料庫架構升級與遷移策略**：
+   * 新建獨立 Qdrant Collection `cad-similarity-v2`（32 維 Cosine），版本標記為 `index_version: "2.0-geom32"`，與舊版 `cad-similarity-v1`（12 維）**並行運作**。
+   * **遷移流程**：
+     1. 部署新版 `extract_feature_set()` 後，所有新上傳的 CAD 自動寫入 v2 Collection。
+     2. 提供一次性批量遷移腳本 `scripts/migrate_feature_index_v2.py`，對所有現存 `FeatureSet` 記錄重新計算 32 維向量並索引至 v2。
+     3. 遷移期間檢索邏輯採用**雙 Collection 讀取**：同時查詢 v1 與 v2，以 `coarse_score` 統一排序後合併候選名單。
+     4. 遷移完成且驗證通過後，將 `QDRANT_CAD_COLLECTION` 環境變數切換至 v2，移除雙讀邏輯，歸檔 v1 Collection。
+   * **版本共存策略**：`FeatureSet` 模型透過 `schema_version="2.0"` 與 `extractor_version="2.0.0"` 區分新舊版本，利用現有 `unique_cad_feature_set_version` 約束自然共存。`compare_feature_sets()` 在遇到新舊版本混合比對時，僅比對兩者共有的特徵欄位子集（降級至 v1 的 4 軌評分）。
 
 #### 3.1.3 交付與驗收指標
 * 單一模型特徵萃取 CPU 時間增加不超過 350ms。
@@ -87,6 +92,10 @@ flowchart TD
    * 識別無法沿開模方向脫模的幾何陰影面（Undercuts），計算倒勾總投影面積與預估側抽芯（Slide / Lifter）數量。
 3. **分模線與分模面特徵（Parting Line / Surface Classification）**：
    * 萃取最大輪廓外周分模線，分類為：`FLAT_PLANE`（平面分模）、`STEPPED`（階梯分模）、`3D_SURFACE`（空間曲面分模）。
+4. **STL 格式降級處理策略**：
+   * STL 為純三角網格，不具備 B-Rep 拓撲資訊，無法精確計算壁厚、倒勾與分模線。
+   * **降級規則**：STL 檔案的 `manufacturing` 軌自動標記為 `NOT_AVAILABLE`，依現有的動態權重重新歸一化機制自動排除該軌（其餘可用軌等比例放大權重）。
+   * **可選近似估算**：提供基於體素化距離變換（Voxelized Distance Transform）的 STL 壁厚近似值，但精確度標記為 `APPROXIMATE`，僅供參考排序。
 4. **重排引擎（Reranking）新增「製造工藝軌（Manufacturing Lane）」**：
    * 擴充重排評分權重結構，將評分軌劃分為 5 軌：
      * `geometry` (幾何形狀, 25%)
@@ -113,8 +122,10 @@ flowchart TD
 
 #### 3.3.2 功能需求清單
 1. **雙模姿態空間自動配準（Spatial Registration）**：
-   * 第一步：基於慣性主軸進行粗對齊（Principal Component Alignment, PCA），將質心重疊並轉正坐標系。
-   * 第二步：執行 CPU 端快速點雲 ICP（Iterative Closest Point）迭代微調，求解剛體變換矩陣 $[R | t]$。
+   * 第一步：基於慣性主軸進行粗對齊（Principal Component Alignment, PCA），將質心重疊並轉正坐標系。所有候選均執行 PCA 粗對齊。
+   * 第二步（條件式啟用）：僅對 `overall_score >= 0.80` 的高相似度候選執行 CPU 端快速點雲 ICP（Iterative Closest Point）迭代微調，求解剛體變換矩陣 $[R | t]$。
+   * **ICP 安全約束**：最大迭代次數上限為 50 次，收斂門檻為 RMSE 變化量 $< 0.001\text{ mm}$。若超過迭代上限或不收斂，標記 `alignment_status: "partial"`，僅保留 PCA 粗對齊結果。
+   * **低相似度候選**（`overall_score < 0.80`）：僅提供 PCA 粗對齊的疊合預覽，不啟用 ICP 與偏差雲圖。
 2. **幾何表面偏差距離（Surface Distance Cloud）**：
    * 計算 Candidate 網格頂點相對於 Query 網格的最短距離（Signed Chamfer Distance）。
    * 產出偏差統計值：最大正偏差（凸出）、最大負偏差（凹陷）、均方根誤差（RMSE）。
@@ -131,6 +142,7 @@ flowchart TD
 #### 3.3.3 交付與驗收指標
 * 在前端 3D 視窗中，1 秒內完成對齊與色階渲染切換。
 * 工程師可直接視覺化看出兩版本零件在哪些面上存在結構變更。
+* API 回傳結果包含 `alignment_status` 欄位：`"full"` (ICP 收斂)、`"partial"` (僅 PCA 粗對齊)、`"skipped"` (相似度過低未啟用)。
 
 ---
 
@@ -147,13 +159,20 @@ flowchart TD
    * 提取成型物理指標：流長比（$L/t$）、估算投影面積（鎖模力需求區間）、建議澆口形式（熱澆道/側進澆）。
    * 支援「以物理成型難度為約束」的相似度過濾。
 3. **專家回饋偏好日誌與度量學習（Metric Learning / RankNet）**：
-   * 記錄使用者在相似度工作區中的互動：
-     * 正樣本（Positive）：工程師點擊「採納參考」、「建立關聯模具」、「載入其試模參數」。
-     * 負樣本（Negative）：高排名但被快速跳過或明確標記「不相關」。
-   * 背景定期執行 CPU 端 RankNet / 權重矩陣自適應微調，使特定廠內產品線的檢索排名逐漸貼近內部專家偏好。
+   * **子步驟 A（Phase 4 必交付）**：建設反饋採集 UI 與日誌基礎設施。
+     * 記錄使用者在相似度工作區中的互動：
+       * 正樣本（Positive）：工程師點擊「採納參考」、「建立關聯模具」、「載入其試模參數」。
+       * 負樣本（Negative）：高排名但被快速跳過或明確標記「不相關」。
+     * 反饋事件持久化至 `SimilarityFeedback` 資料表，包含 `search_id`、`candidate_id`、`action`、`timestamp`。
+   * **子步驟 B（企業導入後啟動）**：離線 Metric Learning 微調。
+     * 前提條件：累積 ≥ 100 筆有效反饋記錄。
+     * 背景定期執行 CPU 端 RankNet / 權重矩陣自適應微調，使特定廠內產品線的檢索排名逐漸貼近內部專家偏好。
+4. **2D GD&T 融合前置條件**：
+   * 2D 圖面的形位公差自動解析依賴完整的 2D 工程圖解析能力建設（PDF/DWG OCR + PMI 抽取）。若該模組尚未就緒，Phase 4 的 `tolerance_strictness` 比對項暫以手動標記的 CTQ 等級（如 `standard` / `precision`）替代。
 
 #### 3.4.3 交付與驗收指標
-* 累積 100 次以上工程師反饋後，Top-3 採納命中率（Acceptance Rate）提升 15% 以上。
+* Phase 4 必交付：反饋採集 UI 完成上線，工程師可對比對結果進行標記。
+* 企業導入後：累積 100 次以上工程師反饋後，Top-3 採納命中率（Acceptance Rate）提升 15% 以上。
 
 ---
 
@@ -164,8 +183,16 @@ flowchart TD
 
 #### 3.5.2 功能需求清單
 1. **異步 GPU 運算工作節點（GPU Worker Subsystem）**：
-   * 在 Celery / Job 系統中新增專屬 `queue: "gpu_heavy"` 與 `resource_class: "gpu"`。
+   * 在 Celery / Job 系統中新增統一 GPU 佇列 `queue: "gpu"`，並以 `resource_class` 細分任務類型（`gpu_cad` 用於 CAD 深度表徵、`gpu_knowledge` 用於 RAG 深度嵌入）。此佇列命名與 SRS 19（RAG 優化）統一，確保 GPU 硬體資源共享調度。
    * Web 主機與 API 服務完全維持 CPU 運作，僅在背景將需要深度神經網絡推論的作業派發給 GPU Worker。
+   * **Celery 路由配置**：在 `settings.py` 中新增 `CELERY_TASK_ROUTES`，將帶有 `gpu` 佇列的 task 路由至獨立的 GPU Worker 程序：
+     ```python
+     CELERY_TASK_ROUTES = {
+         "platform_core.run_gpu_cad_features": {"queue": "gpu"},
+         "platform_core.run_gpu_knowledge_embedding": {"queue": "gpu"},
+     }
+     ```
+   * **GPU Worker Docker 映像**：基於現有 `platform-api` 映像額外安裝 CUDA Runtime 與 ONNX GPU Runtime，獨立構建 `platform-gpu-worker` 映像，並在 `docker-compose.yml` 中新增對應服務定義。
 2. **多視角 2D 投影視覺嵌入（Multi-View Vision Transformer / DINOv2）**：
    * GPU Worker 批次渲染 3D 模型的多視角正交與等角投影圖（含深度圖與法向量圖）。
    * 輸入預訓練 ViT (DINOv2 / CLIP) 提取高維特徵（如 768 維），生成視覺相似度 Embedding，寫入專用 Qdrant 集合。
@@ -195,6 +222,13 @@ class FeatureSet(models.Model):
     alignment_metadata = models.JSONField(default=dict) # 主軸方向、PCA 主矩陣
     deep_features = models.JSONField(default=dict) # Phase 5: GNN / Multi-view refs
 ```
+
+**版本共存與 UniqueConstraint 策略**：
+* 現有 `FeatureSet` 具有唯一約束 `unique_cad_feature_set_version`（以 `cad_model, feature_type, schema_version, extractor_version` 為鍵）。
+* Phase 1 起使用 `schema_version="2.0"` 與 `extractor_version="2.0.0"`，與舊版 `1.0 / 1.0.0` 透過 UniqueConstraint 自然共存，無需遷移刪除舊記錄。
+* `compare_feature_sets()` 在遇到新舊版本混合比對時的降級邏輯：
+  * 若雙方 `schema_version` 不同，則僅比對兩者共有的 `features` 子欄位（`geometry`、`dimension`、`topology`、`metadata` 四軌），跳過新版獨有的 `geometry_invariants` 與 `manufacturing_features` 軌。
+  * 輸出結果中 `feature_availability` 應標註 `"geometry_invariants": false` 等缺失軌，確保工程師理解比對範圍受限。
 
 ### 4.2 API 契約升級 (`contracts.py`)
 

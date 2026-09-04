@@ -61,6 +61,9 @@ flowchart TD
   * 將 PDF、DOCX、XLSX 中的表格精確轉換為標準 Markdown 表格（保留 Header、Row、Column 邏輯）。
   * 識別技術大綱層級（Title、H1、H2、H3、清單、代碼區塊）。
   * 記錄文字區塊在 PDF 頁面上的實體幾何座標 `bbox: [x0, y0, x1, y1]` 與頁碼 `page_no`。
+* **Bbox 座標驗證與降級機制**：
+  * Chunk 入庫時執行座標合理性檢查：`bbox` 座標不得超出頁面尺寸、寬高不得為 0、`page_no` 必須為正整數。
+  * 若 `bbox` 不可用（如掃描件 PDF 或圖形化排版），Chunk 標記為 `bbox_available: false`，前端遞降級為頁碼級引證（僅標示頁碼但不畫框），而非完全失效。
 
 #### 2. 語意感知分塊（Hierarchical & Semantic Chunking）
 * 廢棄舊有的 900 字元硬性字串切斷邏輯。
@@ -69,6 +72,12 @@ flowchart TD
   * **章節上下文聚合**：Chunk 自動攜帶父級章節路徑（如 `成型工藝手冊 > 缺陷排除 > 縮水對策`）。
 
 #### 3. Qdrant 原生雙路混合檢索（Dense + Sparse BM25 + RRF）
+
+> **前置條件：Qdrant 版本升級**：本方案依賴 Qdrant 的 Sparse Vector 索引（v1.7+）與 Prefetch / RRF 融合查詢（v1.9+）。現有 `vector_store.py` 僅使用最基礎的 REST API，必須確認部署的 Qdrant 版本並升級至 **v1.10+**（建議 latest stable）。具體升級步驟：
+> 1. 更新 `docker-compose.yml` 中 Qdrant 服務的映像版本。
+> 2. 執行 Collection 資料遷移測試，驗證現有向量資料可正常讀取。
+> 3. 重構 `vector_store.py` 以支援 Named Vectors（Dense + Sparse 共存於同一 Collection 的不同 Vector Space）。
+
 * **Dense 向量**：
   * 引入 `BAAI/bge-small-zh-v1.5`（384 維），使用 ONNX Runtime 於 CPU 執行，推論單句僅需 5~12ms。
   * 徹底取代舊有的 64 維 Blake2b 特徵雜湊，具備真實中英雙語語意泛化能力。
@@ -78,12 +87,26 @@ flowchart TD
   * 廢除在 Python 端手寫的 `_lexical_score` 硬過濾。
   * 改採 Qdrant 原生 **Reciprocal Rank Fusion (RRF)** 演算法，直接在向量庫底層完成語意與字面的加權融合。
 
+**Knowledge Collection 遷移策略（從 64 維升級至 384 維）**：
+* 現有 `knowledge-text-demo-v1` Collection 中已索引的 Chunk 使用 64 維 Feature Hash 向量，無法與 384 維 BGE-small 向量共存於同一 Collection。
+* **採用方案**：新建 Collection `knowledge-text-v2`（384 維 Dense + Sparse Named Vectors），並提供一次性遷移腳本 `scripts/migrate_knowledge_index_v2.py`：
+  1. 遍歷所有現存 `KnowledgeDocument`，使用 Docling 重新解析並以 BGE-small 重新計算向量。
+  2. 將新向量與 BM25 Sparse 向量同時寫入 `knowledge-text-v2`。
+  3. 遷移期間保留舊 Collection 作為降級備援，遷移完成且驗證通過後可安全刪除舊 Collection。
+* 將 `settings.py` 中 `QDRANT_KNOWLEDGE_COLLECTION` 預設值從 `"knowledge-text-demo-v1"` 更新為 `"knowledge-text-v2"`。
+
 #### 4. 純 CPU 級神經重排器（FlashRank Cross-Encoder）
 * **技術方案**：引入極輕量重排庫 `flashrank`（模型體積 $< 80\text{MB}$，底層純 ONNX CPU 向量化）。
 * **運行方式**：
   * Qdrant 取出 Top-30 候選段落。
   * FlashRank 對 `(Query, Chunk)` 執行交叉注意力評分（Cross-Attention）。
   * 在純 CPU 上耗時僅 20~35ms，輸出精確排序的 Top-5 結果。
+* **新版拒答機制（Abstention Mechanism）——取代舊版 `_lexical_score > 0` 硬過濾**：
+  * 舊版系統以 `lexical_score <= 0` 作為拒答與防幻覺的核心防線，廢除後必須以等效機制替代。
+  * **新規則**：在 FlashRank 重排後，設定最低 Cross-Encoder 分數門檻 `RERANK_ABSTENTION_THRESHOLD = 0.35`（可於 `settings.py` 中配置）。
+  * 將所有 `rerank_score < RERANK_ABSTENTION_THRESHOLD` 的候選淘汰。
+  * 若淘汰後無任何候選段落，觸發 `abstained = true`，回傳舊版相同的拒答訊息：`"Insufficient authorized evidence was found; no conclusion was generated."`。
+  * 此機制確保純 Dense 向量高分但語意不相關的段落無法滲入結果，維持與舊版等效的防幻覺保護。
 
 #### 5. 模具領域專用同義詞擴充（Domain Synonym Expansion）
 * 建立射出成型專用詞典，檢索前自動進行 Query 擴展：
@@ -95,6 +118,17 @@ flowchart TD
 #### 6. 前端 PDF 視覺黃色高亮引證（Bounding-box Citations）
 * 前端基於 PDF.js 實現查看器組件。
 * 使用者在 AI 助理對話中點擊引用標籤 `[Citation #1]`，右側自動彈出來源 PDF，並精確翻頁至對應位置，以半透明黃色方框高亮被引用的段落。
+* **Bbox 不可用時的降級行為**：若 Chunk 標記為 `bbox_available: false`，前端僅執行頁碼級導航（翻至該頁），不畫黃色框，避免座標失準造成誤導。
+
+#### 7. Embedding 模型離線部署策略（Offline Model Packaging）
+* 生產環境（模具廠內網）通常無法連接外網下載 HuggingFace 模型，必須預先打包。
+* **方案**：
+  * 提供 `scripts/download_models.py` 腳本，在有網路的環境中預先下載 BGE-small ONNX 模型（約 90MB）與 FlashRank 模型（約 80MB）。
+  * CI/CD 流程中將模型檔打入 Docker Image 的 `/app/models/` 目錄。
+  * `settings.py` 中新增配置項：
+    * `EMBEDDING_MODEL_PATH = os.getenv("EMBEDDING_MODEL_PATH", "/app/models/bge-small-zh-v1.5-onnx")`
+    * `RERANKER_MODEL_PATH = os.getenv("RERANKER_MODEL_PATH", "/app/models/flashrank")`
+  * 應用啟動時檢查模型路徑是否存在，若缺失則拋出明確錯誤訊息（包含下載指令提示）。
 
 ---
 
@@ -134,7 +168,9 @@ flowchart TD
   3. **檢索模式**：當使用者詢問宏觀問題（如：「哪些材料在薄壁射出時最容易發生短射，常用的模具結構改善方案有哪些？」）時，系統能跨 10 份不同文檔進行社群摘要（Community Summarization）綜合回答。
 
 #### 5. 算力解耦與自動優雅降級機制（Fault-Tolerant Fallback）
-* GPU 任務統一註冊於 Celery 佇列：`queue: "gpu_knowledge"`。
+* GPU 任務統一註冊於 Celery 佇列：`queue: "gpu"`，並以 `resource_class: "gpu_knowledge"` 細分任務類型。此佇列命名與 SRS 18（CAD 相似度優化）統一，確保 GPU 硬體資源共享調度：
+  * `resource_class: "gpu_cad"` 用於 CAD 深度幾何表徵（見 SRS 18 Phase 5）。
+  * `resource_class: "gpu_knowledge"` 用於 RAG 深度嵌入與重排。
 * 系統定期進行 GPU 節點心跳檢查（Heartbeat）。
 * **降級保護**：當 GPU 節點過載或離線時，系統**毫秒級自動切換回 Phase 1 的 CPU 檢索流程（Docling + bge-small + FlashRank）**，確保前端業務永不中斷。
 
@@ -166,5 +202,5 @@ flowchart TD
 3. **Faithfulness（真實度/防幻覺指標）**：生成回答中能夠被引用依據完全支撐的比例（目標：兩階段皆必須 $\ge 98\%$）。
 
 ### 6.2 實施時程規劃
-* **Phase 1（純 CPU 優化）**：預估工期 **3.5 週**（Docling 解析 1 週 + 向量與 Qdrant RRF 1 週 + FlashRank 重排 0.5 週 + 前端 Bbox 高亮 1 週）。
+* **Phase 1（純 CPU 優化）**：預估工期 **4 週**（Qdrant 升級 + Collection 遷移 0.5 週 + Docling 解析 1 週 + 向量與 Qdrant RRF 1 週 + FlashRank 重排與拒答機制 0.5 週 + 前端 Bbox 高亮 1 週）。
 * **Phase 2（GPU 深度升級）**：預估工期 **4 週**（GPU 佇列架構 1 週 + BGE-M3/Reranker 整合 1 週 + GraphRAG 實體圖譜構建 1.5 週 + 降級測試 0.5 週）。
