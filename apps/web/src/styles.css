@@ -766,6 +766,104 @@ button[aria-busy="true"]::before {
   line-height: 1.5;
 }
 
+/* ── Post-upload action cards ── */
+.post-upload-actions {
+  margin-top: 1.75rem;
+  padding: 1.25rem;
+  border: 1px solid #dce4f0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f8faff 0%, #f2f5fb 100%);
+}
+
+.post-upload-heading {
+  margin: 0 0 1rem;
+  color: #2a3f5f;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.post-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.post-action-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  min-height: 88px;
+  border: 1px solid #cad6e5;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease, transform 120ms ease;
+}
+
+.post-action-card:hover {
+  border-color: #8aa8db;
+  background: #fafcff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgb(57 113 216 / 8%);
+}
+
+.post-action-card.active {
+  border-color: #3971d8;
+  background: #f2f6ff;
+  box-shadow: 0 0 0 2px rgb(57 113 216 / 12%);
+}
+
+.post-action-icon {
+  flex: 0 0 auto;
+  font-size: 1.35rem;
+  line-height: 1;
+  margin-top: 0.1rem;
+}
+
+.post-action-content {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.post-action-content strong {
+  color: #172b49;
+  font-size: 0.85rem;
+}
+
+.post-action-content small {
+  color: #6f7f96;
+  font-size: 0.73rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.post-action-detail {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #c8d5ea;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.post-action-detail-title {
+  margin: 0 0 0.75rem;
+  color: #2a3f5f;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.post-action-detail-body {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.post-action-detail-buttons {
+  display: flex;
+  gap: 0.6rem;
+}
+
 .recent-cad-loader {
   display: flex;
   gap: 0.75rem;
@@ -3066,6 +3164,10 @@ button[aria-busy="true"]::before {
   }
 
   .upload-purpose-options {
+    grid-template-columns: 1fr;
+  }
+
+  .post-action-grid {
     grid-template-columns: 1fr;
   }
 

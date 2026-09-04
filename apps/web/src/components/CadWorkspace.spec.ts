@@ -56,6 +56,36 @@ function jsonResponse(payload: object, ok = true, status = 200): Response {
   } as Response;
 }
 
+const succeededResult = {
+  cad_model_id: "cad-1",
+  artifact_version_id: "version-1",
+  cad_format: "stl",
+  unit_system: "unknown",
+  parser: { name: "trimesh", version: "4.12.2" },
+  geometry_status: "succeeded",
+  bounding_box: {
+    min: { x: 0, y: 0, z: 0 },
+    max: { x: 1, y: 1, z: 1 },
+    size: { x: 1, y: 1, z: 1 },
+  },
+  volume: 0.1667,
+  surface_area: 2.366,
+  face_count: 4,
+  edge_count: 6,
+  surface_type_histogram: { triangle: 4 },
+  quality_flags: ["UNIT_UNCERTAIN"],
+  preview: {
+    artifact_version_id: "preview-1",
+    original_filename: "part.preview.stl",
+    media_type: "model/stl",
+    format: "stl",
+    size_bytes: 100,
+    sha256: "abc",
+    download_url: "/preview-1",
+  },
+  similarity_index: null,
+};
+
 describe("CadWorkspace", () => {
   beforeEach(() => {
     vi.stubGlobal("XMLHttpRequest", FetchBackedXMLHttpRequest);
@@ -96,6 +126,9 @@ describe("CadWorkspace", () => {
             artifact_id: "artifact-1",
             artifact_version_id: "version-1",
             job_id: "job-1",
+            ingestion_mode: "quick_analysis",
+            governance_status: "unassigned",
+            mold_revision_id: null,
             idempotent_replay: false,
             warnings: ["Basic screening only."],
             links: { artifact: "/artifact-1", status: "/job-1", ui: "/cad/job-1" },
@@ -116,34 +149,7 @@ describe("CadWorkspace", () => {
           artifact_version_id: "version-1",
           correlation_id: "correlation-1",
           error: null,
-          result: {
-            cad_model_id: "cad-1",
-            artifact_version_id: "version-1",
-            cad_format: "stl",
-            unit_system: "unknown",
-            parser: { name: "trimesh", version: "4.12.2" },
-            geometry_status: "succeeded",
-            bounding_box: {
-              min: { x: 0, y: 0, z: 0 },
-              max: { x: 1, y: 1, z: 1 },
-              size: { x: 1, y: 1, z: 1 },
-            },
-            volume: 0.1667,
-            surface_area: 2.366,
-            face_count: 4,
-            edge_count: 6,
-            surface_type_histogram: { triangle: 4 },
-            quality_flags: ["UNIT_UNCERTAIN"],
-            preview: {
-              artifact_version_id: "preview-1",
-              original_filename: "part.preview.stl",
-              media_type: "model/stl",
-              format: "stl",
-              size_bytes: 100,
-              sha256: "abc",
-              download_url: "/preview-1",
-            },
-          },
+          result: succeededResult,
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -171,22 +177,24 @@ describe("CadWorkspace", () => {
       .toBe("");
   });
 
-  it("requires and submits a mold revision for governed archiving", async () => {
+  it("shows post-upload action cards after successful processing", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         jsonResponse(
           {
             status: "accepted",
-            artifact_id: "artifact-governed",
-            artifact_version_id: "version-governed",
-            job_id: "job-governed",
-            ingestion_mode: "governed_archive",
-            governance_status: "governed",
-            mold_revision_id: "revision-1",
+            artifact_id: "artifact-post",
+            artifact_version_id: "version-post",
+            version_number: 1,
+            version_action: "new_artifact",
+            job_id: "job-post",
+            ingestion_mode: "quick_analysis",
+            governance_status: "unassigned",
+            mold_revision_id: null,
             idempotent_replay: false,
             warnings: [],
-            links: { artifact: "/artifact-governed", status: "/job-governed", ui: "/cad/job-governed" },
+            links: { artifact: "/artifact-post", status: "/job-post", ui: "/cad/job-post" },
           },
           true,
           202,
@@ -195,77 +203,178 @@ describe("CadWorkspace", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           schema_version: "1.0",
-          job_id: "job-governed",
+          job_id: "job-post",
           capability: "cad.parse@1.0.0",
-          state: "queued",
-          stage: "queued",
-          progress: 0,
+          state: "succeeded",
+          stage: "completed",
+          progress: 100,
           attempt: 1,
-          artifact_version_id: "version-governed",
-          correlation_id: "correlation-governed",
+          artifact_version_id: "version-post",
+          correlation_id: "correlation-post",
           error: null,
-          result: null,
+          result: succeededResult,
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
-    await flushPromises();
-    await wrapper.get('input[value="governed_archive"]').setValue(true);
-    await flushPromises();
-    expect(wrapper.text()).toContain("Related mold / design revision");
-
+    const wrapper = mount(CadWorkspace, {
+      global: { stubs: { CadPreview: true } },
+    });
     const fileInput = wrapper.get('input[type="file"]');
     Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
     await fileInput.trigger("change");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
-    expect(uploadBody.get("ingestion_mode")).toBe("governed_archive");
-    expect(uploadBody.get("mold_revision_id")).toBe("revision-1");
+    expect(wrapper.text()).toContain("What would you like to do next?");
+    expect(wrapper.text()).toContain("Link to mold revision");
+    expect(wrapper.text()).toContain("Find similar molds");
+    expect(wrapper.text()).toContain("Run design review");
   });
 
-  it("adds a version to an existing CAD record without changing its identity", async () => {
-    const existing = {
-      artifact_id: "artifact-versioned",
-      name: "Versioned housing",
-      kind: "cad_source",
-      classification: "public_demo",
-      dataset_id: "manual-cad-upload-v1",
-      product_type: "housing",
-      material_code: "PC_ABS",
-      mold_revision_id: null,
-      mold_revision: null,
-      lifecycle_status: "active",
-      quality_status: "validated",
-      created_at: "2026-08-30T00:00:00Z",
-      updated_at: "2026-08-30T00:00:00Z",
-      row_version: 1,
-      source: null,
-      jobs: [],
-      versions: [{ artifact_version_id: "version-1" }],
-    };
+  it("links to a mold revision via post-upload action", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [existing] }))
-      .mockResolvedValueOnce(jsonResponse({ status: "accepted", artifact_id: existing.artifact_id, artifact_version_id: "version-2", version_number: 2, version_action: "new_version", job_id: "job-v2", ingestion_mode: "quick_analysis", governance_status: "unassigned", mold_revision_id: null, idempotent_replay: false, warnings: [], links: {} }, true, 202))
-      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", job_id: "job-v2", capability: "cad.parse@1.0.0", state: "queued", stage: "queued", progress: 0, attempt: 1, artifact_version_id: "version-2", correlation_id: "correlation-v2", error: null, result: null }));
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            status: "accepted",
+            artifact_id: "artifact-link",
+            artifact_version_id: "version-link",
+            version_number: 1,
+            version_action: "new_artifact",
+            job_id: "job-link",
+            ingestion_mode: "quick_analysis",
+            governance_status: "unassigned",
+            mold_revision_id: null,
+            idempotent_replay: false,
+            warnings: [],
+            links: { artifact: "/artifact-link", status: "/job-link", ui: "/cad/job-link" },
+          },
+          true,
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1.0",
+          job_id: "job-link",
+          capability: "cad.parse@1.0.0",
+          state: "succeeded",
+          stage: "completed",
+          progress: 100,
+          attempt: 1,
+          artifact_version_id: "version-link",
+          correlation_id: "correlation-link",
+          error: null,
+          result: succeededResult,
+        }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
-    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
-    await wrapper.get('input[value="new_version"]').setValue(true);
-    await flushPromises();
-    await wrapper.get("select").setValue(existing.artifact_id);
+    const linkMock = vi.spyOn(registryApi, "linkArtifactToRevision").mockResolvedValue({
+      artifact_id: "artifact-link",
+      name: "part",
+      mold_revision_id: "revision-1",
+      mold_revision: "MOLD-001@A",
+      lifecycle_status: "active",
+      quality_status: "pending",
+      archive_reason: null,
+      archived_at: null,
+      row_version: 1,
+      updated_at: "2026-09-04T00:00:00Z",
+      references: { versions: 1, jobs: 1, feature_sets: 0, design_reviews: 0 },
+      hard_delete_allowed: false,
+    });
+
+    const wrapper = mount(CadWorkspace, {
+      global: { stubs: { CadPreview: true } },
+    });
     const fileInput = wrapper.get('input[type="file"]');
     Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
     await fileInput.trigger("change");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    const uploadBody = fetchMock.mock.calls[1]?.[1]?.body as FormData;
-    expect(uploadBody.get("artifact_id")).toBe(existing.artifact_id);
-    expect(uploadBody.get("ingestion_mode")).toBe("quick_analysis");
+    // Click "Link to mold revision" action card
+    const actionCards = wrapper.findAll(".post-action-card");
+    await actionCards[0].trigger("click");
+    await flushPromises();
+
+    // The link panel should be open with revision selector
+    expect(wrapper.text()).toContain("Select a mold revision to link");
+    expect(wrapper.text()).toContain("MOLD-001@A");
+
+    // Select revision and confirm
+    await wrapper.get(".post-action-detail select").setValue("revision-1");
+    await wrapper.get(".post-action-detail button").trigger("click");
+    await flushPromises();
+
+    expect(linkMock).toHaveBeenCalledWith(
+      "artifact-link",
+      0,
+      "revision-1",
+      "Linked via CAD upload post-action.",
+    );
+  });
+
+  it("emits navigate when post-upload action cards are clicked", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            status: "accepted",
+            artifact_id: "artifact-nav",
+            artifact_version_id: "version-nav",
+            version_number: 1,
+            version_action: "new_artifact",
+            job_id: "job-nav",
+            ingestion_mode: "quick_analysis",
+            governance_status: "unassigned",
+            mold_revision_id: null,
+            idempotent_replay: false,
+            warnings: [],
+            links: {},
+          },
+          true,
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1.0",
+          job_id: "job-nav",
+          capability: "cad.parse@1.0.0",
+          state: "succeeded",
+          stage: "completed",
+          progress: 100,
+          attempt: 1,
+          artifact_version_id: "version-nav",
+          correlation_id: "correlation-nav",
+          error: null,
+          result: succeededResult,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CadWorkspace, {
+      global: { stubs: { CadPreview: true } },
+    });
+    const fileInput = wrapper.get('input[type="file"]');
+    Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
+    await fileInput.trigger("change");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const actionCards = wrapper.findAll(".post-action-card");
+    // Click "Find similar molds" (index 1)
+    await actionCards[1].trigger("click");
+    expect(wrapper.emitted("navigate")?.[0]).toEqual(["similarity"]);
+
+    // Click "Run design review" (index 2)
+    await actionCards[2].trigger("click");
+    expect(wrapper.emitted("navigate")?.[1]).toEqual(["design_review"]);
   });
 
   it("shows a server validation message", async () => {

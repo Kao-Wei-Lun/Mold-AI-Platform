@@ -358,6 +358,7 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
           :master-data-error="masterDataError"
           @retry-master-data="refreshMasterData"
           @ready="activeCAD = $event"
+          @navigate="navigate"
         />
         <SimilarityWorkspace
           v-else-if="currentRoute.id === 'similarity' && accessReady"

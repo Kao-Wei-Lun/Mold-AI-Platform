@@ -8,6 +8,7 @@ import {
   type CADArtifactSummary,
   type CADJob,
   type CADModelResult,
+  type CADUploadAccepted,
   type CADUploadProgress,
   uploadCAD,
 } from "../api/cad";
@@ -15,7 +16,7 @@ import { useI18n } from "../i18n";
 import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import { pushToast } from "../toast";
 import { uploadPolicies, validateUploadFile } from "../fileUpload";
-import { fetchRegistry, type RegistryRevision } from "../api/registry";
+import { fetchRegistry, linkArtifactToRevision, type RegistryRevision } from "../api/registry";
 import FormField from "./FormField.vue";
 import FileDropZone from "./FileDropZone.vue";
 
@@ -35,33 +36,41 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   ready: [result: NonNullable<CADJob["result"]>];
   retryMasterData: [];
+  navigate: [route: string];
 }>();
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
+// ── Upload form state ──
 const selectedFile = ref<File | null>(null);
 const artifactName = ref("");
 const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
-const uploadMode = ref<"quick_analysis" | "governed_archive">("quick_analysis");
-const artifactTargetMode = ref<"new_artifact" | "new_version">("new_artifact");
-const existingArtifactId = ref("");
-const versionArtifacts = ref<CADArtifactSummary[]>([]);
-const moldRevisionId = ref("");
-const revisions = ref<RegistryRevision[]>([]);
 const uploading = ref(false);
 const uploadProgress = ref<CADUploadProgress | null>(null);
 const error = ref<string | null>(null);
 const warning = ref<string | null>(null);
 const job = ref<CADJob | null>(null);
+const restoreActiveResult = ref(true);
+let pollTimer: number | null = null;
+
+// ── Post-upload action state ──
+const lastAccepted = ref<CADUploadAccepted | null>(null);
+const linkRevisionOpen = ref(false);
+const linkRevisionId = ref("");
+const linkVersionOpen = ref(false);
+const revisions = ref<RegistryRevision[]>([]);
+const revisionsLoaded = ref(false);
+const linking = ref(false);
+
+// ── Recent / demo catalog state ──
 const recentJobs = ref<Array<{ job: CADJob; label: string }>>([]);
 const selectedRecentJobId = ref("");
 const loadingRecent = ref(false);
 const catalogLabel = ref("recent processed CAD");
-const restoreActiveResult = ref(true);
-let pollTimer: number | null = null;
 
+// ── Computed ──
 const terminal = computed(() =>
   ["succeeded", "failed", "cancelled", "expired"].includes(job.value?.state || ""),
 );
@@ -74,25 +83,17 @@ const dimensions = computed(() => {
   return `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
 });
 const missingUploadFields = computed(
-  () =>
-    Number(!selectedFile.value) +
-    Number(!datasetId.value) +
-    Number(artifactTargetMode.value === "new_version" && !existingArtifactId.value) +
-    Number(uploadMode.value === "governed_archive" && !moldRevisionId.value),
+  () => Number(!selectedFile.value) + Number(!datasetId.value),
 );
-
-async function loadVersionArtifacts(): Promise<void> {
-  try {
-    versionArtifacts.value = await fetchRecentCAD();
-  } catch {
-    versionArtifacts.value = [];
-  }
-}
+const showPostActions = computed(
+  () => result.value && job.value?.state === "succeeded" && lastAccepted.value,
+);
 
 function optionLabel(option: MasterDataOption): string {
   return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
 }
 
+// ── Auto-select default dataset ──
 watch(
   () => props.masterDataOptions.dataset,
   (options) => {
@@ -102,42 +103,19 @@ watch(
   { immediate: true },
 );
 
+// ── Load revisions (for post-upload linking) ──
 async function loadRevisions(): Promise<void> {
+  if (revisionsLoaded.value) return;
   try {
     const registry = await fetchRegistry();
     revisions.value = registry.revisions.filter((revision) => revision.status !== "archived");
-    if (uploadMode.value === "governed_archive" && !moldRevisionId.value) {
-      moldRevisionId.value = revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
-    }
+    revisionsLoaded.value = true;
   } catch {
     revisions.value = [];
   }
 }
 
-watch(uploadMode, (mode) => {
-  if (mode === "quick_analysis") {
-    moldRevisionId.value = "";
-    return;
-  }
-  moldRevisionId.value =
-    revisions.value.find((revision) => revision.status === "released")?.id || revisions.value[0]?.id || "";
-});
-
-watch(artifactTargetMode, (mode) => {
-  if (mode === "new_version" && !versionArtifacts.value.length) void loadVersionArtifacts();
-  if (mode === "new_artifact") existingArtifactId.value = "";
-});
-
-watch(existingArtifactId, (id) => {
-  const artifact = versionArtifacts.value.find((item) => item.artifact_id === id);
-  if (!artifact) return;
-  uploadMode.value = artifact.mold_revision_id ? "governed_archive" : "quick_analysis";
-  moldRevisionId.value = artifact.mold_revision_id || "";
-  datasetId.value = artifact.dataset_id;
-  productType.value = artifact.product_type;
-  materialCode.value = artifact.material_code;
-});
-
+// ── File selection ──
 function selectFile(candidate: File): void {
   uploadProgress.value = null;
   const validation = validateUploadFile(candidate, uploadPolicies.cad);
@@ -155,6 +133,7 @@ function selectFile(candidate: File): void {
   }
 }
 
+// ── Job polling ──
 function schedulePoll(): void {
   if (!terminal.value) pollTimer = window.setTimeout(refreshJob, 900);
 }
@@ -170,13 +149,10 @@ async function refreshJob(): Promise<void> {
   }
 }
 
+// ── Upload (always quick_analysis) ──
 async function submit(): Promise<void> {
   if (!selectedFile.value) {
     error.value = t("Choose a STEP or STL file first.");
-    return;
-  }
-  if (uploadMode.value === "governed_archive" && !moldRevisionId.value) {
-    error.value = t("Select a mold revision for governed archiving.");
     return;
   }
 
@@ -185,6 +161,9 @@ async function submit(): Promise<void> {
   error.value = null;
   warning.value = null;
   job.value = null;
+  lastAccepted.value = null;
+  linkRevisionOpen.value = false;
+  linkVersionOpen.value = false;
   restoreActiveResult.value = false;
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 
@@ -198,12 +177,11 @@ async function submit(): Promise<void> {
         datasetId: datasetId.value,
         productType: productType.value,
         materialCode: materialCode.value,
-        uploadMode: uploadMode.value,
-        moldRevisionId: uploadMode.value === "governed_archive" ? moldRevisionId.value : undefined,
-        artifactId: artifactTargetMode.value === "new_version" ? existingArtifactId.value : undefined,
+        uploadMode: "quick_analysis",
       },
       { onProgress: (progress) => { uploadProgress.value = progress; } },
     );
+    lastAccepted.value = accepted;
     warning.value = accepted.warnings.map((message) => t(message)).join(" ") || null;
     job.value = await fetchCADJob(accepted.job_id);
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
@@ -220,6 +198,37 @@ async function submit(): Promise<void> {
   }
 }
 
+// ── Post-upload: link to mold revision ──
+function openLinkRevision(): void {
+  linkRevisionOpen.value = true;
+  linkVersionOpen.value = false;
+  void loadRevisions();
+  if (!linkRevisionId.value && revisions.value.length) {
+    linkRevisionId.value = revisions.value.find((r) => r.status === "released")?.id || revisions.value[0].id;
+  }
+}
+
+async function confirmLinkRevision(): Promise<void> {
+  if (!lastAccepted.value || !linkRevisionId.value) return;
+  linking.value = true;
+  try {
+    await linkArtifactToRevision(
+      lastAccepted.value.artifact_id,
+      0, // row_version: fresh artifact
+      linkRevisionId.value,
+      "Linked via CAD upload post-action.",
+    );
+    pushToast(t("CAD linked to mold revision."), "success");
+    linkRevisionOpen.value = false;
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t("Failed to link CAD to mold revision.");
+    pushToast(error.value, "error");
+  } finally {
+    linking.value = false;
+  }
+}
+
+// ── Recent / demo catalog ──
 async function browseRecent(curated = false): Promise<void> {
   loadingRecent.value = true;
   error.value = null;
@@ -253,14 +262,13 @@ function activateRecent(): void {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
   restoreActiveResult.value = false;
   job.value = selected.job;
+  lastAccepted.value = null;
   emit("ready", selected.job.result);
 }
 
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
 });
-
-loadRevisions();
 </script>
 
 <template>
@@ -300,47 +308,6 @@ loadRevisions();
         <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
         <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
       </div>
-      <fieldset class="cad-upload-purpose form-wide">
-        <legend>{{ t("Version action") }}</legend>
-        <div class="upload-purpose-options">
-          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_artifact' }">
-            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_artifact" />
-            <span><strong>{{ t("Create new CAD record") }}</strong><small>{{ t("Start a separately governed CAD history.") }}</small></span>
-          </label>
-          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_version' }">
-            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_version" />
-            <span><strong>{{ t("Add version to existing CAD") }}</strong><small>{{ t("Keep prior versions and engineering results unchanged.") }}</small></span>
-          </label>
-        </div>
-      </fieldset>
-      <FormField v-if="artifactTargetMode === 'new_version'" v-slot="{ fieldId, describedBy, invalid }" :label="t('Existing CAD record')" required :helper="t('The new file inherits dataset, revision and governance from this record.')">
-        <select :id="fieldId" v-model="existingArtifactId" required :aria-describedby="describedBy" :aria-invalid="invalid">
-          <option value="" disabled>{{ t("Select an existing CAD record") }}</option>
-          <option v-for="artifact in versionArtifacts" :key="artifact.artifact_id" :value="artifact.artifact_id">{{ artifact.name }} · {{ artifact.versions?.length || 0 }} {{ t("versions") }}</option>
-        </select>
-      </FormField>
-      <fieldset v-if="artifactTargetMode === 'new_artifact'" class="cad-upload-purpose form-wide">
-        <legend>{{ t("Upload purpose") }}</legend>
-        <div class="upload-purpose-options">
-          <label class="upload-purpose-option" :class="{ selected: uploadMode === 'quick_analysis' }">
-            <input v-model="uploadMode" type="radio" name="upload-purpose" value="quick_analysis" />
-            <span>
-              <strong>{{ t("Quick analysis") }}</strong>
-              <small>{{ t("Upload now for preview, similarity and generic review. Link it to a mold revision later.") }}</small>
-            </span>
-          </label>
-          <label class="upload-purpose-option" :class="{ selected: uploadMode === 'governed_archive' }">
-            <input v-model="uploadMode" type="radio" name="upload-purpose" value="governed_archive" />
-            <span>
-              <strong>{{ t("Governed archive") }}</strong>
-              <small>{{ t("Attach this CAD to an existing mold design revision for formal traceability.") }}</small>
-            </span>
-          </label>
-        </div>
-      </fieldset>
-      <p v-if="uploadMode === 'quick_analysis'" class="cad-governance-note form-wide">
-        {{ t("This CAD will be stored as unassigned. Preview and generic analysis remain available; mold-specific rules and formal engineering history require a mold revision.") }}
-      </p>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
         <FileDropZone
           :id="fieldId"
@@ -372,18 +339,6 @@ loadRevisions();
         <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
           <option value="">{{ t("Not specified") }}</option>
           <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
-        </select>
-      </FormField>
-      <FormField
-        v-if="uploadMode === 'governed_archive'"
-        v-slot="{ fieldId, describedBy, invalid }"
-        :label="t('Related mold / design revision')"
-        required
-        :helper="revisions.length ? t('Required for governed archiving and formal Trial, CAE and review traceability.') : t('No active mold revisions are available. Create one in Mold Registry first.')"
-      >
-        <select :id="fieldId" v-model="moldRevisionId" required :aria-describedby="describedBy" :aria-invalid="invalid">
-          <option value="" disabled>{{ t("Select a mold revision") }}</option>
-          <option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }} · {{ t(revision.status) }}</option>
         </select>
       </FormField>
       <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
@@ -440,6 +395,53 @@ loadRevisions();
         <div><span>{{ t("Faces / Edges") }}</span><strong>{{ result.face_count }} / {{ result.edge_count }}</strong></div>
         <div><span>{{ t("Parser") }}</span><strong>{{ result.parser.name }} {{ result.parser.version }}</strong></div>
         <div><span>{{ t("Quality") }}</span><strong>{{ result.quality_flags.join(", ") || t("No flags") }}</strong></div>
+      </div>
+    </div>
+
+    <!-- Post-upload action cards -->
+    <div v-if="showPostActions" class="post-upload-actions">
+      <p class="post-upload-heading">{{ t("What would you like to do next?") }}</p>
+      <div class="post-action-grid">
+        <button type="button" class="post-action-card" :class="{ active: linkRevisionOpen }" @click="openLinkRevision">
+          <span class="post-action-icon">🔗</span>
+          <span class="post-action-content">
+            <strong>{{ t("Link to mold revision") }}</strong>
+            <small>{{ t("Attach this CAD to a mold design revision for formal traceability.") }}</small>
+          </span>
+        </button>
+        <button type="button" class="post-action-card" @click="emit('navigate', 'similarity')">
+          <span class="post-action-icon">🔍</span>
+          <span class="post-action-content">
+            <strong>{{ t("Find similar molds") }}</strong>
+            <small>{{ t("Search for comparable molds and inspect similarity scores.") }}</small>
+          </span>
+        </button>
+        <button type="button" class="post-action-card" @click="emit('navigate', 'design_review')">
+          <span class="post-action-icon">📋</span>
+          <span class="post-action-content">
+            <strong>{{ t("Run design review") }}</strong>
+            <small>{{ t("Validate this geometry against approved engineering rules.") }}</small>
+          </span>
+        </button>
+      </div>
+
+      <!-- Inline: link to mold revision -->
+      <div v-if="linkRevisionOpen" class="post-action-detail">
+        <p class="post-action-detail-title">{{ t("Select a mold revision to link") }}</p>
+        <div class="post-action-detail-body">
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Mold revision')" required :helper="revisions.length ? t('The CAD will be governed under this mold revision.') : t('No active mold revisions are available. Create one in Mold Registry first.')">
+            <select :id="fieldId" v-model="linkRevisionId" required :aria-describedby="describedBy" :aria-invalid="invalid">
+              <option value="" disabled>{{ t("Select a mold revision") }}</option>
+              <option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }} · {{ t(revision.status) }}</option>
+            </select>
+          </FormField>
+          <div class="post-action-detail-buttons">
+            <button type="button" :disabled="!linkRevisionId || linking" :aria-busy="linking" @click="confirmLinkRevision">
+              {{ linking ? t("Linking...") : t("Confirm link") }}
+            </button>
+            <button type="button" class="secondary-button" @click="linkRevisionOpen = false">{{ t("Cancel") }}</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>

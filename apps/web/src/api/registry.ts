@@ -439,10 +439,22 @@ export function updateMold(
 
 export function updateArtifactGovernance(
   artifact: { artifact_id: string; row_version: number },
-  input: { name: string; product_type: string; material_code: string; lifecycle_status: string; quality_status: string; reason: string },
+  input: { name?: string; product_type?: string; material_code?: string; lifecycle_status?: string; quality_status?: string; mold_revision_id?: string; reason: string },
 ): Promise<RegistryArtifactGovernance> {
   return request(`/api/v1/registry/artifacts/${artifact.artifact_id}`, {
     method: "PATCH",
     body: JSON.stringify({ ...input, row_version: artifact.row_version }),
+  });
+}
+
+export function linkArtifactToRevision(
+  artifactId: string,
+  rowVersion: number,
+  moldRevisionId: string,
+  reason: string,
+): Promise<RegistryArtifactGovernance> {
+  return request(`/api/v1/registry/artifacts/${artifactId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ mold_revision_id: moldRevisionId, row_version: rowVersion, reason }),
   });
 }
