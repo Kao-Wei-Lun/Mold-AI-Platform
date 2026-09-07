@@ -24,6 +24,11 @@ Stage 13–16 定義為 Demo v1.0 completion gates，Stage 17 定義為後續 En
 
 ## Development
 
+公開 CAD 相似搜尋改善：請參閱
+[詳細修改規劃](docs/planning/public-cad-similarity-evaluation-plan.md) 與
+[公開樣本準備、測試指令及實測結果](docs/development/stage-47-public-cad-evaluation.md)。
+目前已提供 CPU 分項幾何重排與公開模型冒煙評估；人工跨模型品質驗收仍待完成。
+
 Stages 1–12 establish the runnable foundation, the STEP/STL Artifact/Job vertical slice,
 deterministic explainable CAD similarity through Qdrant, and an auditable deterministic Design
 Review workflow, governed extractive Knowledge/RAG retrieval, and the context-aware Assistant plus

@@ -104,6 +104,11 @@ describe("SimilarityWorkspace", () => {
                 material_code: "PC_ABS",
                 coarse_score: 0.97,
                 overall_score: 0.928,
+                geometry_ranking: {
+                  score: 0.96, policy: "block-distance@1.0",
+                  block_scores: { principal_extent_ratios: 0.94 },
+                  block_coverage: 1, coarse_cosine: 0.99, fallback_reason: null,
+                },
                 sub_scores: { geometry: 0.96, dimension: 0.94, topology: 0.91, metadata: 1 },
                 effective_weights: {
                   geometry: 0.35,
@@ -151,6 +156,8 @@ describe("SimilarityWorkspace", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("Reference A");
+    expect(wrapper.text()).toContain("How geometry was ranked");
+    expect(wrapper.text()).toContain("block-distance@1.0");
     expect(wrapper.get('[data-testid="similarity-validation-note"]').text()).toContain(
       "not the probability that a mold can be reused",
     );

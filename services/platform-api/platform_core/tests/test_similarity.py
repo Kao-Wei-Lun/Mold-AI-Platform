@@ -220,7 +220,9 @@ class SimilarityTests(TestCase):
             VectorCandidate(str(near.id), 0.98),
         ]
 
-        result = run_similarity_job.run(str(records.job.id))
+        # The worker must use the submitted policy, not a subsequently changed deployment env.
+        with override_settings(SIMILARITY_GEOMETRY_POLICY="cosine-v2"):
+            result = run_similarity_job.run(str(records.job.id))
 
         records.search.refresh_from_db()
         self.assertEqual(result["state"], Job.State.SUCCEEDED)
@@ -231,6 +233,10 @@ class SimilarityTests(TestCase):
         match = records.search.result["results"][0]
         self.assertEqual(records.search.result["result_count"], 1)
         self.assertEqual(match["artifact_name"], "near-v2")
+        self.assertEqual(
+            records.job.input_snapshot["geometry_ranking_policy"], "block-distance@1.0"
+        )
+        self.assertEqual(match["geometry_ranking"]["policy"], "block-distance@1.0")
         self.assertIn("manufacturing", match["sub_scores"])
         self.assertTrue(match["similarities"])
         self.assertTrue(match["differences"])

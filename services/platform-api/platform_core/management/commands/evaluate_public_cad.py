@@ -20,6 +20,7 @@ class Command(BaseCommand):
         parser.add_argument("--top-k", type=int, default=5)
         parser.add_argument("--sample-count", type=int, default=1024)
         parser.add_argument("--threshold", type=float)
+        parser.add_argument("--output", type=Path, help="Create a new JSON report; never overwrite")
 
     def handle(self, *args, **options):
         try:
@@ -35,6 +36,15 @@ class Command(BaseCommand):
             )
         except (ValueError, OSError, TypeError, KeyError) as exc:
             raise CommandError(str(exc)) from exc
-        self.stdout.write(json.dumps(report, indent=2, ensure_ascii=True, allow_nan=False))
+        rendered = json.dumps(report, indent=2, ensure_ascii=True, allow_nan=False)
+        if options["output"]:
+            try:
+                with options["output"].open("x", encoding="utf-8") as target:
+                    target.write(rendered)
+            except OSError as exc:
+                raise CommandError(f"Cannot create report: {exc}") from exc
+            self.stdout.write(f"Report created: {options['output']}")
+        else:
+            self.stdout.write(rendered)
         if report["failures"]:
             raise CommandError("Evaluation incomplete; see parse failures in report")

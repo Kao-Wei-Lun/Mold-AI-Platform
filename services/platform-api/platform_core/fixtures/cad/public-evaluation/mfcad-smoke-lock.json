@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "mfcad-public-smoke-v1",
+  "source": "https://github.com/hducg/MFCAD",
+  "revision": "ef6d58a40164d5192666821ce98d0cc90e379fac",
+  "license": "MIT (upstream repository); preserve LICENSE.MFCAD.txt",
+  "license_sha256": "b76f1af80ee958ded2d2f5413673b9b966f8ba2795f5b01102f8239fc0c7c258",
+  "selection": "12 evenly spaced entries in the sorted STEP path list at the pinned revision; not relevance-labelled",
+  "files": [
+    {"name": "0-0-0-0-0-23.step", "sha256": "56ceb6d91bb7d195501b2f3c72db3594b30f14bfea1780635e60e7bf71916164"},
+    {"name": "0-1-5-13-14-23.step", "sha256": "528d1e1b7df0bef981cebecb55227190ef211dd000b37ae67699c1d642dfce49"},
+    {"name": "0-4-5-7-13-23.step", "sha256": "b26aa37202bd4c4464c365c42b128957f63a296ac79544eed67951a6acfea779"},
+    {"name": "1-1-12-13-19.step", "sha256": "d646d0bdf042d43e9452f0479ca5245d47cb968eb6d033a1b8dc41b300896518"},
+    {"name": "1-3-4-10-12-23.step", "sha256": "2d26641dc08be254dea242fefb01042efb5b59c570388211c46d180687466cb4"},
+    {"name": "1-8-8-11-12-23.step", "sha256": "74b6036e8126746c359ed5ede1c38ec6af351c1556fd48a0b7cd402ca8094859"},
+    {"name": "2-4-4-9-10-23.step", "sha256": "98e90e1fc468e4b5ab3c005b36696b44020592df32a75c3990949abe6129f92c"},
+    {"name": "3-3-4-4-13-23.step", "sha256": "1fde835e53025d8682e89dec36d6f455efaf4ba7a0b7c74f3ca0e69cfbb9e519"},
+    {"name": "3-8-8-9-14-23.step", "sha256": "e45842273d3ff7573928dd94054d55ab8daee9115eb0d44f279172be74a1a02e"},
+    {"name": "4-9-10-12-14-23.step", "sha256": "ce3edcf3e97ce32161b5f83d15217c4b942b17a0c3a1649e485d370b81dc95ed"},
+    {"name": "6-6-9-19.step", "sha256": "6019817f46aef4eb0a83a99ae1d6639e8982bef2f874224c1251f893a20649e3"},
+    {"name": "9-9-9-9-9-23.step", "sha256": "86a711d4ebb9f31a7e51f6afbdbf91508b5ac92e05c72500b92af1d2ae8fafde"}
+  ]
+}

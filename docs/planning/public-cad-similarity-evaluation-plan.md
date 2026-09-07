@@ -112,7 +112,7 @@ STL face/edge count 不參與 topology；STEP/stp 正規化為同表示類別。
 本輪不變更 Sites hosting、tunnel 或秘密；若部署新 image，僅重建既有 app services，
 不刪 volume，不增加第二個專案。
 
-## 9. 後续品質工作（不冒稱本輪已完成）
+## 9. 後續品質工作（不冒稱本輪已完成）
 
 1. 授權核對後擴充 ABC 與多家族公開語料，避免只對加工方塊有效。
 2. 人工標記與第二人抽查、標籤分歧紀錄、凍結 holdout；公開模型也需要人類相關度判斷。
@@ -128,4 +128,7 @@ STL face/edge count 不參與 topology；STEP/stp 正規化為同表示類別。
   查詢輸入快照與 UI 中英驗證警語/幾何分項說明。後端目標測試 43 項、前端 7 項與
   typecheck 通過。基本幾何控制：cube/cylinder 0.993→0.617、cube/plate 0.872→0.396；
   這是 1024 點合成反例結果，不是公開模具準確度。
-- P3：待公開樣本實測與完整回歸；公開資料搜尋品質尚未驗收。
+- P3：完成 12 份公開 MFCAD STEP 的校驗/解析與 12 個 controlled identity query，
+  新舊評分都能在第一名找回原件；人工跨模型品質 gate 仍為 not_evaluated。
+  後端最終回歸 330 項與 9 子測試通過，1 項可能付費的 OpenAI live test 未啟用。
+  完整指令、測量範圍及前端/建置驗證見 [Stage 47 紀錄](../development/stage-47-public-cad-evaluation.md)。

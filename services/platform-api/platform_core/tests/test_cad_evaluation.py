@@ -131,3 +131,25 @@ def test_parse_failure_is_not_silently_removed(corpus, tmp_path):
 def test_invalid_threshold(corpus, tmp_path, threshold):
     with pytest.raises(ValueError, match="Threshold"):
         evaluate_corpus(corpus, tmp_path, threshold=threshold)
+
+
+def test_no_match_metric_and_unknown_threshold(corpus, tmp_path):
+    corpus["queries"][0].update(
+        kind="human_geometry",
+        judgments={"1": 0},
+        reviewer="test",
+        reason="different shape",
+        expected_no_match=True,
+    )
+    report = evaluate_corpus(corpus, tmp_path, sample_count=128, threshold=0)
+    assert report["groups"]["human_geometry"]["no_match_false_acceptance"] == 1
+    assert report["groups"]["human_geometry"]["recall_at_k"] is None
+    assert report["quality_gate"] == "not_evaluated"
+    report = evaluate_corpus(corpus, tmp_path, sample_count=128)
+    assert report["groups"]["human_geometry"]["no_match_false_acceptance"] is None
+
+
+@pytest.mark.parametrize("manifest", [[], None, "invalid"])
+def test_invalid_manifest_type(manifest, tmp_path):
+    with pytest.raises(ValueError, match="JSON object"):
+        validate_manifest(manifest, tmp_path)

@@ -44,6 +44,8 @@ def model_path(root: Path, relative: str) -> Path:
 
 
 def validate_manifest(manifest: dict, root: Path) -> dict[str, Path]:
+    if not isinstance(manifest, dict):
+        raise ValueError("Corpus manifest must be a JSON object")
     if manifest.get("schema_version") != "1.0":
         raise ValueError("Unsupported corpus schema")
     for key in ("corpus_id", "source", "revision", "license"):
@@ -56,6 +58,8 @@ def validate_manifest(manifest: dict, root: Path) -> dict[str, Path]:
         raise ValueError("Corpus requires 1 to 500 queries")
     paths, by_id, family_splits, hash_splits = {}, {}, {}, {}
     for model in models:
+        if not isinstance(model, dict):
+            raise ValueError("Each model must be an object")
         for key in ("id", "path", "sha256", "source_url", "family_id", "split", "unit"):
             if not isinstance(model.get(key), str) or not model[key].strip():
                 raise ValueError(f"Missing model field: {key}")
@@ -75,6 +79,8 @@ def validate_manifest(manifest: dict, root: Path) -> dict[str, Path]:
         by_id[identifier], paths[identifier] = model, path
     query_ids = set()
     for query in queries:
+        if not isinstance(query, dict):
+            raise ValueError("Each query must be an object")
         identifier = query.get("id")
         if not isinstance(identifier, str) or not identifier or identifier in query_ids:
             raise ValueError("Query id is required and unique")
