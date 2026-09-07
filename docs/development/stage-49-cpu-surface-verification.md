@@ -55,7 +55,18 @@ Ruff lint/format 通過。這是合成回歸，不是人工跨模具品質驗收
 - 1536 點的合成數值檢查：4×2×1 box 自比 factor=1；對 radius=1/height=4 cylinder
   factor=0.09080208、雙向覆蓋=0.28125/0.30403646。兩組計算共約 0.611 秒，
   不含 I/O、queue 或向量召回，亦非真實 CAD 品質證明或外網 SLA。
-- 外網發布狀態在部署後另補記。
+- 已部署到既有 `mold-ai-platform-sites-demo`，只重建共用 app image 並更新
+  api／worker／worker-cad／web／mcp-gateway；沒有新增專案、刪除資料或修改 Sites 入口。
+- 外網 `https://neck-rap-chocolate-extensive.trycloudflare.com` HTTP 200；實際載入
+  `/assets/index-CIitgoF2.js`，SHA-256 與本機通過測試的 production build 一致：
+  `B6C1D46093CC3AC16455875B0BBC8BA50547F04E25C86F7C3F44E0AC28A51C74`。
+- 容器內唯讀煙霧檢查：以既有已索引 v2 CAD preview 驗證 SHA、取 1536 點、自比，
+  `enabled=true`、`status=computed`、`score_factor=1.0`；未新增或變更工程資料。
+- `demo-status.ps1`：Core Demo／Sites entry／Web tunnel ready，DB／Redis／Qdrant 正常、
+  Workers 2/2、Curated CAD 16/16 indexed、MCP 13 tools、stale jobs 0。
+  整體 degraded 僅為既有可選 Assistant deterministic fallback，與本次幾何功能無關。
+- 這不是人工登入瀏覽器逐項 UAT；外網證據為資源校驗、服務狀態及容器實際幾何計算。
+- 使用者先 Ctrl+F5，再新建搜尋；舊搜尋的 immutable 結果不自動重算。
 
 ## 尚未交付與限制
 
