@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
 import type { CADModelResult } from "../api/cad";
+import { setLocale } from "../i18n";
 import SimilarityWorkspace from "./SimilarityWorkspace.vue";
 
 const query: CADModelResult = {
@@ -45,9 +46,9 @@ function jsonResponse(payload: object, status = 200): Response {
 }
 
 describe("SimilarityWorkspace", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.restoreAllMocks(); setLocale("en"); });
 
-  it("runs a search and shows deterministic scores and evidence", async () => {
+  it.each(["computed", "unavailable"])("shows %s surface evidence without presenting unverified scores", async (status) => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -104,6 +105,16 @@ describe("SimilarityWorkspace", () => {
                 material_code: "PC_ABS",
                 coarse_score: 0.97,
                 overall_score: 0.928,
+                baseline_overall_score: 0.99,
+                ranking_basis: status === "computed" ? "surface_adjusted" : "reference_only",
+                geometric_verification: status === "computed" ? {
+                  status, algorithm: "cpu-surface-verification@1.0", mode: "normalized_shape",
+                  calibration_status: "not_calibrated", query_coverage: 0.92, candidate_coverage: 0.85,
+                  f_score: 0.88, mean_distance: 0.02, p95_distance: 0.05, tolerance: 0.08, score_factor: 0.94,
+                } : {
+                  status, algorithm: "cpu-surface-verification@1.0", mode: "normalized_shape",
+                  calibration_status: "not_calibrated", error_code: "SURFACE_PREVIEW_MISSING",
+                },
                 geometry_ranking: {
                   score: 0.96, policy: "block-distance@1.0",
                   block_scores: { principal_extent_ratios: 0.94 },
@@ -161,7 +172,23 @@ describe("SimilarityWorkspace", () => {
     expect(wrapper.get('[data-testid="similarity-validation-note"]').text()).toContain(
       "not the probability that a mold can be reused",
     );
-    expect(wrapper.text()).toContain("92.8%");
+    expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("not calibrated");
+    if (status === "computed") {
+      expect(wrapper.get(".overall-score").text()).toBe("92.8%");
+      expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("92.0%");
+      expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("0.0200");
+    } else {
+      expect(wrapper.get(".overall-score").text()).toBe("Reference only");
+      expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("not a verified match");
+      expect(wrapper.get('[data-testid="surface-verification"]').text()).not.toContain("Mean surface distance");
+    }
+    setLocale("zh-TW");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("自動表面幾何驗證");
+    expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("不代表工程核准");
+    if (status === "unavailable") expect(wrapper.get(".overall-score").text()).toBe("僅供參考");
+    setLocale("en");
+    await flushPromises();
     expect(wrapper.text()).toContain("Overall proportions are close");
     expect(wrapper.text()).toContain("One dimension is slightly different");
     expect(wrapper.findAllComponents({ name: "CadPreview" })).toHaveLength(2);

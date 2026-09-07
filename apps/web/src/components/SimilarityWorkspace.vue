@@ -527,7 +527,8 @@ onBeforeUnmount(() => {
                 <strong>{{ match.artifact_name }}</strong>
                 <small>{{ match.product_type || t("Unspecified product") }} · {{ match.dataset_id }}</small>
               </span>
-              <strong class="overall-score">{{ scorePercent(match.overall_score) }}</strong>
+              <strong class="overall-score">{{ match.ranking_basis === "reference_only"
+                ? t("Reference only") : scorePercent(match.overall_score) }}</strong>
             </button>
           </li>
         </ol>
@@ -544,6 +545,25 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <section v-if="selectedMatch.geometric_verification" class="roi-controls" data-testid="surface-verification">
+            <h3>{{ t("Automatic surface verification") }}</h3>
+            <p>{{ t("Shape-only comparison allows uniform scaling. Distances use normalized surface RMS radius, not mm.") }}</p>
+            <template v-if="selectedMatch.geometric_verification.status === 'computed'">
+              <div class="score-grid">
+                <div><span>{{ t("Query surface coverage") }}</span><strong>{{ scorePercent(selectedMatch.geometric_verification.query_coverage) }}</strong></div>
+                <div><span>{{ t("Candidate surface coverage") }}</span><strong>{{ scorePercent(selectedMatch.geometric_verification.candidate_coverage) }}</strong></div>
+                <div><span>{{ t("Surface F-score") }}</span><strong>{{ scorePercent(selectedMatch.geometric_verification.f_score) }}</strong></div>
+                <div><span>{{ t("Mean surface distance") }}</span><strong>{{ selectedMatch.geometric_verification.mean_distance?.toFixed(4) }}</strong></div>
+                <div><span>{{ t("P95 surface distance") }}</span><strong>{{ selectedMatch.geometric_verification.p95_distance?.toFixed(4) }}</strong></div>
+              </div>
+              <p>{{ t("Baseline ranking score") }}: {{ scorePercent(selectedMatch.baseline_overall_score) }} · {{ t("Surface adjustment factor") }}: {{ scorePercent(selectedMatch.geometric_verification.score_factor) }}</p>
+              <p>{{ t("Coverage tolerance") }}: {{ selectedMatch.geometric_verification.tolerance }}</p>
+            </template>
+            <p v-else role="status">{{ t("Surface verification is incomplete. This candidate is reference-only; its baseline score is not a verified match.") }} <code>{{ selectedMatch.geometric_verification.error_code }}</code></p>
+            <p>{{ t("Experimental surface evidence; not calibrated against human judgments and not an engineering approval.") }}</p>
+          </section>
+
+          <p v-if="selectedMatch.geometric_verification" class="muted">{{ t("The breakdown below is the baseline evidence before surface adjustment.") }}</p>
           <div class="score-grid">
             <div v-for="(score, lane) in selectedMatch.sub_scores" :key="lane">
               <span>{{ t(String(lane)) }}</span>

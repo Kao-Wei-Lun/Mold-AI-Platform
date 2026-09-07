@@ -221,7 +221,9 @@ class SimilarityTests(TestCase):
         ]
 
         # The worker must use the submitted policy, not a subsequently changed deployment env.
-        with override_settings(SIMILARITY_GEOMETRY_POLICY="cosine-v2"):
+        with override_settings(
+            SIMILARITY_GEOMETRY_POLICY="cosine-v2", SIMILARITY_SURFACE_VERIFICATION_ENABLED=False
+        ):
             result = run_similarity_job.run(str(records.job.id))
 
         records.search.refresh_from_db()
@@ -237,12 +239,26 @@ class SimilarityTests(TestCase):
             records.job.input_snapshot["geometry_ranking_policy"], "block-distance@1.0"
         )
         self.assertEqual(match["geometry_ranking"]["policy"], "block-distance@1.0")
+        self.assertEqual(match["geometric_verification"]["status"], "computed")
+        self.assertEqual(match["ranking_basis"], "surface_adjusted")
+        self.assertIn("surface_verification_policy", records.job.input_snapshot)
+        self.assertLessEqual(match["overall_score"], match["baseline_overall_score"])
         self.assertIn("manufacturing", match["sub_scores"])
         self.assertTrue(match["similarities"])
         self.assertTrue(match["differences"])
         self.assertLess(match["evidence_coverage"], 1.0)
         self.assertLess(match["overall_score"], match["available_lane_score"])
         query_points.assert_called_once()
+
+        # Historical snapshots must keep their original numeric results and execution path.
+        records.job.input_snapshot.pop("surface_verification_policy")
+        records.job.save(update_fields=["input_snapshot"])
+        from platform_core.similarity import run_similarity
+
+        with patch("platform_core.cad_surface_reranking.rerank_surfaces") as rerank:
+            historical = run_similarity(records.search)
+        rerank.assert_not_called()
+        self.assertNotIn("geometric_verification", historical["results"][0])
 
     @patch("platform_core.views.run_similarity_job.apply_async", side_effect=ConnectionError)
     def test_queue_failure_is_typed_without_corrupting_cad_geometry(self, apply_async) -> None:

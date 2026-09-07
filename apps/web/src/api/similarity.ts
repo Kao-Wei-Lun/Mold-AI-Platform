@@ -17,6 +17,23 @@ export type SimilarityMatch = {
   material_code: string;
   coarse_score: number;
   overall_score: number;
+  baseline_overall_score?: number;
+  ranking_basis?: "surface_adjusted" | "reference_only";
+  geometric_verification?: {
+    status: "computed" | "unavailable" | "budget_exceeded";
+    algorithm: string;
+    mode: string;
+    calibration_status: string;
+    error_code?: string;
+    score_factor?: number;
+    query_coverage?: number;
+    candidate_coverage?: number;
+    f_score?: number;
+    mean_distance?: number;
+    p95_distance?: number;
+    tolerance?: number;
+    distance_unit?: string;
+  };
   available_lane_score?: number;
   evidence_coverage?: number;
   score_policy?: string;

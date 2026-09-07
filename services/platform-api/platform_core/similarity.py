@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from .cad_surface_verification import ALGORITHM as SURFACE_ALGORITHM
 from .models import (
     ArtifactVersion,
     CADModel,
@@ -314,6 +315,11 @@ def create_similarity_records(
                 "profile_resolution": profile_resolution,
                 "read_version": read_version,
                 "geometry_ranking_policy": settings.SIMILARITY_GEOMETRY_POLICY,
+                "surface_verification_policy": (
+                    SURFACE_ALGORITHM
+                    if read_version == "v2" and settings.SIMILARITY_SURFACE_VERIFICATION_ENABLED
+                    else "disabled"
+                ),
                 "feature_set_id": str(feature_set.id),
                 "feature_schema_version": feature_set.schema_version,
                 "extractor_version": feature_set.extractor_version,
@@ -562,6 +568,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     )
 
     matches = []
+    authorized_candidates = {}
     for candidate in candidate_features:
         if candidate.id == query_feature.id:
             continue
@@ -570,6 +577,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
             continue
         if not matches_engineering_filters(candidate.cad_model.artifact_version, search.filters):
             continue
+        authorized_candidates[str(candidate.cad_model.artifact_version_id)] = candidate
         if query_feature.schema_version == "2.0":
             from .cad_manufacturing import compare_feature_sets_v2
 
@@ -615,6 +623,13 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
             }
         )
     matches.sort(key=lambda match: (-float(match["overall_score"]), match["artifact_version_id"]))
+    surface_policy = search.job.input_snapshot.get("surface_verification_policy", "disabled")
+    if surface_policy == SURFACE_ALGORITHM:
+        from .cad_surface_reranking import rerank_surfaces
+
+        matches = rerank_surfaces(matches, query_feature, authorized_candidates)
+    elif surface_policy != "disabled":
+        raise ValueError("Unknown surface verification policy")
     matches = matches[: search.top_k]
     for rank, match in enumerate(matches, start=1):
         match["rank"] = rank
@@ -654,6 +669,16 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
                 "and available metadata lanes.",
                 "The active read route is the retained v1 compatibility index.",
             ]
+        )
+        + (
+            [
+                "Surface verification uses scale-normalized sampled geometry, not millimeter "
+                "tolerance or human-calibrated match probabilities.",
+                "Reference-only candidates retain baseline overall_score and follow computed "
+                "candidates; their score is not a verified match.",
+            ]
+            if surface_policy == SURFACE_ALGORITHM
+            else []
         ),
         "lineage_ref": f"similarity-search:{search.id}",
     }
