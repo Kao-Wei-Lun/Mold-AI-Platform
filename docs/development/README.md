@@ -406,3 +406,8 @@ comparisons and an interactive Web heatmap guarded by authorized search-result m
 Stage 43 adds governed manual CTQ/CAE similarity constraints, optional cross-modal score fusion and
 explicit, retained engineer feedback without implicit labels or online learning. See
 [`stage-43-cpu-cross-modal-feedback.md`](stage-43-cpu-cross-modal-feedback.md).
+
+Stage 44 introduces the versioned structured knowledge/chunk/citation contract, preserves Markdown
+and DOCX hierarchy/tables, validates PDF page/bounding-box anchors with page-only fallback, and
+tombstones vector derivatives when governed knowledge is retired. See
+[`stage-44-cpu-structured-knowledge.md`](stage-44-cpu-structured-knowledge.md).

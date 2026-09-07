@@ -214,7 +214,8 @@ class GovernanceLifecycleTests(TestCase):
             rule.save()
 
     @patch("platform_core.knowledge.upsert_named_vector")
-    def test_knowledge_draft_review_publish_and_retire(self, upsert):
+    @patch("platform_core.knowledge.delete_named_points")
+    def test_knowledge_draft_review_publish_and_retire(self, delete_points, upsert):
         records = create_knowledge_upload_records(
             SimpleUploadedFile(
                 "controlled.md",
@@ -283,6 +284,20 @@ class GovernanceLifecycleTests(TestCase):
         self.assertEqual(published.json()["publication_status"], "published")
         self.assertIsNotNone(published.json()["published_at"])
         upsert.assert_called()
+
+        retired = self.client.post(
+            f"/api/v1/knowledge-documents/{records.document.id}/actions",
+            {"action": "retire", "row_version": 4, "reason": "Superseded source"},
+            content_type="application/json",
+        )
+        self.assertEqual(retired.status_code, 200)
+        self.assertEqual(retired.json()["publication_status"], "retired")
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        chunk.refresh_from_db()
+        self.assertEqual(chunk.index_status, "tombstoned")
+        self.assertIsNotNone(chunk.tombstoned_at)
+        delete_points.assert_called_once()
 
     def test_quarantined_knowledge_cannot_publish(self):
         records = create_knowledge_upload_records(

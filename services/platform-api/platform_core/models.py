@@ -1317,6 +1317,7 @@ class KnowledgeDocument(models.Model):
     language = models.CharField(max_length=16, default="en")
     parser_version = models.CharField(max_length=64, default="plain-text@1.0.0")
     chunker_version = models.CharField(max_length=64, default="section-paragraph@1.0.0")
+    pipeline_manifest = models.JSONField(default=dict)
     ingestion_status = models.CharField(
         max_length=24,
         choices=IngestionStatus.choices,
@@ -1361,6 +1362,7 @@ class KnowledgeChunk(models.Model):
         PENDING = "pending", "Pending"
         INDEXED = "indexed", "Indexed"
         FAILED = "failed", "Failed"
+        TOMBSTONED = "tombstoned", "Tombstoned"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.ForeignKey(KnowledgeDocument, related_name="chunks", on_delete=models.PROTECT)
@@ -1368,6 +1370,11 @@ class KnowledgeChunk(models.Model):
     text = models.TextField()
     text_hash = models.CharField(max_length=64)
     locator = models.JSONField(default=dict)
+    chunk_level = models.CharField(max_length=24, default="passage")
+    content_type = models.CharField(max_length=24, default="prose")
+    parent_ref = models.CharField(max_length=64, blank=True)
+    citation_anchor = models.JSONField(default=dict)
+    parser_metadata = models.JSONField(default=dict)
     embedding_model = models.CharField(max_length=128, default="feature-hash-demo@1.0.0")
     embedding_dimension = models.PositiveSmallIntegerField(default=64)
     embedding = models.JSONField(default=list)
@@ -1376,6 +1383,7 @@ class KnowledgeChunk(models.Model):
     index_status = models.CharField(
         max_length=24, choices=IndexStatus.choices, default=IndexStatus.PENDING
     )
+    tombstoned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

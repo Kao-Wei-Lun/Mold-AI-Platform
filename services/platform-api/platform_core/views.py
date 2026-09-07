@@ -1012,9 +1012,15 @@ class KnowledgeDocumentDetailView(APIView):
                 "text": chunk.text,
                 "text_hash": chunk.text_hash,
                 "locator": chunk.locator,
+                "chunk_level": chunk.chunk_level,
+                "content_type": chunk.content_type,
+                "parent_ref": chunk.parent_ref,
+                "citation_anchor": chunk.citation_anchor,
+                "parser_metadata": chunk.parser_metadata,
                 "language": chunk.language,
                 "embedding_model": chunk.embedding_model,
                 "index_status": chunk.index_status,
+                "tombstoned_at": (chunk.tombstoned_at.isoformat() if chunk.tombstoned_at else None),
                 "injection_scan_status": chunk.injection_scan_status,
             }
             for chunk in document.chunks.all()

@@ -16,6 +16,16 @@ from django.utils import timezone
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from .knowledge_structure import (
+    CHUNKER_VERSION as STRUCTURED_CHUNKER_VERSION,
+)
+from .knowledge_structure import (
+    PARSER_VERSION as STRUCTURED_PARSER_VERSION,
+)
+from .knowledge_structure import (
+    hierarchical_chunks,
+    parse_structured_document,
+)
 from .models import (
     Artifact,
     ArtifactVersion,
@@ -25,14 +35,14 @@ from .models import (
     KnowledgeDocument,
     KnowledgeSearch,
 )
-from .vector_store import query_named_vectors, upsert_named_vector
+from .vector_store import delete_named_points, query_named_vectors, upsert_named_vector
 
 KNOWLEDGE_CAPABILITY_ID = "knowledge.ingest"
 KNOWLEDGE_CAPABILITY_VERSION = "1.0.0"
 EMBEDDING_MODEL = "feature-hash-demo@1.0.0"
 EMBEDDING_DIMENSION = 64
-PARSER_VERSION = "secure-document@2.0.0"
-CHUNKER_VERSION = "section-paragraph@1.0.0"
+PARSER_VERSION = STRUCTURED_PARSER_VERSION
+CHUNKER_VERSION = STRUCTURED_CHUNKER_VERSION
 PUBLIC_DEMO_SCOPES = ["public-demo"]
 PUBLIC_KNOWLEDGE_DATASET = "public-knowledge-demo-v1"
 AUTOMATED_SMOKE_DATASET = "automated-smoke-v1"
@@ -420,73 +430,14 @@ def text_vector(text: str) -> list[float]:
 
 
 def chunk_document(text: str, document_format: str) -> list[dict[str, object]]:
-    section = "Document"
-    paragraph_number = 0
-    chunks: list[dict[str, object]] = []
-    buffer: list[str] = []
-    start_paragraph = 1
-
-    def flush(end_paragraph: int | None = None) -> None:
-        nonlocal buffer, start_paragraph
-        if not buffer:
-            return
-        chunks.append(
-            {
-                "text": "\n\n".join(buffer),
-                "locator": {
-                    "page": None,
-                    "section": section,
-                    "paragraph_start": start_paragraph,
-                    "paragraph_end": (
-                        end_paragraph if end_paragraph is not None else paragraph_number
-                    ),
-                },
-            }
-        )
-        buffer = []
-        start_paragraph = (end_paragraph if end_paragraph is not None else paragraph_number) + 1
-
-    blocks = re.split(r"\n\s*\n", text.strip())
-    for raw_block in blocks:
-        block = raw_block.strip()
-        if not block:
-            continue
-        if document_format == "md" and re.fullmatch(r"#{1,6}\s+.+", block):
-            flush()
-            section = re.sub(r"^#{1,6}\s+", "", block).strip()[:255]
-            start_paragraph = paragraph_number + 1
-            continue
-        paragraph_number += 1
-        if len(block) > 900:
-            flush(paragraph_number - 1)
-            for character_start in range(0, len(block), 900):
-                piece = block[character_start : character_start + 900]
-                chunks.append(
-                    {
-                        "text": piece,
-                        "locator": {
-                            "page": None,
-                            "section": section,
-                            "paragraph_start": paragraph_number,
-                            "paragraph_end": paragraph_number,
-                            "character_start": character_start,
-                            "character_end": character_start + len(piece),
-                        },
-                    }
-                )
-            start_paragraph = paragraph_number + 1
-            continue
-        if buffer and sum(len(item) for item in buffer) + len(block) > 900:
-            flush(paragraph_number - 1)
-            start_paragraph = paragraph_number
-        buffer.append(block)
-    flush()
-    return chunks
+    parsed = parse_structured_document(text.encode("utf-8"), document_format, text)
+    return hierarchical_chunks(parsed)
 
 
 def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
     with default_storage.open(document.artifact_version.storage_key, "rb") as source:
-        text = extract_knowledge_text(source.read(), document.artifact_version.format)
+        source_bytes = source.read()
+    text = extract_knowledge_text(source_bytes, document.artifact_version.format)
     findings = scan_untrusted_text(text)
     if findings:
         document.ingestion_status = KnowledgeDocument.IngestionStatus.QUARANTINED
@@ -502,11 +453,19 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
         document.save()
         return {"status": "obsolete", "findings": [], "chunk_count": 0}
 
-    raw_chunks = chunk_document(text, document.artifact_version.format)
+    structured = parse_structured_document(source_bytes, document.artifact_version.format, text)
+    raw_chunks = hierarchical_chunks(structured)
     if not raw_chunks:
         raise KnowledgeValidationError(
             "RAG_NO_TEXT", "No indexable text was found in the document."
         )
+    existing_point_ids = [str(value) for value in document.chunks.values_list("id", flat=True)]
+    if existing_point_ids:
+        delete_named_points(
+            collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION,
+            point_ids=existing_point_ids,
+        )
+        document.chunks.all().delete()
     with transaction.atomic():
         chunks = KnowledgeChunk.objects.bulk_create(
             [
@@ -516,6 +475,11 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
                     text=str(item["text"]),
                     text_hash=hashlib.sha256(str(item["text"]).encode("utf-8")).hexdigest(),
                     locator=item["locator"],
+                    chunk_level="passage",
+                    content_type=str(item["content_type"]),
+                    parent_ref=str(item["parent_ref"]),
+                    citation_anchor=item["citation_anchor"],
+                    parser_metadata=item["parser_metadata"],
                     embedding_model=EMBEDDING_MODEL,
                     embedding_dimension=EMBEDDING_DIMENSION,
                     embedding=text_vector(str(item["text"])),
@@ -536,8 +500,16 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
                 "acl_scopes": document.acl_scopes,
                 "document_type": document.document_type,
                 "authority_level": document.authority_level,
+                "document_id": str(document.id),
+                "document_version_id": str(document.artifact_version_id),
+                "chunk_id": str(chunk.id),
                 "artifact_version_id": str(document.artifact_version_id),
                 "dataset_id": document.artifact_version.artifact.dataset_id,
+                "publication_status": document.publication_status,
+                "parser_version": structured.parser_version,
+                "chunker_version": STRUCTURED_CHUNKER_VERSION,
+                "embedding_model": EMBEDDING_MODEL,
+                "source_checksum": document.artifact_version.sha256,
                 "active": True,
             },
         )
@@ -547,10 +519,35 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
     document.injection_scan_status = "clear"
     document.injection_findings = []
     document.chunk_count = len(chunks)
+    document.parser_version = structured.parser_version
+    document.chunker_version = STRUCTURED_CHUNKER_VERSION
+    document.pipeline_manifest = {
+        "schema_version": "2.0",
+        "parser_version": structured.parser_version,
+        "chunker_version": STRUCTURED_CHUNKER_VERSION,
+        "embedding_model": EMBEDDING_MODEL,
+        "source_checksum": document.artifact_version.sha256,
+        "warnings": list(structured.warnings),
+        "network_egress": "disabled-by-contract",
+    }
     document.indexed_at = timezone.now()
     document.error_code = ""
     document.save()
     return {"status": "indexed", "findings": [], "chunk_count": len(chunks)}
+
+
+def tombstone_knowledge_document(document: KnowledgeDocument) -> int:
+    """Remove derived vector points and mark canonical chunks as tombstoned."""
+    chunks = list(document.chunks.all())
+    delete_named_points(
+        collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION,
+        point_ids=[str(chunk.id) for chunk in chunks],
+    )
+    now = timezone.now()
+    return document.chunks.update(
+        index_status=KnowledgeChunk.IndexStatus.TOMBSTONED,
+        tombstoned_at=now,
+    )
 
 
 def _lexical_score(query_tokens: set[str], text: str) -> float:
@@ -615,6 +612,7 @@ def search_knowledge(
     coarse = {candidate.feature_set_id: candidate.coarse_score for candidate in candidates}
     chunks = KnowledgeChunk.objects.select_related("document__artifact_version__artifact").filter(
         id__in=coarse,
+        index_status=KnowledgeChunk.IndexStatus.INDEXED,
         document__ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
         document__publication_status="published",
         document__artifact_version__artifact__dataset_id__in=selected_datasets,
@@ -670,6 +668,8 @@ def search_knowledge(
             "document_id": str(document.id),
             "title": document.artifact_version.artifact.name,
             "locator": locator_text,
+            "locator_detail": locator,
+            "citation_anchor": chunk.citation_anchor,
             "authority": document.authority_level,
             "effective_from": document.effective_from.isoformat()
             if document.effective_from
@@ -760,6 +760,7 @@ def knowledge_document_payload(document: KnowledgeDocument) -> dict[str, object]
         "language": document.language,
         "parser_version": document.parser_version,
         "chunker_version": document.chunker_version,
+        "pipeline_manifest": document.pipeline_manifest,
         "ingestion_status": document.ingestion_status,
         "injection_scan_status": document.injection_scan_status,
         "injection_findings": document.injection_findings,

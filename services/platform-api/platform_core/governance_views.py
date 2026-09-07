@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from .contracts import rule_profile_payload
 from .design_review import EVALUATORS, get_demo_rule_profile
 from .identity import audit_identity_event
-from .knowledge import knowledge_document_payload
+from .knowledge import knowledge_document_payload, tombstone_knowledge_document
 from .models import (
     Artifact,
     DataScope,
@@ -820,6 +820,18 @@ class KnowledgeDocumentWorkflowView(APIView):
                     "A document with injection findings cannot be published.",
                     409,
                 )
+        retired_documents = []
+        if action == "publish":
+            retired_documents = list(
+                KnowledgeDocument.objects.filter(
+                    document_key=document.document_key,
+                    publication_status="published",
+                ).exclude(id=document.id)
+            )
+        for retired_document in retired_documents:
+            tombstone_knowledge_document(retired_document)
+        if action == "retire":
+            tombstone_knowledge_document(document)
         with transaction.atomic():
             if action == "submit":
                 document.submitted_by = actor

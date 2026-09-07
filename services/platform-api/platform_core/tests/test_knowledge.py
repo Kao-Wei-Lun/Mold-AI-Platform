@@ -109,8 +109,21 @@ class KnowledgeTests(TestCase):
         self.assertEqual(chunks[0].locator["paragraph_start"], 1)
         self.assertEqual(chunks[0].embedding_dimension, 64)
         self.assertEqual(len(chunks[0].embedding), 64)
+        self.assertEqual(chunks[0].chunk_level, "passage")
+        self.assertEqual(chunks[0].content_type, "prose")
+        self.assertTrue(chunks[0].parent_ref)
+        self.assertEqual(chunks[0].citation_anchor["coordinate_origin"], "top-left")
+        self.assertEqual(records.document.parser_version, "structured-cpu@3.0.0")
+        self.assertEqual(records.document.pipeline_manifest["schema_version"], "2.0")
         self.assertEqual(upsert.call_count, 2)
         self.assertEqual(upsert.call_args.kwargs["payload"]["acl_scopes"], ["public-demo"])
+        self.assertEqual(
+            upsert.call_args.kwargs["payload"]["document_id"], str(records.document.id)
+        )
+        self.assertEqual(
+            upsert.call_args.kwargs["payload"]["source_checksum"],
+            records.document.artifact_version.sha256,
+        )
 
         response = self.client.get(f"/api/v1/jobs/{records.job.id}")
         self.assertEqual(response.status_code, 200)
@@ -209,6 +222,8 @@ class KnowledgeTests(TestCase):
         self.assertEqual(len(result["citations"]), 1)
         self.assertEqual(result["citations"][0]["title"], "Demo Mold Design Guide")
         self.assertIn("section:Rib Design", result["citations"][0]["locator"])
+        self.assertEqual(result["citations"][0]["locator_detail"]["schema_version"], "2.0")
+        self.assertFalse(result["citations"][0]["citation_anchor"]["bbox_available"])
         self.assertIn("/download", result["citations"][0]["source_url"])
         self.assertEqual(result["principal_scope_source"], "server_demo_policy")
         filters = query_vectors.call_args.kwargs["filters"]
