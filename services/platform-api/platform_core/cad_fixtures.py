@@ -173,7 +173,9 @@ def _verify_geometry(version: ArtifactVersion, fixture: dict[str, object]) -> No
 def _ensure_indexed(
     version: ArtifactVersion, *, verify_only: bool, force_reindex: bool = False
 ) -> bool:
-    feature = version.cad_model.feature_sets.filter(feature_type="cad_similarity").first()
+    feature = version.cad_model.feature_sets.filter(
+        feature_type="cad_similarity", schema_version="1.0", extractor_version="1.0.0"
+    ).first()
     if feature and feature.index_status == FeatureSet.IndexStatus.INDEXED and not force_reindex:
         return False
     if verify_only:
@@ -190,7 +192,9 @@ def _verify_similarity(manifest: dict[str, object]) -> int:
         query_version = _artifact_version(golden["query_id"])
         if query_version is None:
             raise CADFixtureValidationError(f"Missing golden query {golden['query_id']}.")
-        query = query_version.cad_model.feature_sets.get(feature_type="cad_similarity")
+        query = query_version.cad_model.feature_sets.get(
+            feature_type="cad_similarity", schema_version="1.0", extractor_version="1.0.0"
+        )
         grouped: dict[str, list[float]] = {}
         candidate_ids: list[str] = []
         for fixture in fixtures.values():
@@ -200,7 +204,9 @@ def _verify_similarity(manifest: dict[str, object]) -> int:
             if version is None:
                 raise CADFixtureValidationError(f"Missing golden candidate {fixture['id']}.")
             candidate_ids.append(str(version.id))
-            candidate = version.cad_model.feature_sets.get(feature_type="cad_similarity")
+            candidate = version.cad_model.feature_sets.get(
+                feature_type="cad_similarity", schema_version="1.0", extractor_version="1.0.0"
+            )
             score = float(compare_feature_sets(query, candidate, profile)["overall_score"])
             grouped.setdefault(str(fixture["rank_group"]), []).append(score)
         if str(query_version.id) in candidate_ids:

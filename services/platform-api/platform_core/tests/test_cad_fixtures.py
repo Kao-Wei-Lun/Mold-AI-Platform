@@ -71,6 +71,30 @@ class CuratedCADSeedTests(TestCase):
         call_command("seed_cad_demo")
         call_command("seed_cad_demo", "--verify-only")
 
+    @patch("platform_core.similarity.upsert_feature")
+    def test_golden_v1_baseline_allows_v2_feature_coexistence(self, upsert) -> None:
+        seeded = seed_curated_cad_demo()
+        v1_features = FeatureSet.objects.filter(
+            cad_model__artifact_version_id__in=seeded.artifact_version_ids,
+            schema_version="1.0",
+        )
+        for feature in v1_features:
+            FeatureSet.objects.create(
+                cad_model=feature.cad_model,
+                schema_version="2.0",
+                extractor_version="2.1.0",
+                vector=[0.1] * 32,
+                vector_dimension=32,
+                vector_checksum="f" * 64,
+                index_collection="cad-v2",
+                index_version="cad-cpu-v2",
+                index_status=FeatureSet.IndexStatus.INDEXED,
+            )
+
+        verified = seed_curated_cad_demo(verify_only=True)
+
+        self.assertEqual(verified.golden_similarity_verified, 2)
+
     def test_default_cad_listing_excludes_automated_smoke_dataset(self) -> None:
         Artifact.objects.create(
             name="Smoke CAD",
