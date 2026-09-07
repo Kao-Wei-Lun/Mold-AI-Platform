@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   AmbientLight,
   Box3,
+  BufferGeometry,
   Color,
   DirectionalLight,
   Mesh,
@@ -34,6 +35,9 @@ let scene: Scene | null = null;
 let camera: PerspectiveCamera | null = null;
 let controls: OrbitControls | null = null;
 let mesh: Mesh | null = null;
+let loadGeneration = 0;
+let loadController: AbortController | null = null;
+let disposed = false;
 let modelCenter = new Vector3();
 let modelDistance = 10;
 
@@ -79,8 +83,14 @@ function zoomBy(scale: number): void {
 
 function toggleTransparency(): void {
   transparent.value = !transparent.value;
+  updateMaterial();
+}
+
+function updateMaterial(): void {
   const material = mesh?.material;
   if (material instanceof MeshStandardMaterial) {
+    const colors = { default: 0x3f72ef, warning: 0xd95b3d, pass: 0x16845b };
+    material.color.setHex(colors[props.accent || "default"]);
     material.transparent = transparent.value;
     material.opacity = transparent.value ? 0.42 : 1;
     material.depthWrite = !transparent.value;
@@ -88,32 +98,52 @@ function toggleTransparency(): void {
   }
 }
 
+function clearMesh(): void {
+  if (!mesh) return;
+  scene?.remove(mesh);
+  mesh.geometry.dispose();
+  if (mesh.material instanceof MeshStandardMaterial) mesh.material.dispose();
+  mesh = null;
+}
+
 async function loadModel(source: string): Promise<void> {
-  if (!scene || !camera || !controls) return;
+  if (disposed || !scene || !camera || !controls) return;
+  const generation = ++loadGeneration;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
+  const isCurrent = () => !disposed && generation === loadGeneration && source === props.source;
   loading.value = true;
   error.value = null;
   errorDetail.value = null;
-  if (mesh) {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-    if (mesh.material instanceof MeshStandardMaterial) mesh.material.dispose();
-  }
+  clearMesh();
+  let pendingGeometry: BufferGeometry | null = null;
+  let pendingMaterial: MeshStandardMaterial | null = null;
 
   try {
-    const response = await apiFetch(source, { headers: { Accept: "*/*" } });
+    const response = await apiFetch(source, {
+      headers: { Accept: "*/*" }, signal: controller.signal,
+    });
+    if (!isCurrent()) return;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.arrayBuffer();
+    // Abort is best-effort: a cached response/body can still finish after a selection change.
+    if (!isCurrent()) return;
     if (!payload.byteLength) throw new Error("The STL preview is empty.");
-    const geometry = new STLLoader().parse(payload);
+    const geometry = pendingGeometry = new STLLoader().parse(payload);
     geometry.computeVertexNormals();
     const colors = { default: 0x3f72ef, warning: 0xd95b3d, pass: 0x16845b };
-    const material = new MeshStandardMaterial({
+    const material = pendingMaterial = new MeshStandardMaterial({
       color: colors[props.accent || "default"],
       roughness: 0.42,
       metalness: 0.08,
     });
     mesh = new Mesh(geometry, material);
-    scene?.add(mesh);
+    // Ownership transfers to clearMesh from here, including failures during camera setup.
+    pendingGeometry = null;
+    pendingMaterial = null;
+    scene.add(mesh);
+    updateMaterial();
 
     const bounds = new Box3().setFromObject(mesh);
     const size = bounds.getSize(new Vector3());
@@ -122,11 +152,18 @@ async function loadModel(source: string): Promise<void> {
     controls.minDistance = modelDistance * 0.08;
     controls.maxDistance = modelDistance * 8;
     applyView();
-    loading.value = false;
   } catch (caught) {
+    if (!isCurrent()) return;
+    clearMesh();
     error.value = t("Preview geometry could not be loaded with the current Demo session.");
     errorDetail.value = caught instanceof Error ? caught.message : null;
-    loading.value = false;
+  } finally {
+    pendingGeometry?.dispose();
+    pendingMaterial?.dispose();
+    if (isCurrent()) {
+      loading.value = false;
+      loadController = null;
+    }
   }
 }
 
@@ -169,21 +206,30 @@ onMounted(() => {
 });
 
 watch(
-  () => [props.source, props.accent] as const,
-  ([source]) => {
+  () => props.source,
+  (source) => {
     if (renderer) loadModel(source);
   },
+  { flush: "sync" },
 );
 
+watch(() => props.accent, updateMaterial);
 watch(view, applyView);
 
 onBeforeUnmount(() => {
+  disposed = true;
+  ++loadGeneration;
+  loadController?.abort();
+  loadController = null;
   window.removeEventListener("resize", resize);
   renderer?.setAnimationLoop(null);
   controls?.dispose();
-  mesh?.geometry.dispose();
-  if (mesh?.material instanceof MeshStandardMaterial) mesh.material.dispose();
+  clearMesh();
   renderer?.dispose();
+  controls = null;
+  renderer = null;
+  scene = null;
+  camera = null;
 });
 </script>
 

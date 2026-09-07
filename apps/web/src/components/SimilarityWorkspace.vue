@@ -62,6 +62,20 @@ const feedbackReason = ref("");
 const feedbackSending = ref(false);
 const feedbackRecorded = ref<string | null>(null);
 let pollTimer: number | null = null;
+let searchGeneration = 0;
+let comparisonGeneration = 0;
+let disposed = false;
+
+function invalidateSearch(): number {
+  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  pollTimer = null;
+  submitting.value = false;
+  return ++searchGeneration;
+}
+
+function isCurrentSearch(generation: number): boolean {
+  return !disposed && generation === searchGeneration;
+}
 
 const terminal = computed(() =>
   ["succeeded", "failed", "cancelled", "expired"].includes(job.value?.state || ""),
@@ -171,16 +185,20 @@ async function sendFeedback(action: "accept_reference" | "not_relevant"): Promis
 }
 
 function resetComparison(): void {
+  ++comparisonGeneration;
+  comparing.value = false;
   comparison.value = null;
   comparisonError.value = null;
 }
 
 async function analyzeDeviation(): Promise<void> {
   if (!result.value || !selectedMatch.value) return;
+  const generation = ++comparisonGeneration;
+  const isCurrent = () => !disposed && generation === comparisonGeneration;
   comparing.value = true;
   comparisonError.value = null;
   try {
-    comparison.value = await createSimilarityComparison(
+    const nextComparison = await createSimilarityComparison(
       result.value.search_id,
       selectedMatch.value.artifact_version_id,
       roiEnabled.value
@@ -190,32 +208,45 @@ async function analyzeDeviation(): Promise<void> {
           }
         : undefined,
     );
+    if (!isCurrent()) return;
+    comparison.value = nextComparison;
     pushToast(t("3D deviation analysis completed."), "success");
   } catch (caught) {
+    if (!isCurrent()) return;
     comparisonError.value = caught instanceof Error ? caught.message : t("3D deviation analysis failed.");
     pushToast(comparisonError.value, "error");
   } finally {
-    comparing.value = false;
+    if (isCurrent()) comparing.value = false;
   }
 }
 
-function schedulePoll(): void {
-  if (!terminal.value) pollTimer = window.setTimeout(refreshJob, 900);
+function schedulePoll(generation: number): void {
+  if (!isCurrentSearch(generation)) return;
+  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  pollTimer = null;
+  if (!terminal.value) pollTimer = window.setTimeout(() => refreshJob(generation), 900);
 }
 
 function acceptJob(nextJob: SimilarityJob): void {
+  const selectedId = job.value?.job_id === nextJob.job_id
+    ? selectedMatch.value?.artifact_version_id : null;
   job.value = nextJob;
   if (nextJob.state === "succeeded" && nextJob.result) {
-    selectedMatch.value = nextJob.result.results[0] || null;
+    selectedMatch.value = nextJob.result.results.find((item) => item.artifact_version_id === selectedId)
+      || nextJob.result.results[0] || null;
   }
 }
 
-async function refreshJob(): Promise<void> {
-  if (!job.value) return;
+async function refreshJob(generation: number): Promise<void> {
+  if (!job.value || !isCurrentSearch(generation)) return;
+  const jobId = job.value.job_id;
   try {
-    acceptJob(await fetchSimilarityJob(job.value.job_id));
-    schedulePoll();
+    const nextJob = await fetchSimilarityJob(jobId);
+    if (!isCurrentSearch(generation) || job.value?.job_id !== jobId) return;
+    acceptJob(nextJob);
+    schedulePoll(generation);
   } catch (caught) {
+    if (!isCurrentSearch(generation)) return;
     error.value = caught instanceof Error ? caught.message : t("Unable to refresh similarity job.");
   }
 }
@@ -225,14 +256,15 @@ async function submit(): Promise<void> {
     error.value = t("Upload and process a CAD artifact first.");
     return;
   }
+  const generation = invalidateSearch();
+  const query = props.query;
   submitting.value = true;
   error.value = null;
   job.value = null;
   selectedMatch.value = null;
-  if (pollTimer !== null) window.clearTimeout(pollTimer);
   try {
     const accepted = await createSimilaritySearch(
-      props.query,
+      query,
       {
         datasetIds: datasetId.value.trim() ? [datasetId.value.trim()] : [],
         productTypes: productType.value.trim() ? [productType.value.trim()] : [],
@@ -240,24 +272,30 @@ async function submit(): Promise<void> {
       },
       topK.value,
     );
-    acceptJob(await fetchSimilarityJob(accepted.job_id));
-    schedulePoll();
+    if (!isCurrentSearch(generation)) return;
+    const nextJob = await fetchSimilarityJob(accepted.job_id);
+    if (!isCurrentSearch(generation)) return;
+    acceptJob(nextJob);
+    schedulePoll(generation);
     pushToast(t("Similarity search started."), "success");
   } catch (caught) {
+    if (!isCurrentSearch(generation)) return;
     error.value = caught instanceof Error ? caught.message : t("Similarity search failed.");
     pushToast(error.value, "error");
   } finally {
-    submitting.value = false;
+    if (isCurrentSearch(generation)) submitting.value = false;
   }
 }
 
 async function loadDeepLink(): Promise<void> {
   if (props.deepLink?.target !== "similarity") return;
+  const generation = invalidateSearch();
+  const { search_id: searchId, candidate_id: candidateId } = props.deepLink.refs;
   error.value = null;
-  if (pollTimer !== null) window.clearTimeout(pollTimer);
   try {
-    acceptJob(await fetchSimilaritySearch(props.deepLink.refs.search_id));
-    const candidateId = props.deepLink.refs.candidate_id;
+    const nextJob = await fetchSimilaritySearch(searchId);
+    if (!isCurrentSearch(generation)) return;
+    acceptJob(nextJob);
     if (candidateId && result.value) {
       const candidate = result.value.results.find(
         (item) => item.artifact_version_id === candidateId,
@@ -265,8 +303,9 @@ async function loadDeepLink(): Promise<void> {
       if (!candidate) throw new Error("DEEP_LINK_CONTEXT_MISMATCH");
       selectedMatch.value = candidate;
     }
-    schedulePoll();
+    schedulePoll(generation);
   } catch (caught) {
+    if (!isCurrentSearch(generation)) return;
     error.value =
       caught instanceof Error && caught.message === "DEEP_LINK_CONTEXT_MISMATCH"
         ? t("The linked candidate does not belong to this similarity search.")
@@ -277,23 +316,24 @@ async function loadDeepLink(): Promise<void> {
 watch(
   () => props.query?.artifact_version_id,
   () => {
+    invalidateSearch();
     job.value = null;
     selectedMatch.value = null;
     error.value = null;
-    if (pollTimer !== null) window.clearTimeout(pollTimer);
     engineeringProfile.value = props.query ? emptyEngineeringProfile() : null;
     engineeringProfileLoaded.value = false;
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
 );
 
 watch(
-  () => selectedMatch.value?.artifact_version_id,
+  () => [result.value?.search_id, selectedMatch.value?.artifact_version_id] as const,
   () => {
     resetComparison();
     feedbackReason.value = "";
     feedbackRecorded.value = null;
   },
+  { flush: "sync" },
 );
 
 watch(roiEnabled, (enabled) => {
@@ -352,7 +392,9 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (pollTimer !== null) window.clearTimeout(pollTimer);
+  disposed = true;
+  invalidateSearch();
+  resetComparison();
 });
 </script>
 

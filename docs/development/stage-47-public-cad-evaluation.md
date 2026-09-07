@@ -116,6 +116,8 @@ Sites 私人入口程式未變更，因此不重新發布入口。不建立新 D
 使用者可沿用原有 Sites 私人入口或既有 HTTPS tunnel，登入原本帳號。
 若保留舊頁籤請強制重新整理；重新送出搜尋才使用新評分，歷史結果不會被覆寫。
 
+後續預覽跳錯模型的非同步修復，見 [Stage 48](stage-48-preview-request-ownership.md)。
+
 ## 回歸驗證
 
 `scripts/test.ps1`：後端 lint/format、Django check、migration drift、pytest、Web typecheck/
