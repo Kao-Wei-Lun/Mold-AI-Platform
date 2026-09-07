@@ -437,10 +437,12 @@ Dry Run 不得建立 Domain Entity；只允許建立匯入工作、原始 Artifa
 - `RDI-MOLD-04`：替換檔案不得覆寫舊 ArtifactVersion。
 - `RDI-MOLD-05`：Registry XLSX 匯入必須驗證 Project → Part → Mold → Revision 的階層。
 - `RDI-MOLD-06`：封存前顯示 Trial、CAE、Review、Artifact 與 Knowledge 引用影響。
-- `RDI-MOLD-07`：CAD 上傳必須明確區分「快速分析」與「正式歸檔」；快速分析不得強迫建立 Mold Revision，正式歸檔則必須關聯有效 Revision。
+- `RDI-MOLD-07`：CAD 上傳預設採「先上傳與分析、再受控關聯」；不得強迫使用者在看到解析結果前建立 Mold Revision。正式進入模具履歷前，必須透過受授權、具 `row_version` optimistic locking 與人工原因的關聯動作連至有效 Revision。
 - `RDI-MOLD-08`：快速分析仍須建立 immutable ArtifactVersion、Checksum、Job 與 Lineage，並標記為 `unassigned`，不得當成未受追蹤的暫存檔。
 - `RDI-MOLD-09`：快速分析可執行預覽、幾何解析、相似度與通用規則審查；模具專屬規則、正式 Trial／CAE 關聯及發布證據必須先完成受稽核的 Revision 關聯。
 - `RDI-MOLD-10`：API 必須保存使用者選擇的 `ingestion_mode` 與 `governance_status`，Idempotency Replay 不得改變原始治理語意。
+- `RDI-MOLD-11`：簡化的新 CAD 上傳不得移除版本化能力；使用者可在進階選項將檔案新增為既有 CAD Artifact 的下一個 immutable ArtifactVersion，並沿用該 Artifact 的資料集、Revision 與治理邊界。
+- `RDI-MOLD-12`：CAD accepted response 必須回傳 Artifact 目前的 `row_version`；後續 Revision 關聯須使用該值並要求人工輸入關聯原因，禁止固定理由或猜測版本號。
 
 ### 13.2 Trial／Process
 

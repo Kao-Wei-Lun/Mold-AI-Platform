@@ -101,6 +101,7 @@ export function isCADModelJob(job: CADArtifactJob): job is CADJob & { result: CA
 export type CADUploadAccepted = {
   status: "accepted";
   artifact_id: string;
+  row_version: number;
   artifact_version_id: string;
   version_number: number;
   version_action: "new_artifact" | "new_version";

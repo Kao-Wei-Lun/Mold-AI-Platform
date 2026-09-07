@@ -1,8 +1,8 @@
 # 19 — 知識庫 RAG 引擎二階段優化需求規格書 (SRS)
 
-版本：1.0 Draft  
-日期：2026-09-04  
-狀態：Approved for Planning  
+版本：1.1 Draft
+日期：2026-09-07
+狀態：Ready for Planning Review
 適用範圍：Mold AI Platform（Web、Platform API、Knowledge Engine、Vector Store、Assistant Gateway）
 
 ---
@@ -73,10 +73,7 @@ flowchart TD
 
 #### 3. Qdrant 原生雙路混合檢索（Dense + Sparse BM25 + RRF）
 
-> **前置條件：Qdrant 版本升級**：本方案依賴 Qdrant 的 Sparse Vector 索引（v1.7+）與 Prefetch / RRF 融合查詢（v1.9+）。現有 `vector_store.py` 僅使用最基礎的 REST API，必須確認部署的 Qdrant 版本並升級至 **v1.10+**（建議 latest stable）。具體升級步驟：
-> 1. 更新 `docker-compose.yml` 中 Qdrant 服務的映像版本。
-> 2. 執行 Collection 資料遷移測試，驗證現有向量資料可正常讀取。
-> 3. 重構 `vector_store.py` 以支援 Named Vectors（Dense + Sparse 共存於同一 Collection 的不同 Vector Space）。
+> **前置條件：Qdrant 相容性驗證**：`compose.yaml` 目前固定使用 Qdrant `v1.15.4`，版本已高於本方案的最低需求，因此不得再把「升級 Qdrant」列為既定工作。實作前須以鎖定版本驗證 Sparse Vector、Prefetch、RRF、Named Vectors、alias／snapshot 與 rollback 行為；若確實需要變更版本，必須另立 ADR、固定明確版本，完成備份還原與相容性測試，禁止使用 `latest`。
 
 * **Dense 向量**：
   * 引入 `BAAI/bge-small-zh-v1.5`（384 維），使用 ONNX Runtime 於 CPU 執行，推論單句僅需 5~12ms。
@@ -92,7 +89,7 @@ flowchart TD
 * **採用方案**：新建 Collection `knowledge-text-v2`（384 維 Dense + Sparse Named Vectors），並提供一次性遷移腳本 `scripts/migrate_knowledge_index_v2.py`：
   1. 遍歷所有現存 `KnowledgeDocument`，使用 Docling 重新解析並以 BGE-small 重新計算向量。
   2. 將新向量與 BM25 Sparse 向量同時寫入 `knowledge-text-v2`。
-  3. 遷移期間保留舊 Collection 作為降級備援，遷移完成且驗證通過後可安全刪除舊 Collection。
+  3. 遷移期間保留舊 Collection 作為降級備援；完成觀察期、備份還原演練、資料擁有者核准與 audit event 後才能刪除，遷移腳本不得自行刪除舊 Collection。
 * 將 `settings.py` 中 `QDRANT_KNOWLEDGE_COLLECTION` 預設值從 `"knowledge-text-demo-v1"` 更新為 `"knowledge-text-v2"`。
 
 #### 4. 純 CPU 級神經重排器（FlashRank Cross-Encoder）
@@ -103,7 +100,7 @@ flowchart TD
   * 在純 CPU 上耗時僅 20~35ms，輸出精確排序的 Top-5 結果。
 * **新版拒答機制（Abstention Mechanism）——取代舊版 `_lexical_score > 0` 硬過濾**：
   * 舊版系統以 `lexical_score <= 0` 作為拒答與防幻覺的核心防線，廢除後必須以等效機制替代。
-  * **新規則**：在 FlashRank 重排後，設定最低 Cross-Encoder 分數門檻 `RERANK_ABSTENTION_THRESHOLD = 0.35`（可於 `settings.py` 中配置）。
+  * **新規則**：在 FlashRank 重排後使用版本化的拒答門檻 `RERANK_ABSTENTION_THRESHOLD`。門檻不得直接假設為通用 `0.35`，必須以受治理的中英文 Golden QA、文件類型與模型版本校準，保存 precision/recall、誤答成本與核准紀錄。
   * 將所有 `rerank_score < RERANK_ABSTENTION_THRESHOLD` 的候選淘汰。
   * 若淘汰後無任何候選段落，觸發 `abstained = true`，回傳舊版相同的拒答訊息：`"Insufficient authorized evidence was found; no conclusion was generated."`。
   * 此機制確保純 Dense 向量高分但語意不相關的段落無法滲入結果，維持與舊版等效的防幻覺保護。
@@ -172,7 +169,7 @@ flowchart TD
   * `resource_class: "gpu_cad"` 用於 CAD 深度幾何表徵（見 SRS 18 Phase 5）。
   * `resource_class: "gpu_knowledge"` 用於 RAG 深度嵌入與重排。
 * 系統定期進行 GPU 節點心跳檢查（Heartbeat）。
-* **降級保護**：當 GPU 節點過載或離線時，系統**毫秒級自動切換回 Phase 1 的 CPU 檢索流程（Docling + bge-small + FlashRank）**，確保前端業務永不中斷。
+* **降級保護**：當 GPU 節點逾時、過載或離線時，由具 timeout、circuit breaker、idempotency 與 queue cancellation 的狀態機切換回 Phase 1 CPU 流程。切換時間以實測 p95 SLO 定義，不宣稱未驗證的毫秒級或永不中斷；前端須顯示 `degraded`、重試狀態與實際使用的 parser/embedding/reranker 版本。
 
 ---
 
@@ -204,3 +201,38 @@ flowchart TD
 ### 6.2 實施時程規劃
 * **Phase 1（純 CPU 優化）**：預估工期 **4 週**（Qdrant 升級 + Collection 遷移 0.5 週 + Docling 解析 1 週 + 向量與 Qdrant RRF 1 週 + FlashRank 重排與拒答機制 0.5 週 + 前端 Bbox 高亮 1 週）。
 * **Phase 2（GPU 深度升級）**：預估工期 **4 週**（GPU 佇列架構 1 週 + BGE-M3/Reranker 整合 1 週 + GraphRAG 實體圖譜構建 1.5 週 + 降級測試 0.5 週）。
+
+---
+
+## 7. 實作就緒補充要求（Review Gate）
+
+### 7.1 授權檢索與資料生命週期
+
+- **RAG-GOV-001**：Dense prefetch、Sparse prefetch、RRF、rerank、citation、Graph traversal、cache 與 Assistant prompt 的每一階段都必須使用伺服器依身分導出的 scope/classification/project/customer ACL；未授權 Chunk 不得成為候選、日誌內容或分數統計的一部分。
+- **RAG-GOV-002**：Qdrant payload 至少保存 `document_id`、`document_version_id`、`chunk_id`、scope、classification、publication/lifecycle status、parser/chunker/embedding version 與 source checksum。文件退役、撤回、重新發布或 ACL 變更時必須以可核對 Job 更新或 tombstone 所有 Dense/Sparse/Graph 衍生資料。
+- **RAG-GOV-003**：檢索結果回傳前再次執行授權與 publication status 驗證，避免索引更新延遲造成舊權限資料外洩。
+
+### 7.2 不受信任文件與解析安全
+
+- **RAG-SEC-001**：文件內容一律視為不受信任資料；解析出的指令、Prompt、連結、程式碼、表格或 metadata 不得改變 System/Developer policy、呼叫工具或擴張資料範圍。生成階段須保留引用、拒答與 tool allowlist。
+- **RAG-SEC-002**：沿用現有上傳安全管線的加密檔、macro、外部連結與 MIME/signature 檢查，並為 Docling/MinerU/PDF.js 設定 sandbox、無預設網路 egress、檔案／頁數／解壓倍率、CPU、RAM、GPU 與執行時間上限；超限進入 quarantine 並產生 typed error。
+- **RAG-SEC-003**：PDF.js 只可透過需授權的同源下載端點取得來源，使用 CSP、Range request 與短效權杖；bbox/citation 不得包含未授權頁面文字或可推導的檔名／路徑。
+
+### 7.3 Chunk、Citation 與模型契約
+
+- **RAG-CDM-001**：Chunk Contract 必須定義文字、語言、標題路徑、table context、page number、頁面寬高、bbox 座標原點／單位／旋轉、`bbox_available`、source offsets、parser/chunker version 與 checksum；前端只依版本化契約畫框。
+- **RAG-CDM-002**：Named dense/sparse vectors 必須明確定義名稱、維度、distance、tokenizer/sparse encoder、模型 revision 與 normalization。索引 manifest checksum 必須隨結果與 Lineage 保存。
+- **RAG-CDM-003**：所有 embedding、reranker、parser、OCR/VLM 與 Graph 模型需保存來源、授權、版本、SHA-256、SBOM/CVE、核准人與 RAM/VRAM/磁碟需求；CI 只從 allowlist 下載，Runtime 禁止外網下載，並維持單一 `mold-ai-platform-app:<version>` 應用映像契約。
+
+### 7.4 Collection 遷移與運行恢復
+
+- **RAG-MIG-001**：重建 Job 必須可重入、可續跑、可取消，以 document version + pipeline manifest checksum 去重，保存成功／失敗／隔離／跳過數量與逐筆原因。
+- **RAG-MIG-002**：先建立 staging collection，完成來源數、Chunk 數、ACL 分布、checksum、向量 schema、隨機引用與 Golden QA 核對，再以 alias／等效原子路由切換；Shadow read 不得把 v1/v2 未校準分數直接混排。
+- **RAG-MIG-003**：切換後保留 v1 觀察期並演練一次回滾。索引、資料庫 publication state 與物件儲存不一致時，以資料庫受治理版本為準並拒絕回傳可疑 evidence。
+
+### 7.5 評估、拒答與 Definition of Done
+
+- **RAG-ACC-001**：Golden QA 必須版本化並涵蓋繁中、英文、雙語查詢、表格、掃描件、無答案、相似但不適用、ACL 否定與 prompt-injection 文件；門檻依模型/pipeline version 校準，變更需重新核准。
+- **RAG-ACC-002**：Ragas 或其他評估器如需 LLM，須明確指定本機／外部 evaluator、資料是否可外送、成本與版本；高風險錯答由至少兩名工程審查者裁決並保存 disagreement。
+- **RAG-ACC-003**：效能報告列出硬體、模型、語料量、Chunk 數、冷／熱快取、併發數、queue backlog、p50/p95、拒答率及各文件類型指標。文件中的延遲、Recall 與 Faithfulness 均為初始目標，不是產品保證。
+- **RAG-ACC-004**：Phase Gate 必須通過 parser sandbox、ACL 否定、索引 tombstone、遷移續跑、原子回滾、模型缺失、GPU 故障注入、引用座標與來源授權測試；任何未授權 evidence 洩漏或無法回滾皆阻擋發布。

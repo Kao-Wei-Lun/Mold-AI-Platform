@@ -697,8 +697,25 @@ button[aria-busy="true"]::before {
 
 .cad-upload-purpose {
   margin: 0;
-  border: 0;
-  padding: 0;
+  border: 1px solid #d7e1ef;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: #f8faff;
+}
+
+.cad-upload-purpose summary {
+  cursor: pointer;
+  color: #28456d;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.cad-upload-purpose > .muted {
+  margin: 0.55rem 0 0.8rem;
+}
+
+.cad-upload-purpose > .form-field {
+  margin-top: 0.8rem;
 }
 
 .cad-upload-purpose legend {

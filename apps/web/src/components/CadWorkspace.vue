@@ -17,6 +17,7 @@ import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions }
 import { pushToast } from "../toast";
 import { uploadPolicies, validateUploadFile } from "../fileUpload";
 import { fetchRegistry, linkArtifactToRevision, type RegistryRevision } from "../api/registry";
+import type { WorkspaceRouteId } from "../routing";
 import FormField from "./FormField.vue";
 import FileDropZone from "./FileDropZone.vue";
 
@@ -36,7 +37,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   ready: [result: NonNullable<CADJob["result"]>];
   retryMasterData: [];
-  navigate: [route: string];
+  navigate: [route: WorkspaceRouteId];
 }>();
 
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
@@ -47,6 +48,9 @@ const artifactName = ref("");
 const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
+const artifactTargetMode = ref<"new_artifact" | "new_version">("new_artifact");
+const existingArtifactId = ref("");
+const versionArtifacts = ref<CADArtifactSummary[]>([]);
 const uploading = ref(false);
 const uploadProgress = ref<CADUploadProgress | null>(null);
 const error = ref<string | null>(null);
@@ -59,6 +63,7 @@ let pollTimer: number | null = null;
 const lastAccepted = ref<CADUploadAccepted | null>(null);
 const linkRevisionOpen = ref(false);
 const linkRevisionId = ref("");
+const linkReason = ref("");
 const linkVersionOpen = ref(false);
 const revisions = ref<RegistryRevision[]>([]);
 const revisionsLoaded = ref(false);
@@ -83,8 +88,32 @@ const dimensions = computed(() => {
   return `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`;
 });
 const missingUploadFields = computed(
-  () => Number(!selectedFile.value) + Number(!datasetId.value),
+  () =>
+    Number(!selectedFile.value) +
+    Number(!datasetId.value) +
+    Number(artifactTargetMode.value === "new_version" && !existingArtifactId.value),
 );
+
+async function loadVersionArtifacts(): Promise<void> {
+  try {
+    versionArtifacts.value = await fetchRecentCAD();
+  } catch {
+    versionArtifacts.value = [];
+  }
+}
+
+watch(artifactTargetMode, (mode) => {
+  if (mode === "new_version" && !versionArtifacts.value.length) void loadVersionArtifacts();
+  if (mode === "new_artifact") existingArtifactId.value = "";
+});
+
+watch(existingArtifactId, (id) => {
+  const artifact = versionArtifacts.value.find((item) => item.artifact_id === id);
+  if (!artifact) return;
+  datasetId.value = artifact.dataset_id;
+  productType.value = artifact.product_type;
+  materialCode.value = artifact.material_code;
+});
 const showPostActions = computed(
   () => result.value && job.value?.state === "succeeded" && lastAccepted.value,
 );
@@ -178,6 +207,7 @@ async function submit(): Promise<void> {
         productType: productType.value,
         materialCode: materialCode.value,
         uploadMode: "quick_analysis",
+        artifactId: artifactTargetMode.value === "new_version" ? existingArtifactId.value : undefined,
       },
       { onProgress: (progress) => { uploadProgress.value = progress; } },
     );
@@ -202,6 +232,7 @@ async function submit(): Promise<void> {
 function openLinkRevision(): void {
   linkRevisionOpen.value = true;
   linkVersionOpen.value = false;
+  linkReason.value = "";
   void loadRevisions();
   if (!linkRevisionId.value && revisions.value.length) {
     linkRevisionId.value = revisions.value.find((r) => r.status === "released")?.id || revisions.value[0].id;
@@ -209,14 +240,14 @@ function openLinkRevision(): void {
 }
 
 async function confirmLinkRevision(): Promise<void> {
-  if (!lastAccepted.value || !linkRevisionId.value) return;
+  if (!lastAccepted.value || !linkRevisionId.value || !linkReason.value.trim()) return;
   linking.value = true;
   try {
     await linkArtifactToRevision(
       lastAccepted.value.artifact_id,
-      0, // row_version: fresh artifact
+      lastAccepted.value.row_version,
       linkRevisionId.value,
-      "Linked via CAD upload post-action.",
+      linkReason.value.trim(),
     );
     pushToast(t("CAD linked to mold revision."), "success");
     linkRevisionOpen.value = false;
@@ -308,6 +339,26 @@ onBeforeUnmount(() => {
         <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
         <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
       </div>
+      <details class="cad-upload-purpose form-wide">
+        <summary>{{ t("Uploading a revised CAD file?") }}</summary>
+        <p class="muted">{{ t("The default creates a new CAD record. Choose an existing record only when this file is its next controlled version.") }}</p>
+        <div class="upload-purpose-options">
+          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_artifact' }">
+            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_artifact" />
+            <span><strong>{{ t("Create new CAD record") }}</strong><small>{{ t("Start a separately governed CAD history.") }}</small></span>
+          </label>
+          <label class="upload-purpose-option" :class="{ selected: artifactTargetMode === 'new_version' }">
+            <input v-model="artifactTargetMode" type="radio" name="artifact-target" value="new_version" />
+            <span><strong>{{ t("Add version to existing CAD") }}</strong><small>{{ t("Keep prior versions and engineering results unchanged.") }}</small></span>
+          </label>
+        </div>
+        <FormField v-if="artifactTargetMode === 'new_version'" v-slot="{ fieldId, describedBy, invalid }" :label="t('Existing CAD record')" required :helper="t('The new file inherits dataset, revision and governance from this record.')">
+          <select :id="fieldId" v-model="existingArtifactId" required :aria-describedby="describedBy" :aria-invalid="invalid">
+            <option value="" disabled>{{ t("Select an existing CAD record") }}</option>
+            <option v-for="artifact in versionArtifacts" :key="artifact.artifact_id" :value="artifact.artifact_id">{{ artifact.name }} · {{ artifact.versions?.length || 0 }} {{ t("versions") }}</option>
+          </select>
+        </FormField>
+      </details>
       <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('STEP or STL file')" required :helper="t('Accepted formats: STEP, STP or STL.')">
         <FileDropZone
           :id="fieldId"
@@ -435,8 +486,11 @@ onBeforeUnmount(() => {
               <option v-for="revision in revisions" :key="revision.id" :value="revision.id">{{ revision.mold_code }}@{{ revision.revision_code }} · {{ t(revision.status) }}</option>
             </select>
           </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Link reason')" required :helper="t('Describe why this CAD belongs to the selected mold revision; the reason is retained in the audit trail.')">
+            <input :id="fieldId" v-model="linkReason" type="text" maxlength="500" required :aria-describedby="describedBy" :aria-invalid="invalid" />
+          </FormField>
           <div class="post-action-detail-buttons">
-            <button type="button" :disabled="!linkRevisionId || linking" :aria-busy="linking" @click="confirmLinkRevision">
+            <button type="button" :disabled="!linkRevisionId || !linkReason.trim() || linking" :aria-busy="linking" @click="confirmLinkRevision">
               {{ linking ? t("Linking...") : t("Confirm link") }}
             </button>
             <button type="button" class="secondary-button" @click="linkRevisionOpen = false">{{ t("Cancel") }}</button>

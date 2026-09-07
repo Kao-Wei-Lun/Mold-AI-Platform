@@ -48,6 +48,7 @@ class CADUploadEndpointTests(TestCase):
         self.assertEqual(response.status_code, 202)
         payload = response.json()
         self.assertEqual(payload["status"], "accepted")
+        self.assertEqual(payload["row_version"], 1)
         self.assertEqual(payload["ingestion_mode"], "quick_analysis")
         self.assertEqual(payload["governance_status"], "unassigned")
         self.assertIsNone(payload["mold_revision_id"])
@@ -102,6 +103,7 @@ class CADUploadEndpointTests(TestCase):
 
         self.assertEqual(second.status_code, 202)
         self.assertEqual(second.json()["version_action"], "new_version")
+        self.assertEqual(second.json()["row_version"], 1)
         self.assertEqual(second.json()["version_number"], 2)
         self.assertEqual(Artifact.objects.count(), 1)
         self.assertEqual(ArtifactVersion.objects.count(), 2)

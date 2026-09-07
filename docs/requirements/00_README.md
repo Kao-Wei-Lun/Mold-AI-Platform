@@ -1,7 +1,7 @@
 # Mold AI Platform 需求規格書套件
 
-版本：0.9 Draft Baseline  
-日期：2026-08-25  
+版本：0.10 Draft Baseline
+日期：2026-09-07
 狀態：供 Demo 規劃、技術評審與企業需求訪談使用
 
 ## 1. 文件目的
@@ -34,6 +34,8 @@
 15. [模具規定與工程資料新增／匯入強化 SRS](15_Rule_and_Data_Ingestion_Enhancement_SRS.md)：將「主資料」改為使用者可理解的「工程基礎資料」，並定義模具類型、規則適用性、結構化規則編輯器、統一新增資料與批次匯入中心、權限、測試及分階段實作 Gate。
 16. [模具規劃工作區與規則選用體驗改善規劃](16_Mold_Planning_Workspace_Improvement_Plan.md)：將工程端「模具規劃」改為以工件、產品、材料與製程條件驅動的規劃流程，涵蓋自動規則解析、候選比較、人工改選、規劃案保存、下游交接、權限稽核與分階段測試／Git Gate。
 17. [模具台帳工作區與完整模具履歷改善規劃](17_Mold_Registry_Workspace_Improvement_Plan.md)：將既有台帳提升為可搜尋、可維護且可追溯的模具主檔與工程履歷入口，涵蓋階層瀏覽、詳細資料、受控編輯、版本生命週期、關聯工程紀錄、權限稽核、資料匯入與分階段測試／Git Gate。
+18. [CAD 相似度比對引擎進階優化 SRS](18_CAD_Similarity_Engine_Optimization_SRS.md)：定義 CPU 幾何與製造特徵、對齊與 ROI、受治理反饋、GPU 深度表徵、索引遷移、資料隔離、可重現性及分階段驗收。
+19. [知識庫 RAG 引擎二階段優化 SRS](19_Knowledge_RAG_Engine_Optimization_SRS.md)：定義結構解析、Hybrid Retrieval、Rerank／Abstention、精確引用、離線模型、GPU／GraphRAG、授權檢索、安全解析、索引遷移與評估 Gate。
 
 目前 Stage 12 之後的可執行開發順序、工作拆解、Gate、風險與 Web UI 改良計畫，另見
 [Demo v1.0 Completion Plan](../planning/demo-v1/00_README.md)。Planning 文件將本 SRS 的 MUST
@@ -55,6 +57,8 @@ requirements轉為Stage 13–17實作與驗收項目；若兩者衝突，以本�
 - `DM-xxx`：資料管理、版本、匯入、封存與治理需求。
 - `IAM-xxx`：帳號、身分、認證、授權與存取稽核需求。
 - `UAT-DM/IAM-xxx`：資料管理與帳號存取的使用者驗收情境。
+- `CADSIM-xxx`：CAD 相似度 v2 的治理、幾何、遷移、模型、營運與驗收需求。
+- `RAG-xxx`：Knowledge RAG v2 的治理、安全、資料契約、遷移與驗收需求。
 
 所有百分比、延遲與準確率門檻皆是 **初始工程目標**；導入公司資料後，必須以 Golden Dataset、硬體基準與業務風險重新校準，不得宣稱為未經驗證的產品保證。
 
@@ -94,4 +98,4 @@ requirements轉為Stage 13–17實作與驗收項目；若兩者衝突，以本�
 
 ## 7. 建議使用方式
 
-第一次評審先讀 01、02、04、09；Demo 開發團隊再讀 05、06、07、10；資料與企業架構團隊以 03、04、07、08、11、12 為主。要把工程資料改為 Web 可管理時，應先共同評審 11、12，再按 13 分階段實作。所有需求變更應更新需求 ID、變更紀錄及對應追溯矩陣。
+第一次評審先讀 01、02、04、09；Demo 開發團隊再讀 05、06、07、10；資料與企業架構團隊以 03、04、07、08、11、12 為主。要把工程資料改為 Web 可管理時，應先共同評審 11、12，再按 13 分階段實作。進行 CAD Similarity 或 Knowledge RAG v2 前，必須再共同評審 18、19 的 Review Gate，並把核准需求加入 09 的追溯矩陣。所有需求變更應更新需求 ID、變更紀錄及對應追溯矩陣。

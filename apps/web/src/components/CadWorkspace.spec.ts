@@ -124,6 +124,7 @@ describe("CadWorkspace", () => {
           {
             status: "accepted",
             artifact_id: "artifact-1",
+            row_version: 1,
             artifact_version_id: "version-1",
             job_id: "job-1",
             ingestion_mode: "quick_analysis",
@@ -185,6 +186,7 @@ describe("CadWorkspace", () => {
           {
             status: "accepted",
             artifact_id: "artifact-post",
+            row_version: 1,
             artifact_version_id: "version-post",
             version_number: 1,
             version_action: "new_artifact",
@@ -240,6 +242,7 @@ describe("CadWorkspace", () => {
           {
             status: "accepted",
             artifact_id: "artifact-link",
+            row_version: 1,
             artifact_version_id: "version-link",
             version_number: 1,
             version_action: "new_artifact",
@@ -307,14 +310,15 @@ describe("CadWorkspace", () => {
 
     // Select revision and confirm
     await wrapper.get(".post-action-detail select").setValue("revision-1");
+    await wrapper.get('.post-action-detail input[type="text"]').setValue("Associate approved housing design");
     await wrapper.get(".post-action-detail button").trigger("click");
     await flushPromises();
 
     expect(linkMock).toHaveBeenCalledWith(
       "artifact-link",
-      0,
+      1,
       "revision-1",
-      "Linked via CAD upload post-action.",
+      "Associate approved housing design",
     );
   });
 
@@ -326,6 +330,7 @@ describe("CadWorkspace", () => {
           {
             status: "accepted",
             artifact_id: "artifact-nav",
+            row_version: 1,
             artifact_version_id: "version-nav",
             version_number: 1,
             version_action: "new_artifact",
@@ -375,6 +380,74 @@ describe("CadWorkspace", () => {
     // Click "Run design review" (index 2)
     await actionCards[2].trigger("click");
     expect(wrapper.emitted("navigate")?.[1]).toEqual(["design_review"]);
+  });
+
+  it("adds a controlled version to an existing CAD record from advanced upload options", async () => {
+    const existing = {
+      artifact_id: "artifact-versioned",
+      name: "Versioned housing",
+      kind: "cad_source",
+      classification: "public_demo",
+      dataset_id: "manual-cad-upload-v1",
+      product_type: "housing",
+      material_code: "PC_ABS",
+      mold_revision_id: null,
+      mold_revision: null,
+      lifecycle_status: "active",
+      quality_status: "validated",
+      created_at: "2026-08-30T00:00:00Z",
+      updated_at: "2026-08-30T00:00:00Z",
+      row_version: 1,
+      source: null,
+      jobs: [],
+      versions: [{ artifact_version_id: "version-1" }],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [existing] }))
+      .mockResolvedValueOnce(jsonResponse({
+        status: "accepted",
+        artifact_id: existing.artifact_id,
+        row_version: 1,
+        artifact_version_id: "version-2",
+        version_number: 2,
+        version_action: "new_version",
+        job_id: "job-v2",
+        ingestion_mode: "quick_analysis",
+        governance_status: "unassigned",
+        mold_revision_id: null,
+        idempotent_replay: false,
+        warnings: [],
+        links: {},
+      }, true, 202))
+      .mockResolvedValueOnce(jsonResponse({
+        schema_version: "1.0",
+        job_id: "job-v2",
+        capability: "cad.parse@1.0.0",
+        state: "succeeded",
+        stage: "completed",
+        progress: 100,
+        attempt: 1,
+        artifact_version_id: "version-2",
+        correlation_id: "correlation-v2",
+        error: null,
+        result: { ...succeededResult, artifact_version_id: "version-2" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CadWorkspace, { global: { stubs: { CadPreview: true } } });
+    await wrapper.get('input[value="new_version"]').setValue(true);
+    await flushPromises();
+    await wrapper.get(".cad-upload-purpose select").setValue(existing.artifact_id);
+    const fileInput = wrapper.get('input[type="file"]');
+    Object.defineProperty(fileInput.element, "files", { value: [stlFile] });
+    await fileInput.trigger("change");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const uploadBody = fetchMock.mock.calls[1]?.[1]?.body as FormData;
+    expect(uploadBody.get("artifact_id")).toBe(existing.artifact_id);
+    expect(uploadBody.get("ingestion_mode")).toBe("quick_analysis");
   });
 
   it("shows a server validation message", async () => {

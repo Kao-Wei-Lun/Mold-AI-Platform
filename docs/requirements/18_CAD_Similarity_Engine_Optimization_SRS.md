@@ -1,8 +1,8 @@
 # 18 — CAD 相似度比對引擎進階優化需求規格書 (SRS)
 
-版本：1.0 Draft  
-日期：2026-09-04  
-狀態：Approved for Planning  
+版本：1.1 Draft
+日期：2026-09-07
+狀態：Ready for Planning Review
 適用範圍：Mold AI Platform（Web、Platform API、CAD Processing、Vector Store、Similarity Engine）
 
 ---
@@ -96,7 +96,7 @@ flowchart TD
    * STL 為純三角網格，不具備 B-Rep 拓撲資訊，無法精確計算壁厚、倒勾與分模線。
    * **降級規則**：STL 檔案的 `manufacturing` 軌自動標記為 `NOT_AVAILABLE`，依現有的動態權重重新歸一化機制自動排除該軌（其餘可用軌等比例放大權重）。
    * **可選近似估算**：提供基於體素化距離變換（Voxelized Distance Transform）的 STL 壁厚近似值，但精確度標記為 `APPROXIMATE`，僅供參考排序。
-4. **重排引擎（Reranking）新增「製造工藝軌（Manufacturing Lane）」**：
+5. **重排引擎（Reranking）新增「製造工藝軌（Manufacturing Lane）」**：
    * 擴充重排評分權重結構，將評分軌劃分為 5 軌：
      * `geometry` (幾何形狀, 25%)
      * `dimension` (絕對尺寸, 20%)
@@ -162,8 +162,8 @@ flowchart TD
    * **子步驟 A（Phase 4 必交付）**：建設反饋採集 UI 與日誌基礎設施。
      * 記錄使用者在相似度工作區中的互動：
        * 正樣本（Positive）：工程師點擊「採納參考」、「建立關聯模具」、「載入其試模參數」。
-       * 負樣本（Negative）：高排名但被快速跳過或明確標記「不相關」。
-     * 反饋事件持久化至 `SimilarityFeedback` 資料表，包含 `search_id`、`candidate_id`、`action`、`timestamp`。
+       * 負樣本（Negative）：只接受工程師明確點擊「不相關」並選擇原因；瀏覽時間或快速跳過只能作為匿名 UX 遙測，不得自動成為訓練標籤。
+     * 反饋事件持久化至 `SimilarityFeedback` 資料表，包含 `search_id`、`candidate_id`、`action`、`reason_code`、`actor_id`、`scope_id`、`timestamp` 與資料保留期限。
    * **子步驟 B（企業導入後啟動）**：離線 Metric Learning 微調。
      * 前提條件：累積 ≥ 100 筆有效反饋記錄。
      * 背景定期執行 CPU 端 RankNet / 權重矩陣自適應微調，使特定廠內產品線的檢索排名逐漸貼近內部專家偏好。
@@ -192,7 +192,7 @@ flowchart TD
          "platform_core.run_gpu_knowledge_embedding": {"queue": "gpu"},
      }
      ```
-   * **GPU Worker Docker 映像**：基於現有 `platform-api` 映像額外安裝 CUDA Runtime 與 ONNX GPU Runtime，獨立構建 `platform-gpu-worker` 映像，並在 `docker-compose.yml` 中新增對應服務定義。
+   * **單一應用映像約束**：GPU Worker 必須與同一部署 Profile 的 API、Web、MCP Gateway 及其他 Worker 使用相同、不可變的 `mold-ai-platform-app:<version>` 映像，只以 Compose command、queue 與 NVIDIA resource reservation 區分角色。GPU Profile 可由同一根 `Dockerfile` 的 CUDA build target 產生，但同一個已發布 Profile 不得混用第二個應用映像標籤。服務定義寫入專案實際使用的 `compose.yaml` 與對應 override，並遵守 [Unified production application image](../development/stage-19-unified-application-image.md)。
 2. **多視角 2D 投影視覺嵌入（Multi-View Vision Transformer / DINOv2）**：
    * GPU Worker 批次渲染 3D 模型的多視角正交與等角投影圖（含深度圖與法向量圖）。
    * 輸入預訓練 ViT (DINOv2 / CLIP) 提取高維特徵（如 768 維），生成視覺相似度 Embedding，寫入專用 Qdrant 集合。
@@ -297,3 +297,42 @@ class FeatureSet(models.Model):
 | **M3** | Phase 3：ICP 對齊與 Web 3D 偏差色階熱力圖 | 2 週 | Three.js 疊合視圖 + 偏差色階雲圖 |
 | **M4** | Phase 4：2D/CAE 模態融合與反饋學習 | 1.5 週 | 跨模態評分 + 專家回饋權重微調 |
 | **M5** | Phase 5：GPU 異步 Worker、多視角 ViT 與 GNN | 3 週 | GPU 佇列 + 深度幾何表徵 + 降級容錯機制 |
+
+---
+
+## 8. 實作就緒補充要求（Review Gate）
+
+本節為 Phase 1 前必須完成的強制條件；未通過不得建立正式 v2 索引或以 v2 結果取代現行結果。
+
+### 8.1 權限、資料隔離與 Lineage
+
+- **CADSIM-GOV-001**：所有 v1/v2 upsert、migration、query、ROI query、RRF/rerank 與結果解釋都必須使用伺服器依登入者導出的 `scope_id`、`classification`、project/customer/supplier ACL filter；不得接受 Client 傳入的可擴權 filter。
+- **CADSIM-GOV-002**：未授權候選不得進入候選集合、分數正規化、快取、日誌、熱力圖或 LLM prompt。跨 scope Golden Set 只可使用去識別且獲核准的資料。
+- **CADSIM-GOV-003**：FeatureSet、Qdrant point、Alignment、ROI、SimilarityFeedback 與衍生圖必須保存來源 `artifact_version_id`、extractor/model/index version、scope、classification、建立 Job 與 checksum；來源封存或權限變更時必須同步 tombstone 或重建索引。
+
+### 8.2 幾何正規化與可重現性
+
+- **CADSIM-GEO-001**：萃取前必須把已確認單位轉為毫米並保存原始單位、比例與推定來源；`UNIT_UNCERTAIN` 不得靜默換算，須阻擋絕對尺寸／偏差判定或以明確降級狀態顯示。
+- **CADSIM-GEO-002**：固定網格修復版本、面積加權採樣方法、點數、random seed、直方圖邊界、浮點精度與 normalization。相同檔案、設定與 extractor version 重跑的向量誤差必須落在核准容差內。
+- **CADSIM-GEO-003**：32 維向量發布前須建立不可變 extractor manifest，逐維列出名稱、順序、來源特徵、數值範圍、缺值策略及 normalization；manifest checksum 必須寫入 FeatureSet 與索引 payload。
+- **CADSIM-GEO-004**：PCA 必須處理重複／近似特徵值、軸置換與正負號歧義，枚舉合法候選姿態後選擇最低對齊誤差；對稱件須保存 `alignment_ambiguity`，不得把任意軸方向宣稱為唯一姿態。
+- **CADSIM-GEO-005**：Signed surface distance 只可在法向一致且具可靠內外判定的封閉網格使用；其他模型降級為 unsigned distance，並回傳 `distance_sign_status`、修復狀態與限制說明。
+
+### 8.3 v2 Collection 遷移與回滾
+
+- **CADSIM-MIG-001**：遷移腳本必須可重入、可續跑且以 artifact/version + extractor manifest checksum 去重；保存成功、失敗、跳過與隔離筆數及失敗原因。
+- **CADSIM-MIG-002**：不得直接比較或合併未校準的 v1/v2 原始分數。Shadow 期間分別計算指標；若需要混合候選，必須先以同一 Golden Set 校準至共同分數尺度並版本化校準器。
+- **CADSIM-MIG-003**：使用 staging collection 與 alias／等效原子路由切換。切換前核對授權範圍筆數、來源 checksum、向量維度、payload schema、隨機抽樣查詢與 Golden Set；切換失敗可在一次操作內回到 v1。
+- **CADSIM-MIG-004**：v1 至少保留一個核准觀察期。刪除必須經資料擁有者核准、備份／還原演練與 audit event，禁止遷移腳本自行刪除 Collection。
+
+### 8.4 模型、反饋與運行安全
+
+- **CADSIM-ML-001**：DINOv2、CLIP、GNN、ONNX Runtime 及其權重必須記錄來源、授權、版本、SHA-256、SBOM/CVE 結果與核准人；Runtime 禁止臨時從外網下載模型。
+- **CADSIM-ML-002**：專家反饋必須明確 opt-in、可稽核、可撤銷或排除於後續訓練；訓練資料依產品線與角色分析偏誤，不得用隱性瀏覽行為決定負樣本。
+- **CADSIM-OPS-001**：GPU fallback 使用具 timeout、circuit breaker 與 idempotency 的 Job 狀態機；不得把部分 GPU 結果與 CPU 重跑結果重複寫入同一版本。UI 必須顯示 `degraded` 與實際使用的 lane/model。
+
+### 8.5 Benchmark 與 Definition of Done
+
+- **CADSIM-ACC-001**：所有時間與品質數字均為初始工程目標；報告必須列出 CPU/GPU、RAM/VRAM、模型數量與大小、CAD 格式、單位、網格密度、冷／熱快取、p50/p95 與信賴區間。
+- **CADSIM-ACC-002**：Golden Set 必須版本化，至少依 STEP/STL、產品類別、尺寸區間、對稱性、單位確定性與資料 scope 分層；除整體指標外須公開每層結果與退化幅度。
+- **CADSIM-ACC-003**：Phase Gate 包含單元、契約、權限否定、遷移續跑、原子回滾、效能、GPU 故障注入、人工工程審查及 Lineage 核對。任何安全隔離失敗、無法回滾或相對核准 baseline 顯著退化皆阻擋發布。

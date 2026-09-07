@@ -2,9 +2,10 @@
 
 ## Outcome
 
-CAD upload now separates exploratory engineering work from formal historical archiving. A user no
+CAD upload separates exploratory engineering work from formal historical archiving. A user no
 longer has to create or select a mold design revision merely to preview a STEP/STL file or run a
-generic analysis. The choice is explicit in the Web UI and preserved in the Job input snapshot.
+generic analysis. The Web UI uses an upload-first flow and exposes the governed assignment as an
+audited post-upload action, while the API continues to preserve both modes for compatibility.
 
 ## User modes
 
@@ -15,8 +16,13 @@ generic analysis. The choice is explicit in the Web UI and preserved in the Job 
 
 Quick analysis is the default. It does not mean temporary or untracked: the platform still creates
 an immutable ArtifactVersion, Job, checksum and processing lineage. It only means the Artifact has
-not yet been assigned to a governed MoldRevision. A future assignment workflow must add that
-relationship with authorization and AuditEvent evidence; it must not rewrite the original file.
+not yet been assigned to a governed MoldRevision. The post-upload assignment workflow adds that
+relationship with authorization, optimistic locking, an operator-entered reason and AuditEvent
+evidence; it does not rewrite the original file.
+
+The default path creates a new CAD Artifact. A collapsed advanced option lets an authorized user
+select an existing active CAD Artifact and upload the next immutable ArtifactVersion, preserving
+the Artifact identity, prior versions and prior engineering results.
 
 ## API contract
 
@@ -27,7 +33,10 @@ relationship with authorization and AuditEvent evidence; it must not rewrite the
 - `quick_analysis`: rejects a simultaneous `mold_revision_id` to prevent ambiguous intent;
 - `governed_archive`: requires a valid `mold_revision_id`.
 
-The accepted response adds `ingestion_mode`, `governance_status` and `mold_revision_id`. The Job
+The accepted response adds `row_version`, `ingestion_mode`, `governance_status` and
+`mold_revision_id`. `row_version` is the authoritative optimistic-lock value for an immediate
+post-upload governance update; clients must not assume that a fresh or replayed Artifact is version
+zero or one. The Job
 `input_snapshot.source` records the same mode and governance state so an idempotent replay returns
 the original record's meaning rather than silently reclassifying it.
 
@@ -41,11 +50,13 @@ Typed validation errors:
 
 ## UI behavior
 
-- The upload purpose is selected before file metadata.
-- Quick analysis explains which capabilities remain available and why formal history still needs a
-  revision.
-- Governed archive reveals the required related mold/design revision field and prefers the current
-  released revision.
+- New Artifact + quick analysis is the primary, low-friction path.
+- A collapsed advanced section restores “add version to existing CAD” without burdening first-time
+  uploads.
+- After successful processing, action cards offer Revision linking, similarity search and design
+  review without losing the active CAD context.
+- Revision linking requires a selected revision and a human-entered reason, and submits the
+  `row_version` returned by the upload response.
 - If no active revisions exist, the UI directs the user to Mold Registry and the submit action
   returns a clear validation message.
 - English and Traditional Chinese copy describe the engineering consequence rather than exposing
@@ -53,9 +64,10 @@ Typed validation errors:
 
 ## Verification
 
-Automated coverage verifies default quick uploads omit `mold_revision_id`, governed uploads submit
-the selected revision, the API persists each mode correctly, invalid combinations fail without
-creating records, and the existing CAD processing suite remains compatible.
+Automated coverage verifies default quick uploads omit `mold_revision_id`, a new version sends the
+existing `artifact_id`, the accepted response includes `row_version`, post-upload linking submits
+the authoritative version and reason, the API persists each mode correctly, invalid combinations
+fail without creating records, and the existing CAD processing suite remains compatible.
 
 The external Demo acceptance gate remains:
 

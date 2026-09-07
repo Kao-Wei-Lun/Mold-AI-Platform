@@ -778,6 +778,7 @@ class CADArtifactListCreateView(APIView):
                 "schema_version": "1.0",
                 "status": "accepted",
                 "artifact_id": str(records.artifact.id),
+                "row_version": records.artifact.row_version,
                 "artifact_version_id": str(records.version.id),
                 "version_number": records.version.version_number,
                 "version_action": "new_version" if artifact_id else "new_artifact",

@@ -194,5 +194,12 @@ Production 前需獨立安全評審／滲透測試；P0/P1 全數關閉。
 | D-REV-002 | Rule Engine | T-REV-STATE-01 | rule-fixtures-v1 | link | Rule Owner | Planned |
 | D-MCP-003 | MCP Gateway/Job API | T-MCP-ASYNC-01 | seed-v1 | link | Platform Owner | Planned |
 | E-IAM-005 | Policy/Vector Filter | T-SEC-ACL-07 | acl-fixture-v1 | link | Security | Planned |
+| CADSIM-GOV-001..003 | CAD v2 Index/Filter/Lineage | T-CADSIM-ACL-01, T-CADSIM-LIN-01 | cad-v2-acl-golden-v1 | pending | Search + Security | Planned |
+| CADSIM-GEO-001..005 | Geometry normalization/extractor manifest | T-CADSIM-DET-01, T-CADSIM-SYM-01 | cad-v2-geometry-golden-v1 | pending | CAD Owner | Planned |
+| CADSIM-MIG-001..004 | Qdrant CAD v2 migration/alias/rollback | T-CADSIM-MIG-01, T-CADSIM-RBK-01 | cad-v1-v2-migration-v1 | pending | Platform Owner | Planned |
+| RAG-GOV-001..003 | Authorized hybrid retrieval/tombstone | T-RAG-ACL-01, T-RAG-TOMB-01 | rag-v2-acl-golden-v1 | pending | Knowledge + Security | Planned |
+| RAG-SEC-001..003 | Parser sandbox/prompt injection/PDF access | T-RAG-SEC-01, T-RAG-PDF-01 | rag-adversarial-v1 | pending | Security | Planned |
+| RAG-MIG-001..003 | Knowledge v2 reindex/alias/rollback | T-RAG-MIG-01, T-RAG-RBK-01 | knowledge-v1-v2-migration-v1 | pending | Platform Owner | Planned |
+| CADSIM-ACC-001..003, RAG-ACC-001..004 | Layered evaluation and phase gates | T-AI-V2-GATE-01 | governed-ai-v2-benchmark-v1 | pending | QA + Domain Owner | Planned |
 
 Release 不能只有「模型準確率」；Contract、安全、Lineage、營運與人工流程皆為 Gate。
