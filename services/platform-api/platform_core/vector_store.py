@@ -279,3 +279,40 @@ def query_hybrid_points(
         VectorCandidate(feature_set_id=str(point["id"]), coarse_score=float(point["score"]))
         for point in points
     ]
+
+
+def collection_info(collection_name: str) -> dict[str, Any]:
+    collection = quote(collection_name, safe="")
+    response = _request("GET", f"/collections/{collection}", timeout=5)
+    result = response.get("result", {})
+    return result if isinstance(result, dict) else {}
+
+
+def exact_point_count(collection_name: str) -> int:
+    collection = quote(collection_name, safe="")
+    response = _request(
+        "POST",
+        f"/collections/{collection}/points/count",
+        {"exact": True},
+        timeout=10,
+    )
+    return int(response.get("result", {}).get("count", 0))
+
+
+def create_collection_snapshot(collection_name: str) -> dict[str, Any]:
+    collection = quote(collection_name, safe="")
+    response = _request("POST", f"/collections/{collection}/snapshots?wait=true", timeout=60)
+    result = response.get("result", {})
+    return result if isinstance(result, dict) else {}
+
+
+def replace_collection_alias(*, alias_name: str, collection_name: str) -> None:
+    """Atomically point a Qdrant alias at one collection."""
+    response = _request("GET", "/aliases", timeout=5)
+    aliases = response.get("result", {}).get("aliases", [])
+    exists = any(item.get("alias_name") == alias_name for item in aliases)
+    actions: list[dict[str, object]] = []
+    if exists:
+        actions.append({"delete_alias": {"alias_name": alias_name}})
+    actions.append({"create_alias": {"alias_name": alias_name, "collection_name": collection_name}})
+    _request("POST", "/collections/aliases", {"actions": actions}, timeout=10)

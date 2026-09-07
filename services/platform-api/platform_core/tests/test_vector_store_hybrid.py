@@ -2,11 +2,45 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
-from platform_core.vector_store import query_hybrid_points, upsert_hybrid_point
+from platform_core.vector_store import (
+    collection_info,
+    create_collection_snapshot,
+    exact_point_count,
+    query_hybrid_points,
+    replace_collection_alias,
+    upsert_hybrid_point,
+)
 
 
 @override_settings(QDRANT_URL="http://qdrant.test:6333")
 class HybridVectorStoreTests(SimpleTestCase):
+    @patch("platform_core.vector_store._request")
+    def test_collection_operations_use_qdrant_management_contract(self, request):
+        request.side_effect = [
+            {"result": {"status": "green"}},
+            {"result": {"count": 7}},
+            {"result": {"name": "snapshot-1"}},
+        ]
+
+        self.assertEqual(collection_info("cad v2")["status"], "green")
+        self.assertEqual(exact_point_count("cad v2"), 7)
+        self.assertEqual(create_collection_snapshot("cad v2")["name"], "snapshot-1")
+        self.assertIn("cad%20v2", request.call_args_list[0].args[1])
+
+    @patch("platform_core.vector_store._request")
+    def test_alias_replacement_is_one_atomic_action_list(self, request):
+        request.side_effect = [
+            {"result": {"aliases": [{"alias_name": "cad-active"}]}},
+            {"result": {}},
+        ]
+
+        replace_collection_alias(alias_name="cad-active", collection_name="cad-v2")
+
+        payload = request.call_args_list[1].args[2]
+        self.assertEqual(request.call_args_list[1].args[1], "/collections/aliases")
+        self.assertEqual(payload["actions"][0]["delete_alias"]["alias_name"], "cad-active")
+        self.assertEqual(payload["actions"][1]["create_alias"]["collection_name"], "cad-v2")
+
     @patch("platform_core.vector_store.ensure_hybrid_collection")
     @patch("platform_core.vector_store._request")
     def test_upsert_uses_named_dense_and_sparse_vectors(self, request, ensure):

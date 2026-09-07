@@ -23,7 +23,7 @@ one application image and the owner-only external Demo boundary.
 | 45A | Dense+sparse retrieval, RRF, CPU reranker and calibrated abstention — implemented | ACL before every stage, model provenance, deterministic fallback, offline evaluation |
 | 45B | PDF citation viewer and bounding-box navigation — implemented | authorized same-origin source, page fallback, visual highlight accuracy |
 | 45C | Model-free Docling CPU parsing and governed XLSX ingestion — implemented | no Torch/CUDA, table preservation, Office security gates, recorded fallback |
-| 46 | Alias migration, rollback drill, benchmarks and external single-image release | parity, latency/quality targets, old-index retention, Sites/MCP smoke tests |
+| 46 | Alias migration, rollback drill, benchmarks and external single-image release — implemented | parity, old-index retention, structural release gate, Sites/MCP smoke tests; expert Golden QA remains an approval gate |
 
 Every stage updates its detailed development record, runs focused tests followed by the repository
 gate appropriate to its risk, and is committed independently. No index becomes active in the same
