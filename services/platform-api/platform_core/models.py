@@ -1378,6 +1378,10 @@ class KnowledgeChunk(models.Model):
     embedding_model = models.CharField(max_length=128, default="feature-hash-demo@1.0.0")
     embedding_dimension = models.PositiveSmallIntegerField(default=64)
     embedding = models.JSONField(default=list)
+    embedding_v2_model = models.CharField(max_length=128, blank=True)
+    embedding_v2_dimension = models.PositiveSmallIntegerField(null=True, blank=True)
+    embedding_v2_checksum = models.CharField(max_length=64, blank=True)
+    sparse_encoder = models.CharField(max_length=128, blank=True)
     language = models.CharField(max_length=16, default="en")
     injection_scan_status = models.CharField(max_length=24, default="clear")
     index_status = models.CharField(

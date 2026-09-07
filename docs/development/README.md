@@ -411,3 +411,7 @@ Stage 44 introduces the versioned structured knowledge/chunk/citation contract, 
 and DOCX hierarchy/tables, validates PDF page/bounding-box anchors with page-only fallback, and
 tombstones vector derivatives when governed knowledge is retired. See
 [`stage-44-cpu-structured-knowledge.md`](stage-44-cpu-structured-knowledge.md).
+
+Stage 45A adds a shadowable 512-dimensional CPU dense/sparse knowledge index, Qdrant RRF,
+governed domain query expansion, offline model packaging, CPU reranking and calibrated abstention.
+See [`stage-45a-cpu-hybrid-retrieval.md`](stage-45a-cpu-hybrid-retrieval.md).

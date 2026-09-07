@@ -316,6 +316,74 @@ class KnowledgeTests(TestCase):
         self.assertIn("Insufficient authorized evidence", search.result["answer"])
         upsert.assert_called()
 
+    @override_settings(
+        KNOWLEDGE_V2_SHADOW_INDEX=True,
+        KNOWLEDGE_INDEX_READ_VERSION="v2",
+        EMBEDDING_MODEL_PATH="/missing/embedding-model",
+        RERANKER_MODEL_PATH="/missing/reranker-model",
+        RAG_CPU_MODELS_REQUIRED=False,
+    )
+    @patch("platform_core.knowledge.query_hybrid_points")
+    @patch("platform_core.knowledge.upsert_hybrid_point")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_cpu_hybrid_index_rrf_rerank_and_calibrated_abstention(
+        self, upsert_v1, upsert_v2, query_hybrid
+    ) -> None:
+        records = self.create_document()
+        process_knowledge_job.run(str(records.job.id))
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        query_hybrid.return_value = [VectorCandidate(str(chunk.id), 0.92)]
+
+        search = search_knowledge(
+            "rib thickness",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+        )
+
+        chunk.refresh_from_db()
+        self.assertEqual(chunk.embedding_v2_dimension, 512)
+        self.assertEqual(chunk.sparse_encoder, "mold-bm25-token-hash@1.0.0")
+        self.assertTrue(chunk.embedding_v2_checksum)
+        upsert_v1.assert_called()
+        upsert_v2.assert_called()
+        self.assertFalse(search.abstained)
+        self.assertEqual(search.retrieval_config["pipeline_version"], "v2")
+        self.assertEqual(search.retrieval_config["fusion"], "rrf")
+        self.assertEqual(search.retrieval_config["embedding_mode"], "degraded")
+        self.assertEqual(
+            search.retrieval_config["calibration"]["calibration_id"],
+            "public-demo-zh-en-v1",
+        )
+        self.assertIn("reranker", search.result["results"][0]["score_breakdown"])
+
+    @override_settings(
+        KNOWLEDGE_INDEX_READ_VERSION="v2",
+        EMBEDDING_MODEL_PATH="/missing/embedding-model",
+        RERANKER_MODEL_PATH="/missing/reranker-model",
+        RAG_CPU_MODELS_REQUIRED=False,
+    )
+    @patch("platform_core.knowledge.query_hybrid_points")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_cpu_hybrid_abstains_below_governed_threshold(self, upsert_v1, query_hybrid) -> None:
+        records = self.create_document()
+        process_knowledge_job.run(str(records.job.id))
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        query_hybrid.return_value = [VectorCandidate(str(chunk.id), 0.01)]
+
+        search = search_knowledge(
+            "unrelated warpage anomaly",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+        )
+
+        self.assertTrue(search.abstained)
+        self.assertEqual(search.result["citations"], [])
+        upsert_v1.assert_called()
+
     def test_upload_rejects_unsupported_format_and_effective_date_order(self) -> None:
         malformed_pdf = self.client.post(
             "/api/v1/knowledge-documents",

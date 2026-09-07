@@ -16,6 +16,14 @@ from django.utils import timezone
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from .knowledge_models import (
+    dense_encode,
+    expand_domain_query,
+    load_abstention_calibration,
+    pipeline_manifest,
+    rerank_passages,
+    sparse_encode,
+)
 from .knowledge_structure import (
     CHUNKER_VERSION as STRUCTURED_CHUNKER_VERSION,
 )
@@ -35,7 +43,13 @@ from .models import (
     KnowledgeDocument,
     KnowledgeSearch,
 )
-from .vector_store import delete_named_points, query_named_vectors, upsert_named_vector
+from .vector_store import (
+    delete_named_points,
+    query_hybrid_points,
+    query_named_vectors,
+    upsert_hybrid_point,
+    upsert_named_vector,
+)
 
 KNOWLEDGE_CAPABILITY_ID = "knowledge.ingest"
 KNOWLEDGE_CAPABILITY_VERSION = "1.0.0"
@@ -515,6 +529,46 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
         )
         chunk.index_status = KnowledgeChunk.IndexStatus.INDEXED
         chunk.save(update_fields=["index_status"])
+        if settings.KNOWLEDGE_V2_SHADOW_INDEX:
+            dense = dense_encode(chunk.text)
+            sparse = sparse_encode(chunk.text)
+            upsert_hybrid_point(
+                collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION_V2,
+                dimension=dense.dimension,
+                point_id=str(chunk.id),
+                dense=dense.vector,
+                sparse_indices=sparse.indices,
+                sparse_values=sparse.values,
+                payload={
+                    "classification": document.classification,
+                    "acl_scopes": document.acl_scopes,
+                    "document_type": document.document_type,
+                    "authority_level": document.authority_level,
+                    "document_id": str(document.id),
+                    "document_version_id": str(document.artifact_version_id),
+                    "chunk_id": str(chunk.id),
+                    "dataset_id": document.artifact_version.artifact.dataset_id,
+                    "publication_status": document.publication_status,
+                    "parser_version": structured.parser_version,
+                    "chunker_version": STRUCTURED_CHUNKER_VERSION,
+                    "embedding_model": dense.model,
+                    "embedding_revision": dense.revision,
+                    "source_checksum": document.artifact_version.sha256,
+                    "active": True,
+                },
+            )
+            chunk.embedding_v2_model = dense.model
+            chunk.embedding_v2_dimension = dense.dimension
+            chunk.embedding_v2_checksum = dense.checksum
+            chunk.sparse_encoder = sparse.encoder
+            chunk.save(
+                update_fields=[
+                    "embedding_v2_model",
+                    "embedding_v2_dimension",
+                    "embedding_v2_checksum",
+                    "sparse_encoder",
+                ]
+            )
     document.ingestion_status = KnowledgeDocument.IngestionStatus.INDEXED
     document.injection_scan_status = "clear"
     document.injection_findings = []
@@ -543,6 +597,11 @@ def tombstone_knowledge_document(document: KnowledgeDocument) -> int:
         collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION,
         point_ids=[str(chunk.id) for chunk in chunks],
     )
+    if any(chunk.embedding_v2_model for chunk in chunks):
+        delete_named_points(
+            collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION_V2,
+            point_ids=[str(chunk.id) for chunk in chunks],
+        )
     now = timezone.now()
     return document.chunks.update(
         index_status=KnowledgeChunk.IndexStatus.TOMBSTONED,
@@ -595,6 +654,11 @@ def search_knowledge(
         filters["document_type"] = document_types
     if authority_levels:
         filters["authority_level"] = authority_levels
+    use_v2 = settings.KNOWLEDGE_INDEX_READ_VERSION == "v2"
+    expanded_query, query_expansions = expand_domain_query(query)
+    dense_query = None
+    reranker_detail: dict[str, str] = {}
+    calibration: dict[str, object] | None = None
     if not KnowledgeDocument.objects.filter(
         ingestion_status=KnowledgeDocument.IngestionStatus.INDEXED,
         publication_status="published",
@@ -602,6 +666,17 @@ def search_knowledge(
         artifact_version__artifact__dataset_id__in=selected_datasets,
     ).exists():
         candidates = []
+    elif use_v2:
+        dense_query = dense_encode(expanded_query)
+        sparse_query = sparse_encode(expanded_query)
+        candidates = query_hybrid_points(
+            collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION_V2,
+            dense=dense_query.vector,
+            sparse_indices=sparse_query.indices,
+            sparse_values=sparse_query.values,
+            limit=max(30, top_k * 6),
+            filters=filters,
+        )
     else:
         candidates = query_named_vectors(
             collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION,
@@ -617,7 +692,7 @@ def search_knowledge(
         document__publication_status="published",
         document__artifact_version__artifact__dataset_id__in=selected_datasets,
     )
-    ranked: list[tuple[float, KnowledgeChunk, dict[str, float]]] = []
+    authorized_chunks: list[KnowledgeChunk] = []
     today = timezone.localdate()
     for chunk in chunks:
         document = chunk.document
@@ -629,25 +704,53 @@ def search_knowledge(
             continue
         if document.effective_to and document.effective_to < today:
             continue
-        lexical = _lexical_score(query_tokens, chunk.text)
-        if lexical <= 0:
-            continue
-        vector_score = max(0.0, coarse[str(chunk.id)])
-        authority = 0.9 if document.authority_level == "reviewed_demo" else 0.6
-        freshness = 1.0
-        score = 0.55 * lexical + 0.25 * vector_score + 0.15 * authority + 0.05 * freshness
-        ranked.append(
-            (
-                score,
-                chunk,
-                {
-                    "lexical": lexical,
-                    "vector": vector_score,
-                    "authority": authority,
-                    "freshness": freshness,
-                },
-            )
+        authorized_chunks.append(chunk)
+    ranked: list[tuple[float, KnowledgeChunk, dict[str, float]]] = []
+    if use_v2 and authorized_chunks:
+        fused_scores = [max(0.0, coarse[str(chunk.id)]) for chunk in authorized_chunks]
+        reranked, reranker_detail = rerank_passages(
+            expanded_query,
+            [chunk.text for chunk in authorized_chunks],
+            fused_scores,
         )
+        calibration = load_abstention_calibration()
+        threshold = float(calibration["threshold"])
+        for item in reranked:
+            if item.score < threshold:
+                continue
+            chunk = authorized_chunks[item.index]
+            ranked.append(
+                (
+                    item.score,
+                    chunk,
+                    {
+                        "rrf": fused_scores[item.index],
+                        "reranker": item.score,
+                        "abstention_threshold": threshold,
+                    },
+                )
+            )
+    else:
+        for chunk in authorized_chunks:
+            lexical = _lexical_score(query_tokens, chunk.text)
+            if lexical <= 0:
+                continue
+            vector_score = max(0.0, coarse[str(chunk.id)])
+            authority = 0.9 if chunk.document.authority_level == "reviewed_demo" else 0.6
+            freshness = 1.0
+            score = 0.55 * lexical + 0.25 * vector_score + 0.15 * authority + 0.05 * freshness
+            ranked.append(
+                (
+                    score,
+                    chunk,
+                    {
+                        "lexical": lexical,
+                        "vector": vector_score,
+                        "authority": authority,
+                        "freshness": freshness,
+                    },
+                )
+            )
     ranked.sort(key=lambda item: (-item[0], item[1].ordinal, str(item[1].id)))
     selected = ranked[:top_k]
     results: list[dict[str, object]] = []
@@ -711,7 +814,11 @@ def search_knowledge(
         "retrieved_at": timezone.now().isoformat(),
         "principal_scope_source": "server_demo_policy",
         "limitations": [
-            "Stage 5 uses deterministic feature hashing, not a learned semantic embedding model.",
+            (
+                "CPU hybrid retrieval is active; inspect retrieval_config for actual model mode."
+                if use_v2
+                else "The active v1 read path uses deterministic feature hashing."
+            ),
             "Answers are extractive evidence summaries; LLM synthesis is not enabled.",
             "Knowledge retrieval is isolated from Process/Trial and CAE evidence lanes.",
         ],
@@ -725,9 +832,24 @@ def search_knowledge(
             "dataset_ids": selected_datasets,
         },
         retrieval_config={
-            "embedding_model": EMBEDDING_MODEL,
-            "collection": settings.QDRANT_KNOWLEDGE_COLLECTION,
-            "weights": {"lexical": 0.55, "vector": 0.25, "authority": 0.15, "freshness": 0.05},
+            "pipeline_version": "v2" if use_v2 else "v1",
+            "embedding_model": dense_query.model if dense_query else EMBEDDING_MODEL,
+            "embedding_revision": dense_query.revision if dense_query else None,
+            "embedding_mode": dense_query.mode if dense_query else "legacy",
+            "collection": (
+                settings.QDRANT_KNOWLEDGE_COLLECTION_V2
+                if use_v2
+                else settings.QDRANT_KNOWLEDGE_COLLECTION
+            ),
+            "fusion": "rrf" if use_v2 else "weighted-legacy",
+            "reranker": reranker_detail or None,
+            "calibration": calibration,
+            "query_expansions": query_expansions,
+            "manifest": (
+                pipeline_manifest(dense_query, reranker_detail)
+                if dense_query and reranker_detail
+                else None
+            ),
             "top_k": top_k,
             "dataset_ids": selected_datasets,
         },

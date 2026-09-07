@@ -30,7 +30,7 @@
 flowchart TD
     subgraph Phase1 [第一階段：純 CPU 輕量高效優化（免 GPU）]
         A1["Docling CPU 版面結構解析<br>(保留 Table Markdown 與大綱階層)"] --> B1["語意結構切塊 + 頁面 Bbox 座標定位"]
-        B1 --> C1["BGE-small (ONNX) 384維語意向量 (Dense)<br>+ Qdrant 原生 BM25 稀疏向量 (Sparse)"]
+        B1 --> C1["BGE-small-zh (ONNX) 512維語意向量 (Dense)<br>+ Qdrant 原生 BM25 稀疏向量 (Sparse)"]
         C1 --> D1["Qdrant 原生 RRF (Reciprocal Rank Fusion) 檢索"]
         D1 --> E1["FlashRank 輕量 Cross-Encoder (純 CPU 20ms)"]
         E1 --> F1["模具領域同義詞典 + 前端 PDF 視覺黃色高亮引證"]
@@ -76,7 +76,7 @@ flowchart TD
 > **前置條件：Qdrant 相容性驗證**：`compose.yaml` 目前固定使用 Qdrant `v1.15.4`，版本已高於本方案的最低需求，因此不得再把「升級 Qdrant」列為既定工作。實作前須以鎖定版本驗證 Sparse Vector、Prefetch、RRF、Named Vectors、alias／snapshot 與 rollback 行為；若確實需要變更版本，必須另立 ADR、固定明確版本，完成備份還原與相容性測試，禁止使用 `latest`。
 
 * **Dense 向量**：
-  * 引入 `BAAI/bge-small-zh-v1.5`（384 維），使用 ONNX Runtime 於 CPU 執行，推論單句僅需 5~12ms。
+  * 引入 `BAAI/bge-small-zh-v1.5`（FastEmbed 目前官方模型契約為 512 維），使用 ONNX Runtime 於 CPU 執行；延遲須依本專案硬體與語料實測，不把文件示例值視為產品保證。
   * 徹底取代舊有的 64 維 Blake2b 特徵雜湊，具備真實中英雙語語意泛化能力。
 * **Sparse 向量**：
   * 啟用 Qdrant 原生 Sparse 向量索引（BM25 關鍵字模型）。
@@ -84,9 +84,9 @@ flowchart TD
   * 廢除在 Python 端手寫的 `_lexical_score` 硬過濾。
   * 改採 Qdrant 原生 **Reciprocal Rank Fusion (RRF)** 演算法，直接在向量庫底層完成語意與字面的加權融合。
 
-**Knowledge Collection 遷移策略（從 64 維升級至 384 維）**：
-* 現有 `knowledge-text-demo-v1` Collection 中已索引的 Chunk 使用 64 維 Feature Hash 向量，無法與 384 維 BGE-small 向量共存於同一 Collection。
-* **採用方案**：新建 Collection `knowledge-text-v2`（384 維 Dense + Sparse Named Vectors），並提供一次性遷移腳本 `scripts/migrate_knowledge_index_v2.py`：
+**Knowledge Collection 遷移策略（從 64 維升級至 512 維）**：
+* 現有 `knowledge-text-demo-v1` Collection 中已索引的 Chunk 使用 64 維 Feature Hash 向量，無法與 512 維 BGE-small-zh 向量共存於同一 Collection。
+* **採用方案**：新建 Collection `knowledge-text-v2`（512 維 Dense + Sparse Named Vectors），並提供一次性遷移腳本 `scripts/migrate_knowledge_index_v2.py`：
   1. 遍歷所有現存 `KnowledgeDocument`，使用 Docling 重新解析並以 BGE-small 重新計算向量。
   2. 將新向量與 BM25 Sparse 向量同時寫入 `knowledge-text-v2`。
   3. 遷移期間保留舊 Collection 作為降級備援；完成觀察期、備份還原演練、資料擁有者核准與 audit event 後才能刪除，遷移腳本不得自行刪除舊 Collection。
@@ -179,7 +179,7 @@ flowchart TD
 |---|---|---|---|
 | **文檔解析器** | `pypdf` 純文字擷取 | **IBM Docling (CPU)** | **MinerU / 多模態視覺解析 (GPU)** |
 | **表格辨識能力** | ❌ 丟失，打散成字串 | ✅ **Markdown 表格保留** | ✅ **表格 + 圖表圖解全理解** |
-| **向量嵌入維度** | 64維 Blake2b 特徵雜湊 | **384維 BGE-small (ONNX)** | **1024維 BGE-M3 (Dense+ColBERT)** |
+| **向量嵌入維度** | 64維 Blake2b 特徵雜湊 | **512維 BGE-small-zh (ONNX)** | **1024維 BGE-M3 (Dense+ColBERT)** |
 | **關鍵字檢索** | Python 手寫覆蓋率 | **Qdrant 原生 BM25 + RRF** | **BGE-M3 Sparse + ColBERT** |
 | **重排器 (Rerank)** | 4 軌手寫經驗公式 | **FlashRank (ONNX CPU, ~25ms)** | **BGE-Reranker-Large (GPU, ~40ms)** |
 | **實體圖譜支援** | ❌ 無 | ❌ 無（領域同義詞擴充） | ✅ **GraphRAG 跨文檔多跳推理** |

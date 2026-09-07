@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "calibration_id": "public-demo-zh-en-v1",
+  "threshold": 0.32,
+  "approved_by": "demo-engineering-review",
+  "approved_at": "2026-09-07",
+  "pipeline_scope": "cpu-hybrid-v2",
+  "evaluation_dataset": "rag-v2-acl-golden-v1",
+  "notes": "Initial conservative Demo threshold. Recalibrate before company-data activation."
+}

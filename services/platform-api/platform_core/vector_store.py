@@ -23,6 +23,17 @@ class VectorCandidate:
     coarse_score: float
 
 
+def _qdrant_filter(filters: dict[str, list[str] | str | bool]) -> dict[str, object] | None:
+    must: list[dict[str, object]] = []
+    for key, value in filters.items():
+        if isinstance(value, list):
+            if value:
+                must.append({"key": key, "match": {"any": value}})
+        elif value not in (None, ""):
+            must.append({"key": key, "match": {"value": value}})
+    return {"must": must} if must else None
+
+
 def _request(
     method: str,
     path: str,
@@ -172,6 +183,97 @@ def query_named_vectors(
     if must:
         payload["filter"] = {"must": must}
     response = _request("POST", f"/collections/{collection}/points/query", payload)
+    points = response.get("result", {}).get("points", [])
+    return [
+        VectorCandidate(feature_set_id=str(point["id"]), coarse_score=float(point["score"]))
+        for point in points
+    ]
+
+
+def ensure_hybrid_collection(collection_name: str, dimension: int) -> None:
+    collection = quote(collection_name, safe="")
+    try:
+        _request("GET", f"/collections/{collection}", timeout=3)
+        return
+    except VectorStoreError as exc:
+        if exc.code != "VECTOR_STORE_HTTP_ERROR" or "HTTP 404" not in str(exc):
+            raise
+    try:
+        _request(
+            "PUT",
+            f"/collections/{collection}",
+            {
+                "vectors": {"dense": {"size": dimension, "distance": "Cosine"}},
+                "sparse_vectors": {"sparse": {"modifier": "idf"}},
+            },
+        )
+    except VectorStoreError as exc:
+        if "HTTP 409" not in str(exc):
+            raise
+
+
+def upsert_hybrid_point(
+    *,
+    collection_name: str,
+    dimension: int,
+    point_id: str,
+    dense: list[float],
+    sparse_indices: list[int],
+    sparse_values: list[float],
+    payload: dict[str, object],
+) -> None:
+    ensure_hybrid_collection(collection_name, dimension)
+    collection = quote(collection_name, safe="")
+    _request(
+        "PUT",
+        f"/collections/{collection}/points?wait=true",
+        {
+            "points": [
+                {
+                    "id": point_id,
+                    "vector": {
+                        "dense": dense,
+                        "sparse": {"indices": sparse_indices, "values": sparse_values},
+                    },
+                    "payload": payload,
+                }
+            ]
+        },
+    )
+
+
+def query_hybrid_points(
+    *,
+    collection_name: str,
+    dense: list[float],
+    sparse_indices: list[int],
+    sparse_values: list[float],
+    limit: int,
+    filters: dict[str, list[str] | str | bool],
+) -> list[VectorCandidate]:
+    collection = quote(collection_name, safe="")
+    query_filter = _qdrant_filter(filters)
+    prefetch: list[dict[str, object]] = [
+        {"query": dense, "using": "dense", "limit": limit},
+        {
+            "query": {"indices": sparse_indices, "values": sparse_values},
+            "using": "sparse",
+            "limit": limit,
+        },
+    ]
+    if query_filter:
+        for item in prefetch:
+            item["filter"] = query_filter
+    response = _request(
+        "POST",
+        f"/collections/{collection}/points/query",
+        {
+            "prefetch": prefetch,
+            "query": {"fusion": "rrf"},
+            "limit": limit,
+            "with_payload": False,
+        },
+    )
     points = response.get("result", {}).get("points", [])
     return [
         VectorCandidate(feature_set_id=str(point["id"]), coarse_score=float(point["score"]))

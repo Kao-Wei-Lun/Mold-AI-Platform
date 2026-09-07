@@ -21,8 +21,10 @@ dependencies = [
   "httpx>=0.28.1,<0.29",
   "mcp==2.1.1",
   "openpyxl==3.1.5",
-  "Pillow>=12.3.0,<13",
+  "Pillow>=11.3.0,<12",
   "pypdf>=6.0,<7",
+  "fastembed>=0.7,<0.8",
+  "flashrank>=0.2.10,<0.3",
 ]
 
 [project.optional-dependencies]
