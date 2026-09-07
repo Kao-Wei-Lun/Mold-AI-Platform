@@ -51,5 +51,19 @@ build、Django system/migration checks、各 Compose 驗證均通過。
 
 ## 發布驗證
 
-待完整測試及外網部署確認後補記；沿用既有共用 app image 與 Demo 專案，
+修復提交：`8e9979b`。2026-09-07 已更新既有共用 app image 與 Demo 專案，
 不重建資料庫、不刪 volume、不重新發布內容未變更的 Sites 私人入口。
+
+部署後外網首頁 HTTP 200；直接下載外網 JavaScript 與本機已測試 production build
+比對 SHA-256，兩者完全一致：
+- `index-BJ5fauZd.js`：`3B5E2341FE6A58E636439AFF36025BA7CBC73AFC92E1E4F58F1CC07B40D0B8B6`
+- `CadPreview-Cy_Aoxk2.js`：`5875C7733BCF8DAA9066BB2B1FC366FBAAA5C6DACA7148597DD0AF22BE5E64E4`
+
+`demo-status.ps1`：Core Demo、Sites entry、Web tunnel、13 個 MCP 工具與 deep links ready；
+兩個 workers 正常回應、stale jobs=0、DB/Redis/Qdrant 正常、既有本機帳號仍就緒。
+整體 degraded 僅來自既有 Assistant deterministic fallback，與本次預覽修復無關。
+測試中的亂序下載以受控回應重現；外網驗證為實際發布檔案與服務健康檢查，
+不冒稱已人工重現使用者所有網路時序。
+
+使用者保留舊頁籤時請 Ctrl+F5，或關閉後重開原有入口；之後可以快速切換候選、
+旋轉與縮放。舊頁籤已載入的 JavaScript 不會因容器更新自動換版。
