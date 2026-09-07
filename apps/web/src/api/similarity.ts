@@ -76,6 +76,7 @@ export type SimilarityResult = {
   filters: Record<string, string[]>;
   result_count: number;
   match_assessment?: { status: string; decision: string; scope: string; qualified_count: number };
+  diagnostics?: { coarse_returned: number; eligible_candidates: number; computed: number; budget_exceeded: number; unavailable: number; fine_seconds: number; shared_cache_hits: number; process_cache_hits: number };
   results: SimilarityMatch[];
   limitations: string[];
   lineage_ref: string;

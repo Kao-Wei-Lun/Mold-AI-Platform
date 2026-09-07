@@ -78,6 +78,39 @@ identity Recall@5=1、exact cosine coarse Recall@25=1、精比對 48.23 秒（�
 保留授權與 checksum 檢查；將數值結果共用快取、候選召回診斷、cold/warm 時間與
 驗證完成率納入報告；最後重建既有 Demo 的共用 image、保留資料與私人入口。
 
+### 實作與運維契約
+
+- `SurfaceVerificationCache`（migration 0025）：1024 個固定雜湊槽，7 天 TTL，
+  每份 JSON 上限 32 KiB；同槽碰撞只是 cache miss／替換衍生數值，不會取到另一個 key 的值。
+  固定槽使並行寫入也不會無限增長；不刪除工程資料、歷史搜尋、稽核或原始檔案。
+- key 包含有序 query/candidate 實際 preview SHA、演算法、模式、單位、容差及 B-Rep 比對内容；
+  entry 有 payload SHA 並檢查有限數值、狀態／版本／1536 點。只儲存數值證據與固定狀態常數，
+  不含 URL、帳號或憑證。損毀、過期、DB 故障一律 miss，回到計算。
+- 授權／工程條件篩選仍先執行；快取前仍讀 preview 並驗證 SHA。
+  @1.0 的舊工作保留原本 process cache／排序，不使用新 shared cache。
+- 新工作固定 `verification_limits`：粗選預設 100（20–200）、精選 20（1–50）、
+  cooperative 預算 30 秒（1–60）。可用同名 `.env` 範本中的三個設定調整。
+  top_k 只控制顯示結果，不再縮小粗選預算；舊 snapshot 缺欄位保留原預算。
+- `diagnostics`：粗選數、符合條件數、computed／unavailable／budget_exceeded、
+  process/shared hit、粗選／精比對／總耗時、可得的 queue_wait_seconds；
+  前端「搜尋診斷」可展開查看，不把待驗證當高相似度。
+- `benchmark_cad_similarity --dataset DATASET_ID --queries 5 --top-k 20 --repeats 3 --output REPORT.json`：
+  限 2–1000 個 public_demo 已索引 v2 工件，單次 ≤20 query、≤5 repeats。
+  比較同一 dataset/classification 下 Qdrant 與 exact cosine 的 tie-aware top-K overlap。
+  這不是人工 relevance Recall；包含 identity，不宣稱全量工程篩選 Recall。
+- Benchmark 每次使用獨立 cache namespace；每輪清掉 process cache，保留 shared cache。
+  第一輪為 cold，後續必須 shared hit 才計入 warm；報 p50/p95、失敗率、Python traced peak。
+  不修改業務紀錄、不寫向量索引；只新增／替換受限衍生 cache row，報告新增不覆蓋。
+  Python traced peak 不包含所有 native CAD allocation，不冒充總 RSS。
+- 回滾：將 surface verification 開關設為 0，只影響新工作；快取無需刪除。
+  migration 0024/0025 皆 additive；舊 STEP 缺結構仍可表面比較，不強制重處理全庫。
+
+### 發布界線
+
+只更新既有 `mold-ai-platform-sites-demo` 內共用 app image 的 API、兩個 Worker、Web、MCP。
+沿用現有資料 volumes、登入、Sites 入口及 tunnel。主機上其他既有 Docker 專案不在此次刪除範圍。
+發布後檢查 migration、服務與外網資源 SHA；人工工程品質 UAT 和人工逐頁登入 UAT 分開列示。
+
 ## 驗證紀錄
 
 各階段完成後補記實際測試與部署結果；不以計畫值宣稱驗收通過。
@@ -90,3 +123,8 @@ Phase 4：完整 `scripts/test.ps1` exit 0，後端 354 passed、1 skipped、9 s
 Web 173 tests、Sites 15 tests。涵蓋未標註拒絕、獨立 holdout、門檻凍結、no-match、
 缺失 bundle、跨 dataset 拒絕套用及逐對比對故障；所有 lint/build/Compose 檢查通過。
 品質門檻仍未驗收，正式 bundle 未配置。
+
+Phase 5 程式驗證：完整 `scripts/test.ps1` exit 0，後端 359 passed、1 skipped、9 subtests；
+Web 173 tests、Sites 15 tests。另外搜尋診斷／未校準提示雙語 UI 專項 4 passed。
+共享快取跨程序記憶體清除、hash 損毀、TTL、碰撞容量、DB 故障降級、不同模式與容差、
+來源檢查不能被快取繞過、工作預算固定與公開資料 benchmark 不寫 Job 均通過。

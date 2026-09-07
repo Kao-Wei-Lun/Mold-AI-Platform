@@ -94,6 +94,8 @@ describe("SimilarityWorkspace", () => {
             index_version: "cad-demo-v1",
             filters: { dataset_ids: ["public-demo-v1"] },
             result_count: 1,
+            diagnostics: { coarse_returned: 16, eligible_candidates: 15, computed: 15, budget_exceeded: 0, unavailable: 0, fine_seconds: 1.25, shared_cache_hits: 14, process_cache_hits: 0 },
+            match_assessment: { status: "not_calibrated", decision: "insufficient_evidence", scope: "returned_candidates_only", qualified_count: 0 },
             results: [
               {
                 rank: 1,
@@ -174,6 +176,8 @@ describe("SimilarityWorkspace", () => {
     expect(submitted.comparison_mode).toBe(status === "unavailable" ? "engineering_size" : "normalized_shape");
     expect(submitted.tolerance_mm).toBe(0.5);
     expect(wrapper.text()).toContain("Reference A");
+    expect(wrapper.get('[data-testid="similarity-diagnostics"]').text()).toContain("Coarse candidates: 16");
+    expect(wrapper.get('[data-testid="match-assessment"]').text()).toContain("Human calibration is not active");
     expect(wrapper.text()).toContain("How geometry was ranked");
     expect(wrapper.text()).toContain("block-distance@1.0");
     expect(wrapper.get('[data-testid="similarity-validation-note"]').text()).toContain(
@@ -191,6 +195,7 @@ describe("SimilarityWorkspace", () => {
     }
     setLocale("zh-TW");
     await flushPromises();
+    expect(wrapper.get('[data-testid="similarity-diagnostics"]').text()).toContain("共用快取命中：14");
     expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("自動表面幾何驗證");
     expect(wrapper.get('[data-testid="surface-verification"]').text()).toContain("不代表工程核准");
     if (status === "unavailable") expect(wrapper.get(".overall-score").text()).toBe("僅供參考");

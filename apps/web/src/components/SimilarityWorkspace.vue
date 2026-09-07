@@ -526,6 +526,12 @@ onBeforeUnmount(() => {
       </p>
 
       <p v-if="result.match_assessment" class="limitation-note" data-testid="match-assessment">{{ result.match_assessment.decision === 'no_reliable_match' ? t("No returned candidate passed the calibrated threshold. This does not prove the whole database has no match.") : result.match_assessment.status !== 'validated_holdout' ? t("Human calibration is not active. Scores are experimental; no reliable-match threshold is applied.") : t("A dataset-scoped calibrated threshold was evaluated; inspect each candidate decision.") }}</p>
+      <details v-if="result.diagnostics" class="advanced-options" data-testid="similarity-diagnostics">
+        <summary>{{ t("Search diagnostics") }}</summary>
+        <p>{{ t("Coarse candidates: {coarse}; eligible: {eligible}; verified: {verified}.", { coarse: result.diagnostics.coarse_returned, eligible: result.diagnostics.eligible_candidates, verified: result.diagnostics.computed }) }}</p>
+        <p>{{ t("Budget-limited: {budget}; unavailable: {unavailable}; verification time: {seconds} s.", { budget: result.diagnostics.budget_exceeded, unavailable: result.diagnostics.unavailable, seconds: result.diagnostics.fine_seconds }) }}</p>
+        <p>{{ t("Shared cache hits: {shared}; process cache hits: {process}.", { shared: result.diagnostics.shared_cache_hits, process: result.diagnostics.process_cache_hits }) }}</p>
+      </details>
       <p v-if="result.results.length === 0" class="muted">
         {{ t("No indexed candidates matched the active dataset and metadata filters.") }}
       </p>

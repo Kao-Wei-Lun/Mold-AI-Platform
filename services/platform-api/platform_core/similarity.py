@@ -1,6 +1,7 @@
 import hashlib
 import json
 import math
+import time
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -32,6 +33,16 @@ from .vector_store import (
 PROFILE_KEY = "demo-general@1.0"
 FEATURE_SCHEMA_VERSION = "1.0"
 EXTRACTOR_VERSION = "1.0.0"
+
+
+def verification_limits() -> dict:
+    return {
+        "coarse": max(20, min(200, settings.SIMILARITY_COARSE_CANDIDATES)),
+        "fine": max(1, min(50, settings.SIMILARITY_FINE_CANDIDATES)),
+        "seconds": max(1.0, min(60.0, settings.SIMILARITY_SURFACE_BUDGET_SECONDS)),
+    }
+
+
 DEFAULT_WEIGHTS = {
     "geometry": 0.35,
     "dimension": 0.25,
@@ -361,6 +372,7 @@ def create_similarity_records(
                 ),
                 "comparison_mode": comparison_mode,
                 "calibration": load_calibration(),
+                "verification_limits": verification_limits(),
                 "tolerance_mm": tolerance_mm,
                 "feature_set_id": str(feature_set.id),
                 "feature_schema_version": feature_set.schema_version,
@@ -568,6 +580,8 @@ def compare_feature_sets(
 
 
 def run_similarity(search: SimilaritySearch) -> dict[str, object]:
+    started = time.perf_counter()
+    limits = search.job.input_snapshot.get("verification_limits", {})
     query_feature = search.query_feature_set
     query_artifact = query_feature.cad_model.artifact_version.artifact
     qdrant_filters: dict[str, list[str] | str] = {
@@ -586,7 +600,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
 
     query_arguments = {
         "vector": [float(value) for value in query_feature.vector],
-        "limit": min(max(search.top_k * 5, 20), 200),
+        "limit": limits.get("coarse", min(max(search.top_k * 5, 20), 200)),
         "filters": qdrant_filters,
     }
     if query_feature.schema_version == "2.0":
@@ -596,6 +610,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         )
     else:
         coarse_candidates = query_similar_points(**query_arguments)
+    coarse_seconds = time.perf_counter() - started
     coarse_by_id = {
         candidate.feature_set_id: candidate.coarse_score for candidate in coarse_candidates
     }
@@ -666,6 +681,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         )
     matches.sort(key=lambda match: (-float(match["overall_score"]), match["artifact_version_id"]))
     surface_policy = search.job.input_snapshot.get("surface_verification_policy", "disabled")
+    fine_started = time.perf_counter()
     if surface_policy in {SURFACE_ALGORITHM, DETAIL_SURFACE_ALGORITHM}:
         from .cad_surface_reranking import rerank_surfaces
 
@@ -676,9 +692,41 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
             policy=surface_policy,
             mode=search.job.input_snapshot.get("comparison_mode", "normalized_shape"),
             tolerance_mm=search.job.input_snapshot.get("tolerance_mm", 0.5),
+            candidate_limit=limits.get("fine"),
+            budget_seconds=limits.get("seconds"),
         )
     elif surface_policy != "disabled":
         raise ValueError("Unknown surface verification policy")
+    fine_seconds = time.perf_counter() - fine_started
+    diagnostics = {
+        "coarse_limit": query_arguments["limit"],
+        "coarse_returned": len(coarse_candidates),
+        "eligible_candidates": len(matches),
+        "fine_limit": limits.get("fine", 10),
+        "computed": sum(
+            m.get("geometric_verification", {}).get("status") == "computed" for m in matches
+        ),
+        "budget_exceeded": sum(
+            m.get("geometric_verification", {}).get("status") == "budget_exceeded" for m in matches
+        ),
+        "unavailable": sum(
+            m.get("geometric_verification", {}).get("status") == "unavailable" for m in matches
+        ),
+        "shared_cache_hits": sum(
+            m.get("geometric_verification", {}).get("cache_source") == "shared" for m in matches
+        ),
+        "process_cache_hits": sum(
+            m.get("geometric_verification", {}).get("cache_source") == "process" for m in matches
+        ),
+        "coarse_seconds": round(coarse_seconds, 4),
+        "fine_seconds": round(fine_seconds, 4),
+        "total_seconds": round(time.perf_counter() - started, 4),
+        "queue_wait_seconds": max(
+            0, (search.job.started_at - search.job.created_at).total_seconds()
+        )
+        if search.job.started_at
+        else None,
+    }
     matches = matches[: search.top_k]
     for rank, match in enumerate(matches, start=1):
         match["rank"] = rank
@@ -709,6 +757,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         "filters": search.filters,
         "result_count": len(matches),
         "match_assessment": decision,
+        "diagnostics": diagnostics,
         "results": matches,
         "limitations": (
             [

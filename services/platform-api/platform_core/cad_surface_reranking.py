@@ -14,6 +14,7 @@ from django.core.files.storage import default_storage
 from .cad_brep_structure import compare_structure
 from .cad_local_geometry import ALGORITHM as DETAIL_ALGORITHM
 from .cad_local_geometry import sample_payload, verify_payloads
+from .cad_surface_cache import fingerprint, read_shared, write_shared
 from .cad_surface_verification import (
     ALGORITHM,
     SurfaceVerificationError,
@@ -82,9 +83,14 @@ def rerank_surfaces(
     policy=ALGORITHM,
     mode="normalized_shape",
     tolerance_mm=0.5,
+    candidate_limit=None,
+    budget_seconds=None,
+    cache_namespace="",
 ) -> list[dict]:
     """Call ONLY after existing authorization, classification and engineering filters."""
-    deadline = time.monotonic() + BUDGET_SECONDS
+    candidate_limit = MAX_CANDIDATES if candidate_limit is None else candidate_limit
+    budget_seconds = BUDGET_SECONDS if budget_seconds is None else budget_seconds
+    deadline = time.monotonic() + budget_seconds
     detailed = policy == DETAIL_ALGORITHM
     ordered = sorted(matches, key=lambda m: (-float(m["overall_score"]), m["artifact_version_id"]))
     query_data = None
@@ -98,7 +104,8 @@ def rerank_surfaces(
             "error_code": "SURFACE_CANDIDATE_LIMIT",
             "calibration_status": "not_calibrated",
         }
-        if index < MAX_CANDIDATES:
+        cache_source = "none"
+        if index < candidate_limit:
             try:
                 check_deadline(deadline)
                 if query_error:
@@ -126,6 +133,7 @@ def rerank_surfaces(
                     else {}
                 )
                 context = {
+                    "namespace": cache_namespace,
                     "mode": mode,
                     "tolerance_mm": tolerance_mm,
                     "query_unit": query_feature.cad_model.unit_system if detailed else "unknown",
@@ -139,6 +147,14 @@ def rerank_surfaces(
                     json.dumps(context, sort_keys=True),
                 )
                 cached = _comparisons.get(cache_key)
+                shared_key = fingerprint(cache_key) if detailed else None
+                if cached is not None:
+                    cache_source = "process"
+                elif detailed:
+                    cached = read_shared(shared_key)
+                    if cached is not None:
+                        cache_source = "shared"
+                        _remember(_comparisons, cache_key, deepcopy(cached))
                 if cached is None:
                     cached = (
                         verify_payloads(
@@ -158,6 +174,8 @@ def rerank_surfaces(
                         if structure.get("status") == "computed":
                             cached["score_factor"] *= math.sqrt(structure["agreement"])
                     _remember(_comparisons, cache_key, deepcopy(cached))
+                    if detailed:
+                        write_shared(shared_key, cached)
                 result = deepcopy(cached)
                 result["query_preview_sha256"] = query_hash
                 result["candidate_preview_sha256"] = candidate_hash
@@ -166,8 +184,10 @@ def rerank_surfaces(
                     "budget_exceeded" if exc.code == "SURFACE_BUDGET_EXCEEDED" else "unavailable"
                 )
                 result["error_code"] = exc.code
-        result["candidate_limit"] = MAX_CANDIDATES
-        result["cooperative_budget_seconds"] = BUDGET_SECONDS
+        if detailed:
+            result["cache_source"] = cache_source
+        result["candidate_limit"] = candidate_limit
+        result["cooperative_budget_seconds"] = budget_seconds
         match["geometric_verification"] = result
         match["ranking_basis"] = (
             "surface_adjusted" if result["status"] == "computed" else "reference_only"
@@ -184,7 +204,7 @@ def rerank_surfaces(
                         "message": (
                             "Bidirectional surface evidence reduced the baseline ranking score."
                         ),
-                        "evidence_ref": f"surface:{query_hash}:{candidate_hash}:{ALGORITHM}",
+                        "evidence_ref": f"surface:{query_hash}:{candidate_hash}:{policy}",
                     },
                     *match.get("differences", []),
                 ]

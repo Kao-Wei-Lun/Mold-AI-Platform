@@ -320,3 +320,26 @@ class SimilarityTests(TestCase):
             )
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.json()["error"]["code"], expected)
+
+    @override_settings(
+        SIMILARITY_COARSE_CANDIDATES=120,
+        SIMILARITY_FINE_CANDIDATES=25,
+        SIMILARITY_SURFACE_BUDGET_SECONDS=15,
+    )
+    def test_candidate_budgets_are_pinned_before_worker_settings_change(self):
+        from platform_core.similarity import create_similarity_records, run_similarity
+
+        query = self.create_feature("budget-query", 10)
+        records = create_similarity_records(query.cad_model.artifact_version, top_k=5)
+        self.assertEqual(
+            records.job.input_snapshot["verification_limits"],
+            {"coarse": 120, "fine": 25, "seconds": 15},
+        )
+        with (
+            override_settings(SIMILARITY_COARSE_CANDIDATES=20),
+            patch("platform_core.similarity.query_similar_points", return_value=[]) as query_points,
+        ):
+            result = run_similarity(records.search)
+        self.assertEqual(query_points.call_args.kwargs["limit"], 120)
+        self.assertEqual(result["diagnostics"]["computed"], 0)
+        self.assertEqual(result["diagnostics"]["coarse_returned"], 0)

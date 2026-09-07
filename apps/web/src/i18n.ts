@@ -6,6 +6,10 @@ export type MessageParams = Record<string, string | number>;
 const STORAGE_KEY = "mold-ai.locale";
 
 const zhTW: Record<string, string> = {
+  "Search diagnostics": "搜尋診斷",
+  "Coarse candidates: {coarse}; eligible: {eligible}; verified: {verified}.": "粗選候選：{coarse}；符合條件：{eligible}；完成幾何驗證：{verified}。",
+  "Budget-limited: {budget}; unavailable: {unavailable}; verification time: {seconds} s.": "預算限制：{budget}；無法驗證：{unavailable}；幾何驗證耗時：{seconds} 秒。",
+  "Shared cache hits: {shared}; process cache hits: {process}.": "共用快取命中：{shared}；程序快取命中：{process}。",
   "Mold planning": "模具規劃",
   "Engineering / Mold planning": "工程分析／模具規劃",
   "Resolve the right standard before design review": "在設計審查前解析正確的工程標準",

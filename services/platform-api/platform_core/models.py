@@ -2063,6 +2063,20 @@ class MoldPlanRequirement(models.Model):
         return f"{self.resolution}: {self.rule_version.rule_id}"
 
 
+class SurfaceVerificationCache(models.Model):
+    """Derived evidence only; fixed hash slots bound storage even with concurrent workers."""
+
+    slot = models.PositiveSmallIntegerField(primary_key=True)
+    cache_key = models.CharField(max_length=64, db_index=True)
+    payload = models.JSONField(default=dict)
+    payload_sha256 = models.CharField(max_length=64)
+    expires_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Surface cache slot {self.slot}"
+
+
 class MoldPlanHandoff(models.Model):
     class HandoffType(models.TextChoices):
         DESIGN_REVIEW = "design_review", "Design review"
