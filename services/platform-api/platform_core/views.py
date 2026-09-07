@@ -23,6 +23,7 @@ from .cad_fixtures import (
     MANUAL_CAD_DATASET,
     curated_cad_status,
 )
+from .cad_registration import RegistrationValidationError, create_or_get_comparison
 from .cae import (
     CAEValidationError,
     cae_study_payload,
@@ -76,6 +77,7 @@ from .models import (
     CAERun,
     CAEStudy,
     DataScope,
+    FeatureSet,
     HMIExtraction,
     IngestionRecordResult,
     IngestionSourceFile,
@@ -1574,6 +1576,95 @@ class SimilaritySearchDetailView(APIView):
                 "job_id": str(search.job.id),
                 "result": search.result if search.job.state == Job.State.SUCCEEDED else None,
             }
+        )
+
+
+class SimilarityComparisonView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request, search_id: str, candidate_version_id: str) -> Response:
+        search = get_object_or_404(
+            SimilaritySearch.objects.select_related(
+                "query_feature_set__cad_model__preview_artifact_version"
+            ),
+            pk=search_id,
+            job__state=Job.State.SUCCEEDED,
+        )
+        match = next(
+            (
+                item
+                for item in search.result.get("results", [])
+                if item.get("artifact_version_id") == str(candidate_version_id)
+            ),
+            None,
+        )
+        if match is None:
+            return _error_response(
+                "SIMILARITY_CANDIDATE_NOT_AUTHORIZED",
+                "The candidate is not part of this authorized search result.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        candidate = (
+            FeatureSet.objects.select_related("cad_model__preview_artifact_version")
+            .filter(
+                cad_model__artifact_version_id=candidate_version_id,
+                index_version=search.query_feature_set.index_version,
+                index_status=FeatureSet.IndexStatus.INDEXED,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if candidate is None:
+            return _error_response(
+                "SIMILARITY_CANDIDATE_GEOMETRY_NOT_AVAILABLE",
+                "The authorized candidate no longer has comparable geometry.",
+                status.HTTP_409_CONFLICT,
+            )
+        roi = request.data.get("roi")
+        if roi is not None and not isinstance(roi, dict):
+            return _error_response(
+                "VALIDATION_ROI", "roi must be an object.", status.HTTP_400_BAD_REQUEST
+            )
+        actor_id = str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+        try:
+            comparison, created = create_or_get_comparison(
+                search,
+                candidate,
+                overall_score=float(match.get("overall_score", 0.0)),
+                roi=roi,
+                actor_id=actor_id,
+            )
+        except RegistrationValidationError as exc:
+            return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
+        if created:
+            audit_identity_event(
+                "similarity.comparison.created.v1",
+                actor_id=actor_id,
+                target_refs=[
+                    f"similarity-search:{search.id}",
+                    f"artifact-version:{candidate_version_id}",
+                    f"similarity-comparison:{comparison.id}",
+                ],
+                detail={
+                    "algorithm_version": comparison.algorithm_version,
+                    "alignment_status": comparison.alignment_status,
+                    "roi_checksum": comparison.roi_checksum,
+                },
+            )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "comparison_id": str(comparison.id),
+                "search_id": str(search.id),
+                "candidate_artifact_version_id": str(candidate_version_id),
+                "created": created,
+                "alignment_status": comparison.alignment_status,
+                "transform": comparison.transform,
+                "result": comparison.result,
+                "lineage_ref": f"similarity-comparison:{comparison.id}",
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
 

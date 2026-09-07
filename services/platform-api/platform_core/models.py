@@ -461,6 +461,41 @@ class SimilaritySearch(models.Model):
         return f"Similarity search {self.id} [{self.job.state}]"
 
 
+class SimilarityComparison(models.Model):
+    class AlignmentStatus(models.TextChoices):
+        FULL = "full", "Full"
+        PARTIAL = "partial", "Partial"
+        SKIPPED = "skipped", "Skipped"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    search = models.ForeignKey(
+        SimilaritySearch, related_name="comparisons", on_delete=models.PROTECT
+    )
+    candidate_feature_set = models.ForeignKey(
+        FeatureSet, related_name="similarity_comparisons", on_delete=models.PROTECT
+    )
+    roi = models.JSONField(default=dict)
+    roi_checksum = models.CharField(max_length=64)
+    alignment_status = models.CharField(max_length=16, choices=AlignmentStatus.choices)
+    transform = models.JSONField(default=list)
+    result = models.JSONField(default=dict)
+    algorithm_version = models.CharField(max_length=32, default="cpu-registration@1.0")
+    created_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["search", "candidate_feature_set", "roi_checksum", "algorithm_version"],
+                name="unique_similarity_comparison_run",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.search_id}:{self.candidate_feature_set_id} [{self.alignment_status}]"
+
+
 class RuleProfile(models.Model):
     class WorkflowStatus(models.TextChoices):
         DRAFT = "draft", "Draft"

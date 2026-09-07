@@ -119,6 +119,7 @@ from .views import (
     ReadyView,
     ReviewFindingDecisionCreateView,
     SecurityPreflightView,
+    SimilarityComparisonView,
     SimilaritySearchDetailView,
     SimilaritySearchListCreateView,
     SystemInfoView,
@@ -492,6 +493,11 @@ urlpatterns = [
         "similarity-searches/<uuid:search_id>",
         SimilaritySearchDetailView.as_view(),
         name="similarity-search-detail",
+    ),
+    path(
+        "similarity-searches/<uuid:search_id>/candidates/<uuid:candidate_version_id>/comparison",
+        SimilarityComparisonView.as_view(),
+        name="similarity-comparison",
     ),
     path(
         "artifact-versions/<uuid:artifact_version_id>/download",

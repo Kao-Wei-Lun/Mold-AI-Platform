@@ -144,7 +144,7 @@ describe("SimilarityWorkspace", () => {
 
     const wrapper = mount(SimilarityWorkspace, {
       props: { query },
-      global: { stubs: { CadPreview: true } },
+      global: { stubs: { CadPreview: true, DeviationHeatmap: true } },
     });
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -155,6 +155,37 @@ describe("SimilarityWorkspace", () => {
     expect(wrapper.text()).toContain("Overall proportions are close");
     expect(wrapper.text()).toContain("One dimension is slightly different");
     expect(wrapper.findAllComponents({ name: "CadPreview" })).toHaveLength(2);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          schema_version: "1.0",
+          comparison_id: "comparison-1",
+          search_id: "search-1",
+          candidate_artifact_version_id: "version-a",
+          created: true,
+          alignment_status: "full",
+          transform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+          result: {
+            alignment_status: "full",
+            alignment: { pca_rmse: 0.02, final_rmse: 0.01, icp_attempted: true, icp_converged: true, icp_iterations: 3, symmetry_ambiguity: false },
+            deviation: { mode: "signed", minimum: -0.02, maximum: 0.03, rmse: 0.01, sample_count: 128, tolerance: 0.05 },
+            roi: null,
+            roi_similarity_score: null,
+            heatmap: { positions: [[0, 0, 0]], deviations: [0.01] },
+          },
+          lineage_ref: "similarity-comparison:comparison-1",
+        },
+        201,
+      ),
+    );
+    await wrapper.get(".deviation-heading button").trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(wrapper.text()).toContain("3D alignment and deviation");
+    expect(wrapper.text()).toContain("0.01");
+    expect(wrapper.findComponent({ name: "DeviationHeatmap" }).exists()).toBe(true);
   });
 
   it("keeps search disabled when the query has no indexed feature", () => {

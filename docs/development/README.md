@@ -398,3 +398,7 @@ read path remains active. See
 Stage 41 adds CPU manufacturing evidence with explicit precision states, safe STL downgrade,
 wall-thickness/undercut/parting descriptors and deterministic product-family similarity profiles.
 See [`stage-41-cpu-manufacturing-similarity.md`](stage-41-cpu-manufacturing-similarity.md).
+
+Stage 42 adds bounded CPU PCA/ICP registration, signed/unsigned deviation evidence, persisted ROI
+comparisons and an interactive Web heatmap guarded by authorized search-result membership. See
+[`stage-42-cpu-registration-deviation-roi.md`](stage-42-cpu-registration-deviation-roi.md).

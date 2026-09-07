@@ -57,6 +57,39 @@ export type SimilarityAccepted = {
   links: { status: string; result: string; ui: string };
 };
 
+export type SimilarityComparison = {
+  schema_version: "1.0";
+  comparison_id: string;
+  search_id: string;
+  candidate_artifact_version_id: string;
+  created: boolean;
+  alignment_status: "full" | "partial" | "skipped";
+  transform: number[][];
+  result: {
+    alignment_status: "full" | "partial" | "skipped";
+    alignment: {
+      pca_rmse: number;
+      final_rmse: number;
+      icp_attempted: boolean;
+      icp_converged: boolean;
+      icp_iterations: number;
+      symmetry_ambiguity: boolean;
+    };
+    deviation: {
+      mode: "signed" | "unsigned";
+      minimum: number;
+      maximum: number;
+      rmse: number;
+      sample_count: number;
+      tolerance: number;
+    };
+    roi: { min: number[]; max: number[] } | null;
+    roi_similarity_score: number | null;
+    heatmap: { positions: number[][]; deviations: number[] };
+  };
+  lineage_ref: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 async function errorMessage(response: Response): Promise<string> {
@@ -107,4 +140,21 @@ export async function fetchSimilaritySearch(searchId: string): Promise<Similarit
   if (!response.ok) throw new Error(await errorMessage(response));
   const payload = (await response.json()) as { job_id: string };
   return fetchSimilarityJob(payload.job_id);
+}
+
+export async function createSimilarityComparison(
+  searchId: string,
+  candidateVersionId: string,
+  roi?: { min: number[]; max: number[] },
+): Promise<SimilarityComparison> {
+  const response = await apiFetch(
+    `${apiBaseUrl}/api/v1/similarity-searches/${searchId}/candidates/${candidateVersionId}/comparison`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ schema_version: "1.0", roi: roi || null }),
+    },
+  );
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as SimilarityComparison;
 }

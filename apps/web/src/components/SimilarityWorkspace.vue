@@ -5,11 +5,13 @@ import type { AssistantContext, UIAction } from "../api/assistant";
 import type { CADModelResult } from "../api/cad";
 import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions } from "../api/masterData";
 import {
+  createSimilarityComparison,
   createSimilaritySearch,
   fetchSimilarityJob,
   fetchSimilaritySearch,
   type SimilarityJob,
   type SimilarityMatch,
+  type SimilarityComparison,
 } from "../api/similarity";
 import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
@@ -33,6 +35,7 @@ const emit = defineEmits<{
   retryMasterData: [];
 }>();
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
+const DeviationHeatmap = defineAsyncComponent(() => import("./DeviationHeatmap.vue"));
 
 const datasetId = ref("");
 const productType = ref("");
@@ -42,6 +45,11 @@ const job = ref<SimilarityJob | null>(null);
 const selectedMatch = ref<SimilarityMatch | null>(null);
 const submitting = ref(false);
 const error = ref<string | null>(null);
+const comparison = ref<SimilarityComparison | null>(null);
+const comparing = ref(false);
+const comparisonError = ref<string | null>(null);
+const roiEnabled = ref(false);
+const roi = ref({ minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 });
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
@@ -57,6 +65,35 @@ function optionLabel(option: MasterDataOption): string {
 
 function scorePercent(score: number | null): string {
   return score === null ? "N/A" : `${(score * 100).toFixed(1)}%`;
+}
+
+function resetComparison(): void {
+  comparison.value = null;
+  comparisonError.value = null;
+}
+
+async function analyzeDeviation(): Promise<void> {
+  if (!result.value || !selectedMatch.value) return;
+  comparing.value = true;
+  comparisonError.value = null;
+  try {
+    comparison.value = await createSimilarityComparison(
+      result.value.search_id,
+      selectedMatch.value.artifact_version_id,
+      roiEnabled.value
+        ? {
+            min: [roi.value.minX, roi.value.minY, roi.value.minZ],
+            max: [roi.value.maxX, roi.value.maxY, roi.value.maxZ],
+          }
+        : undefined,
+    );
+    pushToast(t("3D deviation analysis completed."), "success");
+  } catch (caught) {
+    comparisonError.value = caught instanceof Error ? caught.message : t("3D deviation analysis failed.");
+    pushToast(comparisonError.value, "error");
+  } finally {
+    comparing.value = false;
+  }
 }
 
 function schedulePoll(): void {
@@ -143,6 +180,24 @@ watch(
     if (pollTimer !== null) window.clearTimeout(pollTimer);
   },
 );
+
+watch(
+  () => selectedMatch.value?.artifact_version_id,
+  resetComparison,
+);
+
+watch(roiEnabled, (enabled) => {
+  if (!enabled || !props.query) return;
+  const bounds = props.query.bounding_box;
+  roi.value = {
+    minX: bounds.min.x,
+    minY: bounds.min.y,
+    minZ: bounds.min.z,
+    maxX: bounds.max.x,
+    maxY: bounds.max.y,
+    maxZ: bounds.max.z,
+  };
+});
 
 watch(
   () => [
@@ -322,6 +377,45 @@ onBeforeUnmount(() => {
               <strong>{{ scorePercent(score) }}</strong>
             </div>
           </div>
+
+          <section class="deviation-analysis" aria-labelledby="deviation-analysis-title">
+            <div class="deviation-heading">
+              <div>
+                <h3 id="deviation-analysis-title">{{ t("3D alignment and deviation") }}</h3>
+                <p>{{ t("Run bounded CPU alignment and inspect geometric differences as evidence.") }}</p>
+              </div>
+              <button type="button" :disabled="comparing" @click="analyzeDeviation">
+                {{ comparing ? t("Analyzing...") : t("Analyze 3D deviation") }}
+              </button>
+            </div>
+            <details class="roi-controls">
+              <summary>{{ t("Optional ROI bounds") }}</summary>
+              <label><input v-model="roiEnabled" type="checkbox" /> {{ t("Limit comparison to this bounding box") }}</label>
+              <div v-if="roiEnabled" class="roi-grid">
+                <FormField v-slot="{ fieldId }" label="Min X"><input :id="fieldId" v-model.number="roi.minX" type="number" step="any" /></FormField>
+                <FormField v-slot="{ fieldId }" label="Min Y"><input :id="fieldId" v-model.number="roi.minY" type="number" step="any" /></FormField>
+                <FormField v-slot="{ fieldId }" label="Min Z"><input :id="fieldId" v-model.number="roi.minZ" type="number" step="any" /></FormField>
+                <FormField v-slot="{ fieldId }" label="Max X"><input :id="fieldId" v-model.number="roi.maxX" type="number" step="any" /></FormField>
+                <FormField v-slot="{ fieldId }" label="Max Y"><input :id="fieldId" v-model.number="roi.maxY" type="number" step="any" /></FormField>
+                <FormField v-slot="{ fieldId }" label="Max Z"><input :id="fieldId" v-model.number="roi.maxZ" type="number" step="any" /></FormField>
+              </div>
+            </details>
+            <p v-if="comparisonError" class="error-message" role="alert">{{ comparisonError }}</p>
+            <div v-if="comparison" class="deviation-result">
+              <div class="score-grid">
+                <div><span>{{ t("Alignment") }}</span><strong>{{ t(comparison.alignment_status) }}</strong></div>
+                <div><span>{{ t("Distance mode") }}</span><strong>{{ t(comparison.result.deviation.mode) }}</strong></div>
+                <div><span>RMSE</span><strong>{{ comparison.result.deviation.rmse }}</strong></div>
+                <div v-if="comparison.result.roi_similarity_score !== null"><span>{{ t("ROI similarity") }}</span><strong>{{ scorePercent(comparison.result.roi_similarity_score) }}</strong></div>
+              </div>
+              <DeviationHeatmap
+                :positions="comparison.result.heatmap.positions"
+                :deviations="comparison.result.heatmap.deviations"
+                :tolerance="comparison.result.deviation.tolerance"
+              />
+              <small>{{ comparison.lineage_ref }} · {{ comparison.result.deviation.sample_count }} {{ t("samples") }}</small>
+            </div>
+          </section>
 
           <div class="evidence-columns">
             <div>
