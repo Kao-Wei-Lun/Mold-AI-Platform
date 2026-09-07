@@ -1,15 +1,19 @@
 import hashlib
 import json
 import uuid
+from copy import deepcopy
 from datetime import date
+from urllib.parse import quote
 
 from django.conf import settings
+from django.core import signing
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Q
-from django.http import FileResponse, HttpResponse
+from django.http import FileResponse, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
@@ -1043,6 +1047,64 @@ class KnowledgeDocumentDetailView(APIView):
         return Response(payload)
 
 
+_CITATION_TICKET_SALT = "mold-ai.knowledge-citation-source.v1"
+
+
+def _citation_ticket_context(request: Request) -> tuple[str, list[str]]:
+    raw_request = request._request
+    actor_id = str(getattr(raw_request, "mold_ai_actor_id", "anonymous"))
+    data_scopes = sorted(str(item) for item in getattr(raw_request, "mold_ai_data_scopes", set()))
+    return actor_id, data_scopes
+
+
+def _knowledge_search_response(search: KnowledgeSearch, request: Request) -> dict[str, object]:
+    """Issue non-persisted, identity-bound source tickets for returned citations."""
+    result = deepcopy(search.result)
+    actor_id, data_scopes = _citation_ticket_context(request)
+    for citation in result.get("citations", []):
+        if not isinstance(citation, dict):
+            continue
+        artifact_version_id = str(citation.get("artifact_version_id", ""))
+        document_id = str(citation.get("document_id", ""))
+        if not artifact_version_id or not document_id:
+            continue
+        ticket = signing.dumps(
+            {
+                "artifact_version_id": artifact_version_id,
+                "document_id": document_id,
+                "actor_id": actor_id,
+                "data_scopes": data_scopes,
+            },
+            salt=_CITATION_TICKET_SALT,
+            compress=True,
+        )
+        citation["source_url"] = (
+            f"/api/v1/artifact-versions/{artifact_version_id}/download"
+            f"?citation_ticket={quote(ticket, safe='')}"
+        )
+        citation["source_ticket_expires_in"] = settings.CITATION_SOURCE_TICKET_TTL_SECONDS
+    return {"search_id": str(search.id), **result}
+
+
+def _citation_ticket_is_valid(request: Request, *, ticket: str, artifact_version_id: str) -> bool:
+    try:
+        payload = signing.loads(
+            ticket,
+            salt=_CITATION_TICKET_SALT,
+            max_age=settings.CITATION_SOURCE_TICKET_TTL_SECONDS,
+        )
+    except (signing.BadSignature, signing.SignatureExpired):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    actor_id, data_scopes = _citation_ticket_context(request)
+    return (
+        str(payload.get("artifact_version_id", "")) == str(artifact_version_id)
+        and str(payload.get("actor_id", "")) == actor_id
+        and payload.get("data_scopes") == data_scopes
+    )
+
+
 class KnowledgeSearchListCreateView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -1080,7 +1142,7 @@ class KnowledgeSearchListCreateView(APIView):
             return _error_response(exc.code, exc.user_message, status.HTTP_400_BAD_REQUEST)
         except VectorStoreError as exc:
             return _error_response(exc.code, exc.user_message, status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response({"search_id": str(search.id), **search.result}, status=status.HTTP_200_OK)
+        return Response(_knowledge_search_response(search, request), status=status.HTTP_200_OK)
 
 
 class KnowledgeSearchDetailView(APIView):
@@ -1089,7 +1151,7 @@ class KnowledgeSearchDetailView(APIView):
 
     def get(self, request: Request, search_id: str) -> Response:
         search = get_object_or_404(KnowledgeSearch, pk=search_id)
-        return Response({"search_id": str(search.id), **search.result})
+        return Response(_knowledge_search_response(search, request))
 
 
 class RuleProfileListView(APIView):
@@ -1810,12 +1872,60 @@ class SimilarityFeedbackView(APIView):
         )
 
 
+def _single_byte_range(value: str, size: int) -> tuple[int, int] | None:
+    """Parse one RFC 7233 byte range; multiple ranges are intentionally rejected."""
+    if not value:
+        return None
+    if not value.startswith("bytes=") or "," in value or size <= 0:
+        raise ValueError("Unsupported byte range.")
+    start_text, separator, end_text = value[6:].partition("-")
+    if not separator:
+        raise ValueError("Malformed byte range.")
+    if not start_text:
+        suffix = int(end_text)
+        if suffix <= 0:
+            raise ValueError("Invalid byte range suffix.")
+        return max(0, size - suffix), size - 1
+    start = int(start_text)
+    end = min(int(end_text), size - 1) if end_text else size - 1
+    if start < 0 or start >= size or end < start:
+        raise ValueError("Unsatisfiable byte range.")
+    return start, end
+
+
+def _bounded_file_chunks(source, start: int, length: int, block_size: int = 64 * 1024):
+    source.seek(start)
+    remaining = length
+    try:
+        while remaining:
+            chunk = source.read(min(block_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+    finally:
+        source.close()
+
+
 class ArtifactVersionDownloadView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
 
-    def get(self, request: Request, artifact_version_id: str) -> FileResponse:
-        version = get_object_or_404(ArtifactVersion, pk=artifact_version_id)
+    def get(self, request: Request, artifact_version_id: str) -> HttpResponse:
+        ticket = str(request.query_params.get("citation_ticket", "")).strip()
+        if ticket and not _citation_ticket_is_valid(
+            request, ticket=ticket, artifact_version_id=artifact_version_id
+        ):
+            return _error_response(
+                "CITATION_SOURCE_TICKET_INVALID",
+                "The citation source ticket is invalid or expired.",
+                status.HTTP_403_FORBIDDEN,
+            )
+        version = get_object_or_404(
+            ArtifactVersion,
+            pk=artifact_version_id,
+            classification__in=_allowed_classifications(request),
+        )
         if not default_storage.exists(version.storage_key):
             return _error_response(
                 "ARTIFACT_CONTENT_MISSING",
@@ -1823,13 +1933,38 @@ class ArtifactVersionDownloadView(APIView):
                 status.HTTP_404_NOT_FOUND,
             )
         source = default_storage.open(version.storage_key, "rb")
-        response = FileResponse(
-            source,
-            content_type=version.media_type,
-            as_attachment=version.artifact.kind
-            not in {Artifact.Kind.CAD_PREVIEW, Artifact.Kind.KNOWLEDGE_SOURCE},
-            filename=version.original_filename,
-        )
+        inline = version.artifact.kind in {
+            Artifact.Kind.CAD_PREVIEW,
+            Artifact.Kind.KNOWLEDGE_SOURCE,
+        }
+        try:
+            byte_range = _single_byte_range(request.headers.get("Range", ""), version.size_bytes)
+        except (TypeError, ValueError):
+            source.close()
+            response = HttpResponse(status=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE)
+            response["Content-Range"] = f"bytes */{version.size_bytes}"
+            response["Accept-Ranges"] = "bytes"
+            return response
+        if byte_range:
+            start, end = byte_range
+            response = StreamingHttpResponse(
+                _bounded_file_chunks(source, start, end - start + 1),
+                status=status.HTTP_206_PARTIAL_CONTENT,
+                content_type=version.media_type,
+            )
+            response["Content-Length"] = str(end - start + 1)
+            response["Content-Range"] = f"bytes {start}-{end}/{version.size_bytes}"
+            response["Content-Disposition"] = content_disposition_header(
+                not inline, version.original_filename
+            )
+        else:
+            response = FileResponse(
+                source,
+                content_type=version.media_type,
+                as_attachment=not inline,
+                filename=version.original_filename,
+            )
+        response["Accept-Ranges"] = "bytes"
         response["X-Content-Type-Options"] = "nosniff"
         response["Content-Security-Policy"] = "default-src 'none'; sandbox"
         return response

@@ -184,6 +184,7 @@ RAG_ABSTENTION_CALIBRATION_PATH = os.getenv(
     "RAG_ABSTENTION_CALIBRATION_PATH",
     str(BASE_DIR / "platform_core" / "config" / "rag-abstention-v1.json"),
 )
+CITATION_SOURCE_TICKET_TTL_SECONDS = int(os.getenv("CITATION_SOURCE_TICKET_TTL_SECONDS", "300"))
 SIMILARITY_INDEX_VERSION = os.getenv("SIMILARITY_INDEX_VERSION", "cad-demo-v1")
 SIMILARITY_INDEX_VERSION_V2 = os.getenv("SIMILARITY_INDEX_VERSION_V2", "cad-cpu-v2")
 SIMILARITY_AUTO_INDEX = os.getenv("SIMILARITY_AUTO_INDEX", "false").lower() == "true"

@@ -22,6 +22,7 @@ const searchPayload = {
   citations: [{
     citation_id: "citation-1", artifact_version_id: "version-1", document_id: "document-1",
     title: "Demo Mold Design Guide", locator: "section:Rib Design,paragraphs:1-1",
+    source_format: "md",
     authority: "reviewed_demo", effective_from: null, effective_to: null,
     source_url: "/api/v1/artifact-versions/version-1/download",
   }],
@@ -83,5 +84,28 @@ describe("KnowledgeSearchWorkspace", () => {
     await wrapper.get(".knowledge-source-actions .secondary-button").trigger("click");
 
     expect(wrapper.emitted("navigate")?.[0]).toEqual(["/data/knowledge/document-1"]);
+  });
+
+  it("offers the governed PDF viewer only for a PDF citation", async () => {
+    const pdfPayload = structuredClone(searchPayload);
+    pdfPayload.citations[0].source_format = "pdf";
+    Object.assign(pdfPayload.citations[0], {
+      citation_anchor: {
+        page_no: 2, page_size: [600, 800], bbox: [60, 80, 300, 240],
+        bbox_available: true, bbox_precision: "exact", coordinate_origin: "top-left",
+        coordinate_unit: "pt", page_rotation: 0,
+      },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ schema_version: "1.0", items: [indexedDocument] }))
+      .mockResolvedValueOnce(jsonResponse(pdfPayload));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(KnowledgeSearchWorkspace);
+    await flushPromises();
+    await wrapper.get(".knowledge-search-form textarea").setValue("rib thickness");
+    await wrapper.get(".knowledge-search-form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get(".primary-outline-button").text()).toContain("Open cited PDF page");
   });
 });

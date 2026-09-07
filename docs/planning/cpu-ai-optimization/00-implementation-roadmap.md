@@ -21,7 +21,7 @@ one application image and the owner-only external Demo boundary.
 | 43 | 2D/CAE metadata fusion and explicit user feedback | missing-lane renormalization, feedback authorization/audit, no online training |
 | 44 | RAG structured parsing and hierarchical chunk/citation contract — implemented | parser sandbox gates, page/bounding-box locators, parent/child chunks, tombstone enforcement |
 | 45A | Dense+sparse retrieval, RRF, CPU reranker and calibrated abstention — implemented | ACL before every stage, model provenance, deterministic fallback, offline evaluation |
-| 45B | PDF citation viewer and bounding-box navigation | authorized same-origin source, page fallback, visual highlight accuracy |
+| 45B | PDF citation viewer and bounding-box navigation — implemented | authorized same-origin source, page fallback, visual highlight accuracy |
 | 46 | Alias migration, rollback drill, benchmarks and external single-image release | parity, latency/quality targets, old-index retention, Sites/MCP smoke tests |
 
 Every stage updates its detailed development record, runs focused tests followed by the repository

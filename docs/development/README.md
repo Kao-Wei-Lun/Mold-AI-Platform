@@ -415,3 +415,7 @@ tombstones vector derivatives when governed knowledge is retired. See
 Stage 45A adds a shadowable 512-dimensional CPU dense/sparse knowledge index, Qdrant RRF,
 governed domain query expansion, offline model packaging, CPU reranking and calibrated abstention.
 See [`stage-45a-cpu-hybrid-retrieval.md`](stage-45a-cpu-hybrid-retrieval.md).
+
+Stage 45B adds an authorized same-origin PDF.js citation viewer, signed short-lived source tickets,
+byte-range delivery, exact yellow bbox overlays and explicit page-only fallback. See
+[`stage-45b-cpu-pdf-citations.md`](stage-45b-cpu-pdf-citations.md).

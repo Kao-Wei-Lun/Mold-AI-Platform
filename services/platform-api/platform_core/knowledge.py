@@ -770,6 +770,7 @@ def search_knowledge(
             "artifact_version_id": str(document.artifact_version_id),
             "document_id": str(document.id),
             "title": document.artifact_version.artifact.name,
+            "source_format": document.artifact_version.format,
             "locator": locator_text,
             "locator_detail": locator,
             "citation_anchor": chunk.citation_anchor,

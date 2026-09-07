@@ -1917,8 +1917,109 @@ button[aria-busy="true"]::before {
 }
 
 .knowledge-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
   margin-top: 0.75rem;
 }
+
+.pdf-citation-backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(5 18 38 / 64%);
+  backdrop-filter: blur(4px);
+}
+
+.pdf-citation-viewer {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  width: min(1120px, 100%);
+  height: min(92vh, 980px);
+  overflow: hidden;
+  border: 1px solid #c8d8eb;
+  border-radius: 18px;
+  background: #f7faff;
+  box-shadow: 0 30px 90px rgb(3 14 32 / 42%);
+}
+
+.pdf-citation-viewer > header,
+.pdf-citation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  background: #fff;
+}
+
+.pdf-citation-viewer > header {
+  border-bottom: 1px solid #d8e3ee;
+}
+
+.pdf-citation-viewer > header p,
+.pdf-citation-viewer > header h3 {
+  margin: 0;
+}
+
+.pdf-citation-viewer > header p {
+  color: #54708d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pdf-citation-toolbar {
+  justify-content: flex-start;
+  border-bottom: 1px solid #d8e3ee;
+}
+
+.pdf-citation-toolbar span {
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.pdf-citation-toolbar .exact { color: #684b00; background: #ffe897; }
+.pdf-citation-toolbar .page-only { color: #35516f; background: #e7eef7; }
+.pdf-citation-notice { margin: 0; padding: 0.65rem 1rem; color: #5d6f83; background: #eef4fb; }
+.pdf-page-scroll { min-height: 0; overflow: auto; padding: 1rem; }
+
+.pdf-page-stage {
+  position: relative;
+  width: fit-content;
+  min-width: 320px;
+  min-height: 420px;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 10px 35px rgb(25 52 82 / 18%);
+}
+
+.pdf-page-stage canvas { display: block; max-width: 100%; height: auto; }
+.pdf-citation-highlight {
+  position: absolute;
+  border: 2px solid #d49b00;
+  border-radius: 3px;
+  background: rgb(255 220 41 / 34%);
+  box-shadow: 0 0 0 2px rgb(255 240 110 / 35%);
+  pointer-events: none;
+}
+.pdf-citation-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #35516f;
+  background: rgb(247 250 255 / 82%);
+  font-weight: 800;
+}
+.pdf-citation-viewer > .error-message { margin: 0.8rem 1rem; }
 
 .workflow-dialog-backdrop {
   position: fixed;

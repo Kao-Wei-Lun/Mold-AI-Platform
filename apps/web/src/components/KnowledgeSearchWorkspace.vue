@@ -14,6 +14,7 @@ import type { DeepLinkContext } from "../deepLinks";
 import { useI18n } from "../i18n";
 import { pushToast } from "../toast";
 import FormField from "./FormField.vue";
+import PdfCitationViewer from "./PdfCitationViewer.vue";
 
 const props = defineProps<{ deepLink?: DeepLinkContext | null }>();
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const searchAttempted = ref(false);
 const searchResult = ref<KnowledgeSearchResult | null>(null);
 const selectedResult = ref<KnowledgeResultItem | null>(null);
 const error = ref<string | null>(null);
+const pdfViewerOpen = ref(false);
 
 const missingSearchFields = computed(() => Number(!query.value.trim()));
 const queryError = computed(() =>
@@ -56,8 +58,9 @@ async function submitSearch(): Promise<void> {
   if (missingSearchFields.value) return;
   searching.value = true;
   error.value = null;
-  searchResult.value = null;
-  selectedResult.value = null;
+    searchResult.value = null;
+    selectedResult.value = null;
+    pdfViewerOpen.value = false;
   try {
     searchResult.value = await searchKnowledge(query.value, {
       documentTypes: searchType.value ? [searchType.value] : [],
@@ -226,6 +229,14 @@ watch(
             <button v-if="citationFor(selectedResult)" type="button" class="citation-download" @click="downloadCitation">
               {{ t("Download source") }} · {{ citationFor(selectedResult)?.locator }}
             </button>
+            <button
+              v-if="citationFor(selectedResult)?.source_format === 'pdf'"
+              type="button"
+              class="primary-outline-button"
+              @click="pdfViewerOpen = true"
+            >
+              {{ t("Open cited PDF page") }}
+            </button>
             <button v-if="citationFor(selectedResult)?.document_id" type="button" class="secondary-button" @click="emit('navigate', `/data/knowledge/${citationFor(selectedResult)?.document_id}`)">
               {{ t("View source document") }}
             </button>
@@ -235,5 +246,10 @@ watch(
       <p class="limitation-note">{{ searchResult.limitations.join(" ") }}</p>
     </section>
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
+    <PdfCitationViewer
+      :open="pdfViewerOpen"
+      :citation="selectedResult ? citationFor(selectedResult) || null : null"
+      @close="pdfViewerOpen = false"
+    />
   </section>
 </template>

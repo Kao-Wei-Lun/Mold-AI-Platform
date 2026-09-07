@@ -224,13 +224,40 @@ class KnowledgeTests(TestCase):
         self.assertIn("section:Rib Design", result["citations"][0]["locator"])
         self.assertEqual(result["citations"][0]["locator_detail"]["schema_version"], "2.0")
         self.assertFalse(result["citations"][0]["citation_anchor"]["bbox_available"])
+        self.assertEqual(result["citations"][0]["source_format"], "md")
         self.assertIn("/download", result["citations"][0]["source_url"])
+        self.assertIn("citation_ticket=", result["citations"][0]["source_url"])
+        self.assertEqual(result["citations"][0]["source_ticket_expires_in"], 300)
         self.assertEqual(result["principal_scope_source"], "server_demo_policy")
         filters = query_vectors.call_args.kwargs["filters"]
         self.assertEqual(filters["classification"], "public_demo")
         self.assertEqual(filters["acl_scopes"], ["public-demo"])
         self.assertEqual(filters["dataset_id"], [PUBLIC_KNOWLEDGE_DATASET])
         upsert.assert_called()
+
+    def test_knowledge_source_download_supports_single_byte_ranges(self) -> None:
+        records = self.create_document()
+
+        response = self.client.get(
+            f"/api/v1/artifact-versions/{records.document.artifact_version_id}/download",
+            HTTP_RANGE="bytes=0-3",
+        )
+
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response["Accept-Ranges"], "bytes")
+        self.assertEqual(response["Content-Range"], f"bytes 0-3/{len(SAFE_MARKDOWN)}")
+        self.assertEqual(b"".join(response.streaming_content), SAFE_MARKDOWN[:4])
+
+    def test_invalid_citation_source_ticket_is_rejected(self) -> None:
+        records = self.create_document()
+
+        response = self.client.get(
+            f"/api/v1/artifact-versions/{records.document.artifact_version_id}/download"
+            "?citation_ticket=tampered"
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "CITATION_SOURCE_TICKET_INVALID")
 
     @patch("platform_core.knowledge.query_named_vectors")
     @patch("platform_core.knowledge.upsert_named_vector")

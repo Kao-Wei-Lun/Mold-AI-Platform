@@ -73,11 +73,26 @@ export type KnowledgeCitation = {
   artifact_version_id: string;
   document_id: string;
   title: string;
+  source_format?: "txt" | "md" | "pdf" | "docx";
   locator: string;
+  locator_detail?: Record<string, unknown>;
+  citation_anchor?: CitationAnchor;
   authority: string;
   effective_from: string | null;
   effective_to: string | null;
   source_url: string;
+  source_ticket_expires_in?: number;
+};
+
+export type CitationAnchor = {
+  page_no: number | null;
+  page_size: [number, number] | null;
+  bbox: [number, number, number, number] | null;
+  bbox_available: boolean;
+  bbox_precision: string;
+  coordinate_origin: "top-left";
+  coordinate_unit: "pt";
+  page_rotation: number;
 };
 
 export type KnowledgeResultItem = {
