@@ -14,6 +14,9 @@ Status: implemented for the owner-only Demo boundary.
 - A structural pass does not claim Recall, nDCG, MRR or citation quality. The 50-CAD and 100-question
   expert Golden sets required by SRS 18/19 remain a Domain Owner approval gate before enterprise
   production use.
+- Manufacturing undercut ray evaluation is deterministically capped at 256 source faces. The
+  sampled-area estimate and cap are recorded in the extractor manifest so large tessellations stay
+  bounded on CPU and remain auditable.
 
 ## Controlled activation
 

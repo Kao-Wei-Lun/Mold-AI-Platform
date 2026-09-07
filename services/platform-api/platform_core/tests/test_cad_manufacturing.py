@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+import numpy as np
 import trimesh
 from django.test import TestCase, override_settings
 
@@ -12,6 +15,18 @@ from platform_core.models import Artifact, ArtifactVersion, CADModel, FeatureSet
 
 
 class ManufacturingFeatureTests(TestCase):
+    @patch("platform_core.cad_manufacturing._ray_distances")
+    def test_step_face_rays_are_bounded_for_cpu_runtime(self, ray_distances) -> None:
+        ray_distances.side_effect = lambda mesh, origins, directions, source_faces: np.full(
+            len(origins), np.inf
+        )
+        mesh = trimesh.creation.icosphere(subdivisions=4)
+
+        result = extract_manufacturing_features(mesh, source_format="step", sample_count=32)
+
+        self.assertEqual(result["manifest"]["face_ray_count"], 256)
+        self.assertTrue(all(len(call.args[1]) <= 256 for call in ray_distances.call_args_list))
+
     def test_stl_defaults_to_not_available(self) -> None:
         result = extract_manufacturing_features(trimesh.creation.box(), source_format="stl")
 

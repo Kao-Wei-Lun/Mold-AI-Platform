@@ -14,6 +14,7 @@ from .models import CADModel, FeatureSet, SimilarityProfile
 MANUFACTURING_EXTRACTOR_VERSION = "1.0.0"
 MANUFACTURING_SAMPLE_COUNT = 128
 MANUFACTURING_SEED = 20260907
+MANUFACTURING_FACE_RAY_LIMIT = 256
 
 PROFILE_DEFINITIONS: dict[str, dict[str, float]] = {
     "cpu-general@2.0": {
@@ -222,22 +223,30 @@ def extract_manufacturing_features(
 
     axis, axis_name = _draw_axis(mesh)
     vertices = np.asarray(mesh.vertices, dtype=float)
-    face_centers = np.asarray(mesh.triangles_center, dtype=float)
-    face_ids = np.arange(len(mesh.faces), dtype=int)
+    all_face_centers = np.asarray(mesh.triangles_center, dtype=float)
+    all_face_count = len(mesh.faces)
+    if all_face_count > MANUFACTURING_FACE_RAY_LIMIT:
+        face_ids = np.linspace(0, all_face_count - 1, MANUFACTURING_FACE_RAY_LIMIT, dtype=int)
+    else:
+        face_ids = np.arange(all_face_count, dtype=int)
+    face_centers = all_face_centers[face_ids]
     positive = _ray_distances(
         mesh, face_centers + axis * epsilon, np.tile(axis, (len(face_ids), 1)), face_ids
     )
     negative = _ray_distances(
         mesh, face_centers - axis * epsilon, np.tile(-axis, (len(face_ids), 1)), face_ids
     )
-    projected_area = np.abs(np.asarray(mesh.face_normals) @ axis) * np.asarray(mesh.area_faces)
+    all_projected_area = np.abs(np.asarray(mesh.face_normals) @ axis) * np.asarray(mesh.area_faces)
+    projected_area = all_projected_area[face_ids]
     projection_tolerance = max(float(np.asarray(mesh.area_faces).sum()) * 1e-10, 1e-12)
     trapped = (
         np.isfinite(positive) & np.isfinite(negative) & (projected_area > projection_tolerance)
     )
-    undercut_area = float(projected_area[trapped].sum())
-    projected_total = max(float(projected_area.sum() / 2.0), 1e-12)
-    slide_count = _component_count(mesh, trapped)
+    sampled_projected_total = max(float(projected_area.sum()), 1e-12)
+    projected_total = max(float(all_projected_area.sum() / 2.0), 1e-12)
+    undercut_area = float(projected_area[trapped].sum() / sampled_projected_total)
+    undercut_area *= float(all_projected_area.sum())
+    slide_count = 1 if bool(np.any(trapped)) else 0
     parting = _parting_features(mesh, axis)
     return {
         "availability": "APPROXIMATE",
@@ -256,6 +265,9 @@ def extract_manufacturing_features(
             "source_format": normalized_format,
             "mesh_watertight": bool(mesh.is_watertight),
             "sample_count": sample_count,
+            "face_ray_count": int(len(face_ids)),
+            "face_ray_limit": MANUFACTURING_FACE_RAY_LIMIT,
+            "face_sampling": "deterministic-even-index",
             "random_seed": seed,
             "draw_axis_policy": "maximum-projected-area",
             "vertices": int(len(vertices)),
