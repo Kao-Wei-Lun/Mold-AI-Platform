@@ -172,9 +172,12 @@ ASSISTANT_LLM_PROVIDER = LLM_PROVIDER
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_CAD_COLLECTION = os.getenv("QDRANT_CAD_COLLECTION", "cad-similarity-v1")
+QDRANT_CAD_COLLECTION_V2 = os.getenv("QDRANT_CAD_COLLECTION_V2", "cad-similarity-v2")
 QDRANT_KNOWLEDGE_COLLECTION = os.getenv("QDRANT_KNOWLEDGE_COLLECTION", "knowledge-text-demo-v1")
 SIMILARITY_INDEX_VERSION = os.getenv("SIMILARITY_INDEX_VERSION", "cad-demo-v1")
+SIMILARITY_INDEX_VERSION_V2 = os.getenv("SIMILARITY_INDEX_VERSION_V2", "cad-cpu-v2")
 SIMILARITY_AUTO_INDEX = os.getenv("SIMILARITY_AUTO_INDEX", "false").lower() == "true"
+SIMILARITY_V2_SHADOW_INDEX = os.getenv("SIMILARITY_V2_SHADOW_INDEX", "false").lower() == "true"
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")

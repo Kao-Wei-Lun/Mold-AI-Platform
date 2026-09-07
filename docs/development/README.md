@@ -389,3 +389,8 @@ Stage 39 fixes Registry engineering-history loading for molds linked to Design R
 Similarity Search jobs, preserves legacy job compatibility and replaces raw HTML/JSON parser
 errors with a governed Web message. See
 [`stage-39-registry-engineering-history-hotfix.md`](stage-39-registry-engineering-history-hotfix.md).
+
+Stage 40 starts the CPU-only AI optimization program with a deterministic 32-dimensional CAD shape
+descriptor, a versioned v2 shadow collection and reproducible extraction/ACL lineage while the v1
+read path remains active. See
+[`stage-40-cpu-cad-v2-shadow-index.md`](stage-40-cpu-cad-v2-shadow-index.md).

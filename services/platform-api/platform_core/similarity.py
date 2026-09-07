@@ -185,7 +185,12 @@ def index_feature_set(feature_set: FeatureSet) -> FeatureSet:
 
 
 def extract_and_index_cad_model(cad_model: CADModel) -> FeatureSet:
-    return index_feature_set(extract_feature_set(cad_model))
+    primary = index_feature_set(extract_feature_set(cad_model))
+    if settings.SIMILARITY_V2_SHADOW_INDEX:
+        from .cad_similarity_v2 import extract_and_index_cad_model_v2
+
+        extract_and_index_cad_model_v2(cad_model)
+    return primary
 
 
 def get_demo_profile() -> SimilarityProfile:
