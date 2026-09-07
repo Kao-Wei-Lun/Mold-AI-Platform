@@ -70,6 +70,9 @@ Ruff lint/format 通過。這是合成回歸，不是人工跨模具品質驗收
 
 ## 尚未交付與限制
 
+以下為第 1–2 階段交付時的紀錄；後續第 3–5 階段進展與仍需人工驗收的項目，
+請見 [Stage 50](stage-50-similarity-phases-3-5.md)。
+
 - Phase 3 多尺度局部特徵／STEP 結構、工程尺寸模式尚未實作。
 - Phase 4 人工標註 corpus、正式 precision／no-match 門檻尚未校準。
 - Phase 5 跨 Worker 持久快取、全量召回與真實 cold/warm latency benchmark 尚未完成。

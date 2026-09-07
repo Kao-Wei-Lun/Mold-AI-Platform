@@ -149,3 +149,45 @@ Web 173 tests、Sites 15 tests。另外搜尋診斷／未校準提示雙語 UI �
 專項測試驗證 dry-run 不刪、備份先於刪除、明確 ID、現存資料保留與 scope/count 改變拒絕。
 追加完整回歸：後端 362 passed、1 skipped、9 subtests；Web 173、Sites 15，
 lint/build/migration/Compose 通過。最後補的 ANN 低召回拒絕判定與索引維護專項 7 passed。
+
+## 最終部署與實測紀錄（2026-09-07）
+
+- Git 分段提交：Phase 3 `f1ea10b`；Phase 4 工具 `429b49e`；Phase 5 `196a9b2`；
+  實測發現的索引殘留維護 `2c1eb40`。本輪為本機提交，未執行 git push。
+- 已部署 migration 0024/0025、API／Worker／CAD Worker／Web／MCP Gateway，
+  5 個 app service 使用同一 image；未新增 Docker 專案，沒有清除 volumes 或其他專案。
+- 外網 `https://neck-rap-chocolate-extensive.trycloudflare.com` HTTP 200，
+  `/assets/index-Dusz-29F.js` SHA-256 與通過測試的 build 相同：
+  `836685B2D55B137687BA0308D52E01255AD9B02F0FABAD1BAF4506D53FDACF65`。
+  既有私人 Sites 入口 `https://mold-ai-remote-demo.weilunkao1013.chatgpt.site` 沿用，未另行發布或變更權限。
+- 實際工程尺寸 smoke：已知 mm 的現存公開 Demo 工件，API 計算 computed，
+  第二次在不同 CAD Worker 容器執行得到 shared hit，結果相同；未知單位拒絕尺寸比對符合預期。
+- 整合 smoke：建立新搜尋政策，在 transaction 內完整執行後 rollback，Job 數不變。
+  粗選 23，排除查詢自身及故障 Demo 後 18 個候選，全部 computed，0 budget/0 unavailable；
+  fine 11.325 秒、總計 11.3595 秒，回傳 5 筆。未加入 queue，因此 queue_wait=null，不冒充排隊 SLA。
+  此為一次目前資料集的服務層 smoke，非人工浏览器／大量同時使用者 UAT。
+- 索引清理實際 65 scanned／16 retained／49 orphans，清理後 16 scanned／0 orphan。
+  **只刪除 49 筆衍生向量**，資料庫與 CAD 檔案零刪除。手動上傳資料集現有 3 筆保留；
+  故障控制資料集仍保留且由既有搜尋排除策略排除。
+- 備份：Docker volume `/data/stage50-index-cleanup-backup.json`，並複製到
+  專案 `.runtime/stage50-index-cleanup-backup.json`。原始 benchmark 與清理後報告也保留於
+  `.runtime/stage50-surface-benchmark-before.json`、`stage50-surface-benchmark-after.json`、
+  `stage50-index-after.json`；這些衍生資料不進 Git。
+- 清理後：16 個 curated CAD、5 query、K=5，各次 ANN/exact tie-aware overlap=1.0，
+  不是跨模型人工準確率。5 次 cold p50=0.3629／p95=0.4181 秒；10 次 shared warm
+  p50=0.01093／p95=0.01238 秒，10/10 shared hit，0 failure。
+  環境為 Linux WSL2 x86_64 Docker；Python traced peak=67,482,633 bytes，不包含全體 native RSS。
+  小型相鄰配對、每輪含來源載入，不外推成大型 STEP 或全庫 SLA。
+- `demo-status.ps1`：Core Demo、Sites entry、tunnel ready；DB/Redis/Qdrant ok，
+  Workers 2/2、Curated CAD 16/16 indexed、stale jobs 0、MCP 13 tools／deep links ready。
+  整體 degraded 僅是既有可選 Assistant deterministic fallback，幾何流程不呼叫 LLM、不需 GPU。
+- 重新整理瀏覽器（必要時 Ctrl+F5），再建立**新的搜尋**才能使用新政策；
+  舊搜尋結果依 immutable snapshot 保留，不被背景改寫。
+
+## 仍需人工品質驗收（不可由程式測試取代）
+
+第 3、5 階段程式與實測已完成；第 4 階段資料準備／標註／校準軟體已完成，
+但多家族 corpus 分組、20 個 development + 10 個 holdout 人工 query、
+hard negatives 與完整 no-match 判讀尚未完成。現有 100 個公開加工模型是準備材料，
+不是 100 個已經工程师确认的歷史模具案例。
+正式相似門檻未啟用，UI 維持未校準提示；不得宣稱真實模具辨識準確率已驗收。
