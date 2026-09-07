@@ -17,7 +17,12 @@ from .models import (
     SimilaritySearch,
 )
 from .similarity_feedback import compare_cross_modal, fuse_cross_modal, matches_engineering_filters
-from .vector_store import VECTOR_DIMENSION, query_similar_points, upsert_feature
+from .vector_store import (
+    VECTOR_DIMENSION,
+    query_named_vectors,
+    query_similar_points,
+    upsert_feature,
+)
 
 PROFILE_KEY = "demo-general@1.0"
 FEATURE_SCHEMA_VERSION = "1.0"
@@ -222,11 +227,19 @@ def create_similarity_records(
         raise SimilarityValidationError(
             "SIMILARITY_GEOMETRY_NOT_READY", "The selected artifact has no parsed CAD geometry."
         ) from exc
+    read_version = settings.SIMILARITY_INDEX_READ_VERSION
+    if read_version not in {"v1", "v2"}:
+        raise SimilarityValidationError(
+            "SIMILARITY_INDEX_ROUTE_INVALID",
+            "The configured similarity read version must be v1 or v2.",
+        )
+    schema_version = FEATURE_SCHEMA_VERSION if read_version == "v1" else "2.0"
+    extractor_version = EXTRACTOR_VERSION if read_version == "v1" else "2.1.0"
     feature_set = (
         cad_model.feature_sets.filter(
             feature_type="cad_similarity",
-            schema_version=FEATURE_SCHEMA_VERSION,
-            extractor_version=EXTRACTOR_VERSION,
+            schema_version=schema_version,
+            extractor_version=extractor_version,
         )
         .order_by("-created_at")
         .first()
@@ -268,7 +281,19 @@ def create_similarity_records(
             )
         normalized_filters[key] = [value.strip()[:128] for value in values if value.strip()][:25]
 
-    profile = get_demo_profile()
+    if read_version == "v2":
+        from .cad_manufacturing import resolve_similarity_profile
+
+        resolution = resolve_similarity_profile(cad_model)
+        profile = resolution.profile
+        profile_resolution = resolution.resolution
+    else:
+        profile = get_demo_profile()
+        profile_resolution = {
+            "mode": "fixed",
+            "selected_profile": profile.profile_key,
+            "reason_code": "LEGACY_V1_ROUTE",
+        }
     with transaction.atomic():
         job = Job.objects.create(
             capability_id="mold.similarity_search",
@@ -278,10 +303,17 @@ def create_similarity_records(
             resource_class="vector",
             input_artifact_version=query_version,
             input_snapshot={
-                "schema_version": "1.0",
+                "schema_version": "1.1",
                 "requested_by": (requested_by.strip() or "system")[:128],
                 "cad_artifact_version_id": str(query_version.id),
                 "profile": profile.profile_key,
+                "profile_resolution": profile_resolution,
+                "read_version": read_version,
+                "feature_set_id": str(feature_set.id),
+                "feature_schema_version": feature_set.schema_version,
+                "extractor_version": feature_set.extractor_version,
+                "index_collection": profile.candidate_collection,
+                "index_version": profile.index_version,
                 "filters": normalized_filters,
                 "top_k": top_k,
             },
@@ -499,11 +531,18 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         if values:
             qdrant_filters[payload_name] = values
 
-    coarse_candidates = query_similar_points(
-        [float(value) for value in query_feature.vector],
-        limit=min(max(search.top_k * 5, 20), 200),
-        filters=qdrant_filters,
-    )
+    query_arguments = {
+        "vector": [float(value) for value in query_feature.vector],
+        "limit": min(max(search.top_k * 5, 20), 200),
+        "filters": qdrant_filters,
+    }
+    if query_feature.schema_version == "2.0":
+        coarse_candidates = query_named_vectors(
+            collection_name=search.profile.candidate_collection,
+            **query_arguments,
+        )
+    else:
+        coarse_candidates = query_similar_points(**query_arguments)
     coarse_by_id = {
         candidate.feature_set_id: candidate.coarse_score for candidate in coarse_candidates
     }
@@ -523,7 +562,12 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
             continue
         if not matches_engineering_filters(candidate.cad_model.artifact_version, search.filters):
             continue
-        comparison = compare_feature_sets(query_feature, candidate, search.profile)
+        if query_feature.schema_version == "2.0":
+            from .cad_manufacturing import compare_feature_sets_v2
+
+            comparison = compare_feature_sets_v2(query_feature, candidate, search.profile)
+        else:
+            comparison = compare_feature_sets(query_feature, candidate, search.profile)
         comparison = fuse_cross_modal(
             comparison,
             compare_cross_modal(
@@ -562,7 +606,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
 
     query_preview = query_feature.cad_model.preview_artifact_version
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "search_id": str(search.id),
         "query_ref": {
             "artifact_id": str(query_artifact.id),
@@ -583,10 +627,18 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         "filters": search.filters,
         "result_count": len(matches),
         "results": matches,
-        "limitations": [
-            "Demo ranking uses deterministic geometry, dimension, topology, "
-            "and available metadata lanes.",
-            "A learned visual embedding lane is not included in Stage 3.",
-        ],
+        "limitations": (
+            [
+                "CPU v2 ranking uses deterministic shape invariants, manufacturing, dimension, "
+                "topology, metadata and available cross-modal lanes.",
+                "No learned GPU embedding or online training is used.",
+            ]
+            if query_feature.schema_version == "2.0"
+            else [
+                "Demo ranking uses deterministic geometry, dimension, topology, "
+                "and available metadata lanes.",
+                "The active read route is the retained v1 compatibility index.",
+            ]
+        ),
         "lineage_ref": f"similarity-search:{search.id}",
     }

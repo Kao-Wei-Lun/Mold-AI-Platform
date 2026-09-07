@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
+from platform_core.cad_similarity_v2 import extract_feature_set_v2
 from platform_core.ingestion import create_upload_records
 from platform_core.models import CADModel, FeatureSet, Job, SimilaritySearch
 from platform_core.similarity import (
@@ -171,6 +172,35 @@ class SimilarityTests(TestCase):
         response = self.client.get(f"/api/v1/jobs/{records.job.id}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["result"]["search_id"], str(search.id))
+
+    @override_settings(SIMILARITY_INDEX_READ_VERSION="v2")
+    @patch("platform_core.similarity.query_named_vectors")
+    def test_v2_route_pins_and_executes_cpu_manufacturing_profile(self, query_points) -> None:
+        query_v1 = self.create_feature("query-v2", 10)
+        near_v1 = self.create_feature("near-v2", 11)
+        query = extract_feature_set_v2(query_v1.cad_model)
+        near = extract_feature_set_v2(near_v1.cad_model)
+        FeatureSet.objects.filter(id__in=[query.id, near.id]).update(
+            index_status=FeatureSet.IndexStatus.INDEXED
+        )
+        query.refresh_from_db()
+        near.refresh_from_db()
+        records = create_similarity_records(query.cad_model.artifact_version, top_k=5)
+        query_points.return_value = [
+            VectorCandidate(str(query.id), 1.0),
+            VectorCandidate(str(near.id), 0.98),
+        ]
+
+        result = run_similarity_job.run(str(records.job.id))
+
+        records.search.refresh_from_db()
+        self.assertEqual(result["state"], Job.State.SUCCEEDED)
+        self.assertEqual(records.search.query_feature_set.schema_version, "2.0")
+        self.assertEqual(records.search.profile.schema_version, "2.0")
+        self.assertEqual(records.job.input_snapshot["read_version"], "v2")
+        self.assertEqual(records.search.result["index_version"], "cad-cpu-v2")
+        self.assertIn("manufacturing", records.search.result["results"][0]["sub_scores"])
+        query_points.assert_called_once()
 
     @patch("platform_core.views.run_similarity_job.apply_async", side_effect=ConnectionError)
     def test_queue_failure_is_typed_without_corrupting_cad_geometry(self, apply_async) -> None:
