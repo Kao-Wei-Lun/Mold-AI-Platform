@@ -128,3 +128,24 @@ Phase 5 程式驗證：完整 `scripts/test.ps1` exit 0，後端 359 passed、1 
 Web 173 tests、Sites 15 tests。另外搜尋診斷／未校準提示雙語 UI 專項 4 passed。
 共享快取跨程序記憶體清除、hash 損毀、TTL、碰撞容量、DB 故障降級、不同模式與容差、
 來源檢查不能被快取繞過、工作預算固定與公開資料 benchmark 不寫 Job 均通過。
+
+### 外網實測發現的索引殘留
+
+第一次 live benchmark 的 exact/ANN overlap@5 為 0.2–0.4；檢查發現 Qdrant 回傳了
+資料庫已不存在的 FeatureSet 與 ArtifactVersion。舊向量佔用候選位置，不是新對位演算法的結果。
+因此追加 `reconcile_cad_index` 維護工具，預設 dry-run，**不自動清理整個索引**：
+
+1. `reconcile_cad_index --dataset curated-cad-demo-v1 --output /data/stage50-index-dry-run.json`。
+2. 檢視 scanned／retained／orphans 以及 output 內的完整 vector/payload。
+3. 指定新備份路徑，加 `--apply --expected-orphan-count N`；當數量改變即停止。
+4. 工具先完整寫出備份，再重查資料庫；只删除指定 dataset、public_demo、cad-cpu-v2 範圍內，
+   FeatureSet 和 ArtifactVersion **兩者都不存在**的明確 point IDs。任何現存 ArtifactVersion 都保留。
+5. 最多掃描 5000 點；scope 異常／重複 pagination／備份路徑已存在皆停止。
+   不刪任何資料庫紀錄或磁碟 CAD；備份可供管理員確認後以 Qdrant points upsert 還原衍生索引。
+6. 清理後再跑 dry-run 與 K=5 benchmark；原始失敗報告保留，不能覆蓋成成功。
+   Benchmark 新增 exact/ANN overlap ≥95% 診斷門檻；低於門檻即 incomplete／非零退出，
+   即使 cache 命中正常也不能冒充整體召回檢查通過。這仍不是人工相似度準確率門檻。
+
+專項測試驗證 dry-run 不刪、備份先於刪除、明確 ID、現存資料保留與 scope/count 改變拒絕。
+追加完整回歸：後端 362 passed、1 skipped、9 subtests；Web 173、Sites 15，
+lint/build/migration/Compose 通過。最後補的 ANN 低召回拒絕判定與索引維護專項 7 passed。

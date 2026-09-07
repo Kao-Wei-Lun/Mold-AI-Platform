@@ -155,7 +155,9 @@ class Command(BaseCommand):
             "python_traced_peak_bytes": peak,
             "queries": rows,
             "status": "complete"
-            if failures == 0 and len(warm) == len(rows) * (options["repeats"] - 1)
+            if failures == 0
+            and len(warm) == len(rows) * (options["repeats"] - 1)
+            and all(row["ann_tie_aware_exact_overlap"] >= 0.95 for row in rows)
             else "incomplete",
             "limitations": [
                 "ANN overlap against exact cosine is not human relevance recall.",

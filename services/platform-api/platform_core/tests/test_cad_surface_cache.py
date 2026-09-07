@@ -56,6 +56,7 @@ def test_public_operator_benchmark_requires_scope_and_reuses_db(tmp_path):
     import json
 
     from django.core.management import call_command
+    from django.core.management.base import CommandError
 
     from platform_core.models import FeatureSet, Job
     from platform_core.vector_store import VectorCandidate
@@ -78,7 +79,7 @@ def test_public_operator_benchmark_requires_scope_and_reuses_db(tmp_path):
         patch(
             "platform_core.management.commands.benchmark_cad_similarity.query_named_vectors",
             return_value=[VectorCandidate(str(i), 1.0) for i in range(2)],
-        ),
+        ) as ann,
         patch.object(
             ranking,
             "_load_samples",
@@ -99,6 +100,17 @@ def test_public_operator_benchmark_requires_scope_and_reuses_db(tmp_path):
             filtered.call_args.kwargs["cad_model__artifact_version__artifact__classification"]
             == "public_demo"
         )
+        ann.return_value = []
+        with pytest.raises(CommandError, match="incomplete"):
+            call_command(
+                "benchmark_cad_similarity",
+                dataset="public-test",
+                queries=1,
+                repeats=2,
+                top_k=2,
+                output=tmp_path / "bad-ann.json",
+            )
+        assert json.loads((tmp_path / "bad-ann.json").read_text())["status"] == "incomplete"
     report = json.loads(path.read_text())
     assert report["status"] == "complete"
     assert report["shared_cache_hits"] == 2
