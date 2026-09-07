@@ -394,3 +394,7 @@ Stage 40 starts the CPU-only AI optimization program with a deterministic 32-dim
 descriptor, a versioned v2 shadow collection and reproducible extraction/ACL lineage while the v1
 read path remains active. See
 [`stage-40-cpu-cad-v2-shadow-index.md`](stage-40-cpu-cad-v2-shadow-index.md).
+
+Stage 41 adds CPU manufacturing evidence with explicit precision states, safe STL downgrade,
+wall-thickness/undercut/parting descriptors and deterministic product-family similarity profiles.
+See [`stage-41-cpu-manufacturing-similarity.md`](stage-41-cpu-manufacturing-similarity.md).

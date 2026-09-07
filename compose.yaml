@@ -63,6 +63,7 @@ services:
       SIMILARITY_INDEX_VERSION_V2: ${SIMILARITY_INDEX_VERSION_V2:-cad-cpu-v2}
       SIMILARITY_AUTO_INDEX: "true"
       SIMILARITY_V2_SHADOW_INDEX: ${SIMILARITY_V2_SHADOW_INDEX:-false}
+      SIMILARITY_STL_APPROXIMATE_THICKNESS: ${SIMILARITY_STL_APPROXIMATE_THICKNESS:-false}
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command: ["./scripts/start-api.sh"]
     volumes:
@@ -103,6 +104,7 @@ services:
       SIMILARITY_INDEX_VERSION_V2: ${SIMILARITY_INDEX_VERSION_V2:-cad-cpu-v2}
       SIMILARITY_AUTO_INDEX: "true"
       SIMILARITY_V2_SHADOW_INDEX: ${SIMILARITY_V2_SHADOW_INDEX:-false}
+      SIMILARITY_STL_APPROXIMATE_THICKNESS: ${SIMILARITY_STL_APPROXIMATE_THICKNESS:-false}
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command: ["celery", "-A", "mold_platform", "worker", "--loglevel=INFO", "--queues=general", "--concurrency=2"]
     volumes:
@@ -139,6 +141,7 @@ services:
       SIMILARITY_INDEX_VERSION_V2: ${SIMILARITY_INDEX_VERSION_V2:-cad-cpu-v2}
       SIMILARITY_AUTO_INDEX: "true"
       SIMILARITY_V2_SHADOW_INDEX: ${SIMILARITY_V2_SHADOW_INDEX:-false}
+      SIMILARITY_STL_APPROXIMATE_THICKNESS: ${SIMILARITY_STL_APPROXIMATE_THICKNESS:-false}
       ARTIFACT_STORAGE_ROOT: /data/artifacts
     command:
       [

@@ -20,7 +20,7 @@ from .vector_store import upsert_named_vector
 
 FEATURE_SCHEMA_VERSION = "2.0"
 EXTRACTOR_NAME = "deterministic-cpu-shape-invariants"
-EXTRACTOR_VERSION = "2.0.0"
+EXTRACTOR_VERSION = "2.1.0"
 VECTOR_DIMENSION = 32
 SAMPLE_COUNT = 4096
 RANDOM_SEED = 20260907
@@ -197,10 +197,34 @@ def extract_feature_set_v2(cad_model: CADModel) -> FeatureSet:
         raise CADSimilarityV2Error(
             "SIMILARITY_GEOMETRY_NOT_READY", "CAD geometry must finish before feature extraction."
         )
-    result = extract_shape_descriptor(_load_preview_mesh(cad_model))
+    mesh = _load_preview_mesh(cad_model)
+    result = extract_shape_descriptor(mesh)
+    from .cad_manufacturing import extract_manufacturing_features
+
+    manufacturing = extract_manufacturing_features(
+        mesh,
+        source_format=cad_model.artifact_version.format,
+        allow_stl_approximation=settings.SIMILARITY_STL_APPROXIMATE_THICKNESS,
+    )
     artifact = cad_model.artifact_version.artifact
     features = {
         **result.features,
+        "manufacturing": manufacturing,
+        "dimension": {
+            "sorted": sorted(
+                [
+                    float(cad_model.bounding_box.get("size", {}).get(axis, 0.0))
+                    for axis in ("x", "y", "z")
+                ],
+                reverse=True,
+            ),
+            "unit_system": cad_model.unit_system,
+        },
+        "topology": {
+            "face_count": int(cad_model.face_count or 0),
+            "edge_count": int(cad_model.edge_count or 0),
+            "surface_type_histogram": cad_model.surface_type_histogram,
+        },
         "metadata": {
             "dataset_id": artifact.dataset_id,
             "product_type": artifact.product_type,
