@@ -122,5 +122,6 @@ STL face/edge count 不參與 topology；STEP/stp 正規化為同表示類別。
 
 ## 10. 執行紀錄
 
-- P0：規劃建立，待文件提交。
-- P1–P3：待實作與測試；公開資料搜尋品質尚未驗收。
+- P0：文件先行提交 `dcf27a8`。
+- P1：完成離線 evaluator 與 manifest 檢查，14 項測試通過；不寫入業務 DB/Qdrant。
+- P2–P3：待實作與測試；公開資料搜尋品質尚未驗收。
