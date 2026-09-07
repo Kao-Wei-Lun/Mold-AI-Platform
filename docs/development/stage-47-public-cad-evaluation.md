@@ -99,9 +99,22 @@ MFCAD 為公開加工特徵模型，不是公司歷史模具，不能驗證製�
 既有搜尋結果是歷史紀錄，不會因程式更新自動重算；使用者需重新送出搜尋才能測新版。
 原始檔/完整報表在 `.runtime`，Git 只存版本化腳本、lock、測試與本結果摘要。
 
-本輪未重建或重啟目前的外網 Demo 容器，也未發布 Sites。程式與 Compose 配置變更
-需在下一次既有 Demo 部署後才會出現在外網；不要把本機 production build 當部署完成。
-沒有建立新 Docker 專案或刪除任何既有資料/volume。
+初次程式交付未部署；使用者後續要求外網 Demo 後，已於 2026-09-07 完成既有
+`mold-ai-platform-sites-demo` 部署更新。只重建共用 app image，更新 api、worker、
+worker-cad、web 與 mcp-gateway；保留 DB、Redis、Qdrant、volume 及原有 tunnel。
+Sites 私人入口程式未變更，因此不重新發布入口。不建立新 Docker 專案，不刪除其他專案。
+
+部署後驗證：
+- 外網首頁 HTTP 200，實際取得 `/assets/index-BTG9t_rI.js`，含新版幾何說明及驗證警語。
+- 本機帳號登入模式與既有管理者仍就緒；未登入存取受保護 API 回傳 HTTP 401。
+- API/DB/Redis/Qdrant/MCP healthy；兩個 workers 回應正常，沒有 stale jobs。
+- 執行中 API 的 read route 為 v2，實際幾何比較為 `block-distance@1.0`，包含 7 個分項。
+- Core Demo、Sites entry、Web tunnel、MCP deep link 均 ready。Assistant 的 deterministic
+  fallback 仍是既有可選限制，不影響 CAD 相似搜尋，也未呼叫付費 LLM。
+- 未更動使用者資料；公開 MFCAD 評估原件仍留在離線 corpus，未自動匯入線上資料庫。
+
+使用者可沿用原有 Sites 私人入口或既有 HTTPS tunnel，登入原本帳號。
+若保留舊頁籤請強制重新整理；重新送出搜尋才使用新評分，歷史結果不會被覆寫。
 
 ## 回歸驗證
 
