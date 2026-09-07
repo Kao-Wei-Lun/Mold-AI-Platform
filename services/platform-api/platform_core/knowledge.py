@@ -679,6 +679,76 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
     return {"status": "indexed", "findings": [], "chunk_count": len(chunks)}
 
 
+def index_knowledge_document_v2(document: KnowledgeDocument) -> dict[str, object]:
+    """Populate only the governed v2 hybrid index from existing canonical chunks.
+
+    This migration-safe path intentionally leaves the v1 collection and relational chunks
+    untouched. It can therefore be resumed and rolled back without reparsing source documents.
+    """
+    if document.ingestion_status != KnowledgeDocument.IngestionStatus.INDEXED:
+        raise KnowledgeValidationError(
+            "RAG_V2_SOURCE_NOT_INDEXED", "Only successfully indexed documents can enter v2."
+        )
+    if document.publication_status != "published":
+        raise KnowledgeValidationError(
+            "RAG_V2_SOURCE_NOT_PUBLISHED", "Only published documents can enter v2."
+        )
+    chunks = list(document.chunks.filter(index_status=KnowledgeChunk.IndexStatus.INDEXED))
+    if not chunks:
+        raise KnowledgeValidationError(
+            "RAG_V2_CHUNKS_MISSING", "The document has no active canonical chunks."
+        )
+    indexed = 0
+    for chunk in chunks:
+        dense = dense_encode(chunk.text)
+        sparse = sparse_encode(chunk.text)
+        upsert_hybrid_point(
+            collection_name=settings.QDRANT_KNOWLEDGE_COLLECTION_V2,
+            dimension=dense.dimension,
+            point_id=str(chunk.id),
+            dense=dense.vector,
+            sparse_indices=sparse.indices,
+            sparse_values=sparse.values,
+            payload={
+                "classification": document.classification,
+                "acl_scopes": document.acl_scopes,
+                "document_type": document.document_type,
+                "authority_level": document.authority_level,
+                "document_id": str(document.id),
+                "document_version_id": str(document.artifact_version_id),
+                "chunk_id": str(chunk.id),
+                "dataset_id": document.artifact_version.artifact.dataset_id,
+                "publication_status": document.publication_status,
+                "parser_version": document.parser_version,
+                "chunker_version": document.chunker_version,
+                "embedding_model": dense.model,
+                "embedding_revision": dense.revision,
+                "source_checksum": document.artifact_version.sha256,
+                "active": True,
+            },
+        )
+        chunk.embedding_v2_model = dense.model
+        chunk.embedding_v2_dimension = dense.dimension
+        chunk.embedding_v2_checksum = dense.checksum
+        chunk.sparse_encoder = sparse.encoder
+        chunk.save(
+            update_fields=[
+                "embedding_v2_model",
+                "embedding_v2_dimension",
+                "embedding_v2_checksum",
+                "sparse_encoder",
+            ]
+        )
+        indexed += 1
+    return {
+        "status": "indexed",
+        "document_id": str(document.id),
+        "chunk_count": indexed,
+        "collection": settings.QDRANT_KNOWLEDGE_COLLECTION_V2,
+        "activation_changed": False,
+    }
+
+
 def tombstone_knowledge_document(document: KnowledgeDocument) -> int:
     """Remove derived vector points and mark canonical chunks as tombstoned."""
     chunks = list(document.chunks.all())
