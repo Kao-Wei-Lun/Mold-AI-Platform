@@ -33,6 +33,9 @@ export type SimilarityMatch = {
     p95_distance?: number;
     tolerance?: number;
     distance_unit?: string;
+    tolerance_curve?: { tolerance: number; f_score: number }[];
+    local_evidence?: { levels: { grid: number; patch_count: number; lower_quartile_coverage: number | null }[] };
+    brep_structure?: { status: string; agreement?: number | null; reason?: string };
   };
   available_lane_score?: number;
   evidence_coverage?: number;
@@ -149,6 +152,8 @@ export async function createSimilaritySearch(
   query: CADModelResult,
   filters: { datasetIds: string[]; productTypes: string[]; materialCodes: string[] },
   topK: number,
+  comparisonMode: "normalized_shape" | "engineering_size" = "normalized_shape",
+  toleranceMm = 0.5,
 ): Promise<SimilarityAccepted> {
   const response = await apiFetch(`${apiBaseUrl}/api/v1/similarity-searches`, {
     method: "POST",
@@ -163,6 +168,8 @@ export async function createSimilaritySearch(
         material_codes: filters.materialCodes,
       },
       top_k: topK,
+      comparison_mode: comparisonMode,
+      tolerance_mm: toleranceMm,
     }),
   });
   if (!response.ok) throw new Error(await errorMessage(response));

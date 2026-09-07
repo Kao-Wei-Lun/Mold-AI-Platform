@@ -300,3 +300,23 @@ class SimilarityTests(TestCase):
         )
         self.assertEqual(unknown_profile.status_code, 400)
         self.assertEqual(unknown_profile.json()["error"]["code"], "VALIDATION_SIMILARITY_PROFILE")
+
+    @override_settings(SIMILARITY_INDEX_READ_VERSION="v2")
+    def test_comparison_mode_validation_and_unknown_units_fail_before_queue(self):
+        query = self.create_feature("mode-query", 10)
+        for mode, tolerance, expected in [
+            ([], 0.5, "SURFACE_INVALID_MODE"),
+            ("engineering_size", 0.5, "SURFACE_KNOWN_UNITS_REQUIRED"),
+            ("normalized_shape", "nan", "SURFACE_INVALID_TOLERANCE"),
+        ]:
+            response = self.client.post(
+                "/api/v1/similarity-searches",
+                {
+                    "query": {"cad_artifact_version_id": str(query.cad_model.artifact_version_id)},
+                    "comparison_mode": mode,
+                    "tolerance_mm": tolerance,
+                },
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["error"]["code"], expected)

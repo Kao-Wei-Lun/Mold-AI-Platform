@@ -116,4 +116,6 @@ def test_step_parser_extracts_box_geometry(tmp_path: Path) -> None:
     assert result.edge_count == 12
     assert result.bounding_box["size"] == pytest.approx({"x": 10, "y": 20, "z": 30})
     assert result.surface_type_histogram == {"plane": 6}
+    assert result.brep_structure["status"] == "available"
+    assert result.brep_structure["adjacency"] == {"plane|plane": 12}
     assert preview_path.exists()

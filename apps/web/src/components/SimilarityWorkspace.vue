@@ -45,6 +45,8 @@ const datasetId = ref("");
 const productType = ref("");
 const materialCode = ref("");
 const topK = ref(5);
+const comparisonMode = ref<"normalized_shape" | "engineering_size">("normalized_shape");
+const toleranceMm = ref(0.5);
 const job = ref<SimilarityJob | null>(null);
 const selectedMatch = ref<SimilarityMatch | null>(null);
 const submitting = ref(false);
@@ -271,6 +273,8 @@ async function submit(): Promise<void> {
         materialCodes: materialCode.value.trim() ? [materialCode.value.trim()] : [],
       },
       topK.value,
+      comparisonMode.value,
+      toleranceMm.value,
     );
     if (!isCurrentSearch(generation)) return;
     const nextJob = await fetchSimilarityJob(accepted.job_id);
@@ -448,6 +452,17 @@ onBeforeUnmount(() => {
           <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
           <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
         </div>
+        <div class="form-wide score-grid" data-testid="comparison-mode-controls">
+          <FormField v-slot="{ fieldId }" :label="t('Geometry comparison mode')">
+            <select :id="fieldId" v-model="comparisonMode" data-testid="comparison-mode">
+              <option value="normalized_shape">{{ t("Shape only (uniform scale allowed)") }}</option>
+              <option value="engineering_size">{{ t("Actual size (known units required)") }}</option>
+            </select>
+          </FormField>
+          <FormField v-if="comparisonMode === 'engineering_size'" v-slot="{ fieldId }" :label="t('Surface tolerance (mm)')">
+            <input :id="fieldId" v-model.number="toleranceMm" type="number" min="0.001" max="10" step="0.001" required />
+          </FormField>
+        </div>
         <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset filter')">
           <select :id="fieldId" v-model="datasetId" :aria-describedby="describedBy" :aria-invalid="invalid">
             <option value="">{{ t("Any") }}</option>
@@ -547,7 +562,7 @@ onBeforeUnmount(() => {
 
           <section v-if="selectedMatch.geometric_verification" class="roi-controls" data-testid="surface-verification">
             <h3>{{ t("Automatic surface verification") }}</h3>
-            <p>{{ t("Shape-only comparison allows uniform scaling. Distances use normalized surface RMS radius, not mm.") }}</p>
+            <p>{{ selectedMatch.geometric_verification.mode === 'engineering_size' ? t("Actual-size comparison uses mm and permits rigid rotation and translation only.") : t("Shape-only comparison allows uniform scaling. Distances use normalized surface RMS radius, not mm.") }}</p>
             <template v-if="selectedMatch.geometric_verification.status === 'computed'">
               <div class="score-grid">
                 <div><span>{{ t("Query surface coverage") }}</span><strong>{{ scorePercent(selectedMatch.geometric_verification.query_coverage) }}</strong></div>
@@ -558,6 +573,16 @@ onBeforeUnmount(() => {
               </div>
               <p>{{ t("Baseline ranking score") }}: {{ scorePercent(selectedMatch.baseline_overall_score) }} · {{ t("Surface adjustment factor") }}: {{ scorePercent(selectedMatch.geometric_verification.score_factor) }}</p>
               <p>{{ t("Coverage tolerance") }}: {{ selectedMatch.geometric_verification.tolerance }}</p>
+              <div v-if="selectedMatch.geometric_verification.local_evidence" class="score-grid">
+                <div v-for="level in selectedMatch.geometric_verification.local_evidence.levels" :key="level.grid">
+                  <span>{{ t("Local lower-quartile coverage") }} ({{ level.grid }}×{{ level.grid }}×{{ level.grid }})</span>
+                  <strong>{{ scorePercent(level.lower_quartile_coverage) }}</strong>
+                </div>
+              </div>
+              <p v-if="selectedMatch.geometric_verification.brep_structure">{{ t("STEP adjacency agreement") }}: {{ selectedMatch.geometric_verification.brep_structure.status === 'computed' ? scorePercent(selectedMatch.geometric_verification.brep_structure.agreement) : t("Unavailable; STEP reprocessing may be required.") }}</p>
+              <details v-if="selectedMatch.geometric_verification.tolerance_curve"><summary>{{ t("Multi-tolerance evidence") }}</summary>
+                <p v-for="row in selectedMatch.geometric_verification.tolerance_curve" :key="row.tolerance">{{ row.tolerance.toFixed(4) }} → {{ scorePercent(row.f_score) }}</p>
+              </details>
             </template>
             <p v-else role="status">{{ t("Surface verification is incomplete. This candidate is reference-only; its baseline score is not a verified match.") }} <code>{{ selectedMatch.geometric_verification.error_code }}</code></p>
             <p>{{ t("Experimental surface evidence; not calibrated against human judgments and not an engineering approval.") }}</p>

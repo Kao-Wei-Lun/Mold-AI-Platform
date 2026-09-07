@@ -340,6 +340,7 @@ class CADModel(models.Model):
     face_count = models.PositiveIntegerField(null=True, blank=True)
     edge_count = models.PositiveIntegerField(null=True, blank=True)
     surface_type_histogram = models.JSONField(default=dict)
+    brep_structure = models.JSONField(default=dict)
     quality_flags = models.JSONField(default=list)
     preview_artifact_version = models.ForeignKey(
         ArtifactVersion,

@@ -64,6 +64,7 @@ def cad_model_payload(cad_model: CADModel) -> dict[str, object]:
         "face_count": cad_model.face_count,
         "edge_count": cad_model.edge_count,
         "surface_type_histogram": cad_model.surface_type_histogram,
+        "brep_structure": cad_model.brep_structure,
         "quality_flags": cad_model.quality_flags,
         "preview": preview,
         "similarity_index": similarity_index,

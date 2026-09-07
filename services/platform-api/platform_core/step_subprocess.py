@@ -30,6 +30,9 @@ def process_step(source_path: Path, preview_path: Path) -> dict[str, object]:
     solids = shape.Solids()
     surface_types = Counter(face.geomType().lower() for face in faces)
     quality_flags = [] if solids else ["OPEN_SHELL"]
+    from .cad_brep_structure import extract_structure
+
+    structure = extract_structure(shape)
 
     preview_path.parent.mkdir(parents=True, exist_ok=True)
     cq.exporters.export(
@@ -53,6 +56,7 @@ def process_step(source_path: Path, preview_path: Path) -> dict[str, object]:
         "edge_count": len(edges),
         "surface_type_histogram": dict(sorted(surface_types.items())),
         "quality_flags": quality_flags,
+        "brep_structure": structure,
     }
 
 

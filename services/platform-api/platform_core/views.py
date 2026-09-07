@@ -1596,6 +1596,8 @@ class SimilaritySearchListCreateView(APIView):
                 filters=filters,
                 idempotency_key=str(idempotency_key) if idempotency_key else None,
                 requested_by=str(getattr(request._request, "mold_ai_actor_id", "anonymous")),
+                comparison_mode=request.data.get("comparison_mode", "normalized_shape"),
+                tolerance_mm=request.data.get("tolerance_mm", 0.5),
             )
         except SimilarityValidationError as exc:
             conflict = exc.code.startswith("CONFLICT_")

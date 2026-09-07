@@ -7,7 +7,10 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from .cad_local_geometry import ALGORITHM as DETAIL_SURFACE_ALGORITHM
+from .cad_local_geometry import unit_multiplier
 from .cad_surface_verification import ALGORITHM as SURFACE_ALGORITHM
+from .cad_surface_verification import SurfaceVerificationError
 from .models import (
     ArtifactVersion,
     CADModel,
@@ -223,6 +226,8 @@ def create_similarity_records(
     filters: dict[str, object] | None = None,
     idempotency_key: str | None = None,
     requested_by: str = "system",
+    comparison_mode: str = "normalized_shape",
+    tolerance_mm: float = 0.5,
 ) -> SimilarityRecords:
     if not 1 <= top_k <= 50:
         raise SimilarityValidationError("VALIDATION_TOP_K", "top_k must be between 1 and 50.")
@@ -233,6 +238,30 @@ def create_similarity_records(
             "SIMILARITY_GEOMETRY_NOT_READY", "The selected artifact has no parsed CAD geometry."
         ) from exc
     read_version = settings.SIMILARITY_INDEX_READ_VERSION
+    if not isinstance(comparison_mode, str) or comparison_mode not in {
+        "normalized_shape",
+        "engineering_size",
+    }:
+        raise SimilarityValidationError("SURFACE_INVALID_MODE", "Unknown geometry comparison mode.")
+    try:
+        tolerance_mm = float(tolerance_mm)
+        if not math.isfinite(tolerance_mm) or not 0.001 <= tolerance_mm <= 10:
+            raise ValueError()
+    except (ValueError, TypeError) as exc:
+        raise SimilarityValidationError(
+            "SURFACE_INVALID_TOLERANCE", "Tolerance must be 0.001 to 10 mm."
+        ) from exc
+    if comparison_mode == "engineering_size":
+        if read_version != "v2" or not settings.SIMILARITY_SURFACE_VERIFICATION_ENABLED:
+            raise SimilarityValidationError(
+                "SURFACE_MODE_DISABLED", "Size comparison requires surface verification."
+            )
+        try:
+            unit_multiplier(cad_model.unit_system)
+        except SurfaceVerificationError as exc:
+            raise SimilarityValidationError(
+                exc.code, "Size comparison requires known CAD units."
+            ) from exc
     if read_version not in {"v1", "v2"}:
         raise SimilarityValidationError(
             "SIMILARITY_INDEX_ROUTE_INVALID",
@@ -259,6 +288,15 @@ def create_similarity_records(
     if normalized_key:
         existing_job = Job.objects.filter(idempotency_key=normalized_key).first()
         if existing_job:
+            if (
+                existing_job.input_snapshot.get("comparison_mode", "normalized_shape")
+                != comparison_mode
+                or existing_job.input_snapshot.get("tolerance_mm", 0.5) != tolerance_mm
+            ):
+                raise SimilarityValidationError(
+                    "CONFLICT_IDEMPOTENCY_KEY",
+                    "Comparison parameters differ from the existing job.",
+                )
             if existing_job.capability_id != "mold.similarity_search":
                 raise SimilarityValidationError(
                     "CONFLICT_IDEMPOTENCY_KEY",
@@ -316,10 +354,12 @@ def create_similarity_records(
                 "read_version": read_version,
                 "geometry_ranking_policy": settings.SIMILARITY_GEOMETRY_POLICY,
                 "surface_verification_policy": (
-                    SURFACE_ALGORITHM
+                    DETAIL_SURFACE_ALGORITHM
                     if read_version == "v2" and settings.SIMILARITY_SURFACE_VERIFICATION_ENABLED
                     else "disabled"
                 ),
+                "comparison_mode": comparison_mode,
+                "tolerance_mm": tolerance_mm,
                 "feature_set_id": str(feature_set.id),
                 "feature_schema_version": feature_set.schema_version,
                 "extractor_version": feature_set.extractor_version,
@@ -624,10 +664,17 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         )
     matches.sort(key=lambda match: (-float(match["overall_score"]), match["artifact_version_id"]))
     surface_policy = search.job.input_snapshot.get("surface_verification_policy", "disabled")
-    if surface_policy == SURFACE_ALGORITHM:
+    if surface_policy in {SURFACE_ALGORITHM, DETAIL_SURFACE_ALGORITHM}:
         from .cad_surface_reranking import rerank_surfaces
 
-        matches = rerank_surfaces(matches, query_feature, authorized_candidates)
+        matches = rerank_surfaces(
+            matches,
+            query_feature,
+            authorized_candidates,
+            policy=surface_policy,
+            mode=search.job.input_snapshot.get("comparison_mode", "normalized_shape"),
+            tolerance_mm=search.job.input_snapshot.get("tolerance_mm", 0.5),
+        )
     elif surface_policy != "disabled":
         raise ValueError("Unknown surface verification policy")
     matches = matches[: search.top_k]
@@ -672,12 +719,12 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         )
         + (
             [
-                "Surface verification uses scale-normalized sampled geometry, not millimeter "
-                "tolerance or human-calibrated match probabilities.",
+                "Surface verification is sampled evidence, not exact CAD tolerancing or "
+                "human-calibrated match probabilities. Check each result's mode and distance unit.",
                 "Reference-only candidates retain baseline overall_score and follow computed "
                 "candidates; their score is not a verified match.",
             ]
-            if surface_policy == SURFACE_ALGORITHM
+            if surface_policy in {SURFACE_ALGORITHM, DETAIL_SURFACE_ALGORITHM}
             else []
         ),
         "lineage_ref": f"similarity-search:{search.id}",

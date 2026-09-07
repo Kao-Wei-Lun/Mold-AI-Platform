@@ -162,10 +162,17 @@ describe("SimilarityWorkspace", () => {
       props: { query },
       global: { stubs: { CadPreview: true, DeviationHeatmap: true } },
     });
+    if (status === "unavailable") {
+      await wrapper.get('[data-testid="comparison-mode"]').setValue("engineering_size");
+      expect(wrapper.text()).toContain("Surface tolerance (mm)");
+    }
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    const submitted = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(submitted.comparison_mode).toBe(status === "unavailable" ? "engineering_size" : "normalized_shape");
+    expect(submitted.tolerance_mm).toBe(0.5);
     expect(wrapper.text()).toContain("Reference A");
     expect(wrapper.text()).toContain("How geometry was ranked");
     expect(wrapper.text()).toContain("block-distance@1.0");

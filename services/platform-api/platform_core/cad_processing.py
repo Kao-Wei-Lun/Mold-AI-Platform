@@ -1,7 +1,7 @@
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 
@@ -25,6 +25,7 @@ class CADParseResult:
     edge_count: int
     surface_type_histogram: dict[str, int]
     quality_flags: list[str]
+    brep_structure: dict = field(default_factory=dict)
 
 
 def _bounding_box(minimum: list[float], maximum: list[float]) -> dict[str, dict[str, float]]:

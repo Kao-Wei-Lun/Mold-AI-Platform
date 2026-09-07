@@ -63,14 +63,18 @@ def _distances(query: np.ndarray, candidate: np.ndarray) -> tuple[np.ndarray, np
     )
 
 
-def surface_metrics(query: np.ndarray, aligned: np.ndarray) -> dict:
+def surface_metrics(query: np.ndarray, aligned: np.ndarray, tolerance: float = TOLERANCE) -> dict:
     """Both directions include ALL evaluation samples, not only ICP inliers."""
     forward, reverse = _distances(query, aligned)
-    first = float(np.mean(forward <= TOLERANCE))
-    second = float(np.mean(reverse <= TOLERANCE))
+    first = float(np.mean(forward <= tolerance))
+    second = float(np.mean(reverse <= tolerance))
     mean = float((forward.mean() + reverse.mean()) / 2)
     p95 = float(max(np.percentile(forward, 95), np.percentile(reverse, 95)))
-    factor = min(first, second) * math.exp(-mean / 0.2) * math.exp(-max(p95 - TOLERANCE, 0) / 0.4)
+    factor = (
+        min(first, second)
+        * math.exp(-mean / (2.5 * tolerance))
+        * math.exp(-max(p95 - tolerance, 0) / (5 * tolerance))
+    )
     return {
         "query_coverage": first,
         "candidate_coverage": second,
@@ -82,8 +86,14 @@ def surface_metrics(query: np.ndarray, aligned: np.ndarray) -> dict:
 
 
 def verify_samples(
-    query: np.ndarray, candidate: np.ndarray, *, deadline: float | None = None
+    query: np.ndarray,
+    candidate: np.ndarray,
+    *,
+    deadline: float | None = None,
+    tolerance: float = TOLERANCE,
 ) -> dict:
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise SurfaceVerificationError("SURFACE_INVALID_TOLERANCE")
     for points in (query, candidate):
         if (
             points.ndim != 2
@@ -104,7 +114,7 @@ def verify_samples(
                 continue
             check_deadline(deadline)
             transform = _matrix(rotation, qcenter - rotation @ ccenter)
-            metric = surface_metrics(query, _apply(candidate, transform))
+            metric = surface_metrics(query, _apply(candidate, transform), tolerance)
             initial.append((metric["mean_distance"], transform, metric))
     initial.sort(key=lambda item: item[0])
     best_distance, best_transform, best_metric = initial[0]
@@ -116,7 +126,7 @@ def verify_samples(
         for _iteration in range(MAX_ITERATIONS):
             check_deadline(deadline)
             aligned = _apply(candidate, transform)
-            metric = surface_metrics(query, aligned)
+            metric = surface_metrics(query, aligned, tolerance)
             objective = metric["mean_distance"]
             converged = abs(previous - objective) < 1e-6
             if objective <= best_distance + 1e-12:
@@ -142,7 +152,7 @@ def verify_samples(
         "algorithm": ALGORITHM,
         "mode": "normalized_shape",
         "distance_unit": "normalized_rms_radius",
-        "tolerance": TOLERANCE,
+        "tolerance": tolerance,
         "sample_count": len(query),
         "candidate_sample_count": len(candidate),
         "random_seed": SEED,

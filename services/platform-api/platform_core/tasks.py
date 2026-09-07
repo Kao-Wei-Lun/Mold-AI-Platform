@@ -227,6 +227,7 @@ def process_cad_job(job_id: str) -> dict[str, str]:
         cad_model.face_count = parse_result.face_count
         cad_model.edge_count = parse_result.edge_count
         cad_model.surface_type_histogram = parse_result.surface_type_histogram
+        cad_model.brep_structure = parse_result.brep_structure
         cad_model.quality_flags = parse_result.quality_flags
         cad_model.preview_artifact_version = preview_version
         cad_model.error_code = ""
