@@ -5,7 +5,19 @@ import json
 from django.core.management.base import BaseCommand, CommandError
 
 from platform_core.knowledge import index_knowledge_document_v2
+from platform_core.knowledge_models import dense_encode, sparse_encode
 from platform_core.models import KnowledgeChunk, KnowledgeDocument
+
+
+def _chunk_matches_current_pipeline(chunk: KnowledgeChunk) -> bool:
+    dense = dense_encode(chunk.text)
+    sparse = sparse_encode(chunk.text)
+    return bool(
+        chunk.embedding_v2_model == dense.model
+        and chunk.embedding_v2_dimension == dense.dimension
+        and chunk.embedding_v2_checksum == dense.checksum
+        and chunk.sparse_encoder == sparse.encoder
+    )
 
 
 class Command(BaseCommand):
@@ -32,20 +44,27 @@ class Command(BaseCommand):
             queryset = queryset[: options["limit"]]
 
         inspected = ready_documents = indexed_documents = expected_chunks = ready_chunks = 0
+        stale_chunks = 0
         failures: list[dict[str, str]] = []
         for document in queryset.iterator():
             inspected += 1
-            chunks = document.chunks.filter(index_status=KnowledgeChunk.IndexStatus.INDEXED)
-            expected = chunks.count()
-            ready = (
-                chunks.exclude(embedding_v2_model="")
-                .filter(
-                    embedding_v2_dimension__isnull=False,
+            chunks = list(
+                document.chunks.filter(index_status=KnowledgeChunk.IndexStatus.INDEXED)
+                .only(
+                    "id",
+                    "text",
+                    "embedding_v2_model",
+                    "embedding_v2_dimension",
+                    "embedding_v2_checksum",
+                    "sparse_encoder",
                 )
-                .count()
+                .order_by("ordinal")
             )
+            expected = len(chunks)
+            ready = sum(_chunk_matches_current_pipeline(chunk) for chunk in chunks)
             expected_chunks += expected
             ready_chunks += ready
+            stale_chunks += expected - ready
             if expected > 0 and ready == expected:
                 ready_documents += 1
                 continue
@@ -65,7 +84,7 @@ class Command(BaseCommand):
                 )
 
         payload = {
-            "schema_version": "knowledge-index-migration@1.0",
+            "schema_version": "knowledge-index-migration@1.1",
             "mode": "apply" if options["apply"] else "validate",
             "inspected_documents": inspected,
             "ready_documents": ready_documents,
@@ -73,6 +92,7 @@ class Command(BaseCommand):
             "expected_chunks": expected_chunks,
             "ready_chunks": ready_chunks,
             "missing_chunks": expected_chunks - ready_chunks,
+            "stale_chunks": stale_chunks,
             "failures": failures,
             "activation_changed": False,
         }

@@ -60,3 +60,33 @@ class KnowledgeIndexMigrationCommandTests(TestCase):
         self.assertTrue(self.chunk.embedding_v2_model)
         self.assertIsNotNone(self.chunk.embedding_v2_dimension)
         upsert.assert_called_once()
+
+    @patch("platform_core.knowledge.upsert_hybrid_point")
+    def test_apply_reindexes_a_stale_model_contract(self, upsert) -> None:
+        self.chunk.embedding_v2_model = "retired-model@1.0"
+        self.chunk.embedding_v2_dimension = 512
+        self.chunk.embedding_v2_checksum = "e" * 64
+        self.chunk.sparse_encoder = "mold-bm25-token-hash@1.0.0"
+        self.chunk.save(
+            update_fields=[
+                "embedding_v2_model",
+                "embedding_v2_dimension",
+                "embedding_v2_checksum",
+                "sparse_encoder",
+            ]
+        )
+        validation_output = StringIO()
+        call_command("migrate_knowledge_index_v2", stdout=validation_output)
+        validation = json.loads(validation_output.getvalue())
+
+        apply_output = StringIO()
+        call_command("migrate_knowledge_index_v2", "--apply", stdout=apply_output)
+        applied = json.loads(apply_output.getvalue())
+        self.chunk.refresh_from_db()
+
+        self.assertEqual(validation["stale_chunks"], 1)
+        self.assertEqual(validation["missing_chunks"], 1)
+        self.assertEqual(applied["missing_chunks"], 0)
+        self.assertNotEqual(self.chunk.embedding_v2_model, "retired-model@1.0")
+        self.assertNotEqual(self.chunk.embedding_v2_checksum, "e" * 64)
+        upsert.assert_called_once()

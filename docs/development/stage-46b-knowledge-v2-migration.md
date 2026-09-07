@@ -11,6 +11,9 @@ Status: implemented; v1 remains the default read route.
   every v2 point.
 - `migrate_knowledge_index_v2` is read-only by default, reports document/chunk parity and supports
   resumable `--apply` operation.
+- Readiness is an exact current-pipeline contract check across dense model, dimension, vector
+  checksum and sparse encoder. Installing an approved CPU model therefore marks deterministic
+  fallback vectors stale and safely reindexes them instead of reporting a false ready state.
 - The migration never changes `KNOWLEDGE_INDEX_READ_VERSION`; activation belongs to the release
   gate after corpus and Golden QA validation.
 
@@ -18,6 +21,6 @@ Status: implemented; v1 remains the default read route.
 
 1. `python manage.py migrate_knowledge_index_v2`
 2. `python manage.py migrate_knowledge_index_v2 --apply`
-3. Repeat the validation command and require `missing_chunks=0` and no failures.
+3. Repeat the validation command and require `missing_chunks=0`, `stale_chunks=0` and no failures.
 4. Run the Stage 46 release gate before changing the read route to `v2`.
 5. Roll back by restoring `KNOWLEDGE_INDEX_READ_VERSION=v1`; v1 was never deleted.
