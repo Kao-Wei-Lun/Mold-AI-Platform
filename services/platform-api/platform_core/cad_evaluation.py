@@ -13,6 +13,7 @@ import numpy as np
 import trimesh
 
 from .cad_processing import parse_cad_file
+from .cad_shape_scoring import compare_shape
 from .cad_similarity_v2 import EXTRACTOR_VERSION, RANDOM_SEED, extract_shape_descriptor
 
 SPLITS = {"development", "holdout"}
@@ -126,9 +127,9 @@ def ranking_metrics(ranked: list[str], judgments: dict[str, int], k: int) -> dic
 
 
 def geometry_comparison(left, right, policy: str) -> float:
-    if policy != "cosine-v2":
-        raise ValueError("Unknown geometry ranking policy")
-    return float(np.clip(np.dot(left.vector, right.vector), 0, 1))
+    return compare_shape(left.features, right.features, left.vector, right.vector, policy=policy)[
+        "score"
+    ]
 
 
 def evaluate_corpus(

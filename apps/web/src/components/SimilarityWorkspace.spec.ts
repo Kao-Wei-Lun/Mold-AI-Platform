@@ -151,6 +151,9 @@ describe("SimilarityWorkspace", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("Reference A");
+    expect(wrapper.get('[data-testid="similarity-validation-note"]').text()).toContain(
+      "not the probability that a mold can be reused",
+    );
     expect(wrapper.text()).toContain("92.8%");
     expect(wrapper.text()).toContain("Overall proportions are close");
     expect(wrapper.text()).toContain("One dimension is slightly different");

@@ -20,6 +20,15 @@ export type SimilarityMatch = {
   available_lane_score?: number;
   evidence_coverage?: number;
   score_policy?: string;
+  geometry_ranking?: {
+    score: number;
+    policy: string;
+    block_scores: Record<string, number>;
+    block_coverage: number | null;
+    coarse_cosine: number;
+    fallback_reason: string | null;
+  };
+  geometry_validation_status?: string;
   sub_scores: Record<string, number | null>;
   effective_weights: Record<string, number>;
   feature_availability: Record<string, boolean>;

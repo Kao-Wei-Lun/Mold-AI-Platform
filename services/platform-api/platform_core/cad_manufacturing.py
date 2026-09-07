@@ -9,6 +9,7 @@ import numpy as np
 import trimesh
 from django.conf import settings
 
+from .cad_shape_scoring import BLOCK_POLICY, compare_shape
 from .models import CADModel, FeatureSet, SimilarityProfile
 
 MANUFACTURING_EXTRACTOR_VERSION = "1.0.0"
@@ -389,13 +390,16 @@ def _histogram_similarity(first: dict[str, int], second: dict[str, int]) -> floa
 
 
 def compare_feature_sets_v2(
-    query: FeatureSet, candidate: FeatureSet, profile: SimilarityProfile
+    query: FeatureSet,
+    candidate: FeatureSet,
+    profile: SimilarityProfile,
+    *,
+    geometry_policy: str = BLOCK_POLICY,
 ) -> dict[str, object]:
-    query_vector = np.asarray(query.vector, dtype=float)
-    candidate_vector = np.asarray(candidate.vector, dtype=float)
-    if query_vector.shape != candidate_vector.shape or query_vector.size != 32:
-        raise ValueError("v2 comparison requires matching 32-dimensional descriptors")
-    geometry_score = float(np.clip(np.dot(query_vector, candidate_vector), 0.0, 1.0))
+    shape = compare_shape(
+        query.features, candidate.features, query.vector, candidate.vector, policy=geometry_policy
+    )
+    geometry_score = shape["score"]
 
     query_dimension = query.features.get("dimension", {})
     candidate_dimension = candidate.features.get("dimension", {})
@@ -418,7 +422,8 @@ def compare_feature_sets_v2(
     candidate_topology = candidate.features.get("topology", {})
     query_format = query.cad_model.cad_format.strip().lower()
     candidate_format = candidate.cad_model.cad_format.strip().lower()
-    topology_comparable = bool(query_format and query_format == candidate_format)
+    # Triangle tessellation density is not engineering topology, even for two STLs.
+    topology_comparable = query_format in {"step", "stp"} and candidate_format in {"step", "stp"}
     topology_score = (
         _average(
             [
@@ -503,7 +508,8 @@ def compare_feature_sets_v2(
         differences.append(
             evidence(
                 "topology",
-                "Topology was not compared because the CAD representations use different formats.",
+                "Topology requires two B-Rep sources; "
+                "mesh triangle counts are not design evidence.",
             )
         )
     elif topology_score >= 0.85:
@@ -549,6 +555,8 @@ def compare_feature_sets_v2(
             )
         )
     return {
+        "geometry_ranking": shape,
+        "geometry_validation_status": "not_evaluated_on_human_holdout",
         "overall_score": round(overall, 6),
         "available_lane_score": round(available_lane_score, 6),
         "evidence_coverage": round(evidence_coverage, 6),

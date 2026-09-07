@@ -313,6 +313,7 @@ def create_similarity_records(
                 "profile": profile.profile_key,
                 "profile_resolution": profile_resolution,
                 "read_version": read_version,
+                "geometry_ranking_policy": settings.SIMILARITY_GEOMETRY_POLICY,
                 "feature_set_id": str(feature_set.id),
                 "feature_schema_version": feature_set.schema_version,
                 "extractor_version": feature_set.extractor_version,
@@ -572,7 +573,14 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         if query_feature.schema_version == "2.0":
             from .cad_manufacturing import compare_feature_sets_v2
 
-            comparison = compare_feature_sets_v2(query_feature, candidate, search.profile)
+            comparison = compare_feature_sets_v2(
+                query_feature,
+                candidate,
+                search.profile,
+                geometry_policy=search.job.input_snapshot.get(
+                    "geometry_ranking_policy", "cosine-v2"
+                ),
+            )
         else:
             comparison = compare_feature_sets(query_feature, candidate, search.profile)
         comparison = fuse_cross_modal(

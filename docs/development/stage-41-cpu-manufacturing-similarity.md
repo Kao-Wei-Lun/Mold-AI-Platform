@@ -32,6 +32,19 @@ general fallback resolve from governed product metadata.
 
 ## Verification
 
+### Public CAD evaluation follow-up (2026-09-07)
+
+New searches snapshot `SIMILARITY_GEOMETRY_POLICY` (default `block-distance@1.0`). V2 coarse
+retrieval retains the existing vector; reranking compares independent normalized descriptor blocks.
+Results expose `geometry_ranking` with policy, block scores/coverage and explicit legacy fallback.
+Historic jobs without the snapshot retain cosine comparison. Set the policy to `cosine-v2` for
+new-search rollback; no feature/index migration or data deletion is needed.
+
+STL triangle counts are no longer scored as topology, including STL-to-STL pairs. STEP and STP
+are treated as B-Rep representations. Scores remain uncalibrated relevance, not reuse probabilities;
+the UI explicitly states that independent human-labelled evaluation is still outstanding.
+See [public CAD evaluation plan](../planning/public-cad-similarity-evaluation-plan.md).
+
 Tests cover the STL downgrade, optional approximation, STEP evidence, planar parting classification,
 two-slide/planar evidence wording, deterministic connector-family resolution, evidence-coverage
 scoring, V2 explanations and exclusion of error-control datasets.

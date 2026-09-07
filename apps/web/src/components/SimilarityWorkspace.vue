@@ -460,8 +460,13 @@ onBeforeUnmount(() => {
           <strong>{{ t("{count} ranked candidates", { count: result.result_count }) }}</strong>
           <span>{{ result.profile }} · {{ result.index_version }}</span>
         </div>
-        <span>{{ t("Missing lanes reduce evidence coverage and the overall confidence score.") }}</span>
+        <span>{{ t("Missing lanes reduce evidence coverage and the overall ranking score.") }}</span>
       </div>
+
+      <p class="limitation-note" role="note" data-testid="similarity-validation-note">
+        {{ t("Scores express ranking relevance, not the probability that a mold can be reused.") }}
+        {{ t("Public CAD geometry ranking has not yet passed independent human-labelled evaluation.") }}
+      </p>
 
       <p v-if="result.results.length === 0" class="muted">
         {{ t("No indexed candidates matched the active dataset and metadata filters.") }}
@@ -509,6 +514,23 @@ onBeforeUnmount(() => {
               score: scorePercent(selectedMatch.available_lane_score),
             }) }}
           </p>
+
+          <details v-if="selectedMatch.geometry_ranking" class="roi-controls">
+            <summary>{{ t("How geometry was ranked") }}</summary>
+            <p>{{ t("Geometry ranking policy") }}: {{ selectedMatch.geometry_ranking.policy }}</p>
+            <p v-if="selectedMatch.geometry_ranking.fallback_reason">
+              {{ t("Structured shape blocks are missing; this result uses legacy cosine scoring.") }}
+            </p>
+            <p v-if="selectedMatch.geometry_ranking.block_coverage !== null">
+              {{ t("Shape block coverage") }}: {{ scorePercent(selectedMatch.geometry_ranking.block_coverage) }}
+            </p>
+            <div class="score-grid">
+              <div v-for="(score, block) in selectedMatch.geometry_ranking.block_scores" :key="block">
+                <span>{{ t(String(block)) }}</span>
+                <strong>{{ scorePercent(score) }}</strong>
+              </div>
+            </div>
+          </details>
 
           <section class="deviation-analysis" aria-labelledby="deviation-analysis-title">
             <div class="deviation-heading">
@@ -596,7 +618,7 @@ onBeforeUnmount(() => {
         </article>
       </div>
 
-      <p class="limitation-note">{{ result.limitations.join(" ") }}</p>
+      <p class="limitation-note">{{ result.limitations.map((item) => t(item)).join(" ") }}</p>
     </div>
   </section>
 </template>

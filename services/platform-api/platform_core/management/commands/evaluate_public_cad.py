@@ -14,7 +14,9 @@ class Command(BaseCommand):
         parser.add_argument("manifest", type=Path)
         parser.add_argument("--root", type=Path, required=True)
         parser.add_argument("--split", choices=["development", "holdout"], default="holdout")
-        parser.add_argument("--policy", choices=["cosine-v2"], default="cosine-v2")
+        parser.add_argument(
+            "--policy", choices=["cosine-v2", "block-distance@1.0"], default="cosine-v2"
+        )
         parser.add_argument("--top-k", type=int, default=5)
         parser.add_argument("--sample-count", type=int, default=1024)
         parser.add_argument("--threshold", type=float)

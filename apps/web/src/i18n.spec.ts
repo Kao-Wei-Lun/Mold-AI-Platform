@@ -18,6 +18,16 @@ describe("i18n", () => {
     expect(translate("Company rule source text")).toBe("Company rule source text");
   });
 
+  it("translates geometry ranking limitations and block labels", () => {
+    setLocale("zh-TW");
+    expect(translate("Scores express ranking relevance, not the probability that a mold can be reused."))
+      .toBe("分數代表排序相關度，不代表模具可以沿用的機率。");
+    expect(translate("Public CAD geometry ranking has not yet passed independent human-labelled evaluation."))
+      .toBe("公開 CAD 幾何排序尚未通過獨立人工標記資料的品質驗收。");
+    expect(translate("principal_extent_ratios")).toBe("主軸外形比例");
+    expect(translate("How geometry was ranked")).toBe("幾何排序的評分依據");
+  });
+
   it("translates every CAD similarity score lane", () => {
     setLocale("zh-TW");
 

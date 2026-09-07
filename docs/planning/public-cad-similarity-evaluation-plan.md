@@ -124,4 +124,8 @@ STL face/edge count 不參與 topology；STEP/stp 正規化為同表示類別。
 
 - P0：文件先行提交 `dcf27a8`。
 - P1：完成離線 evaluator 與 manifest 檢查，14 項測試通過；不寫入業務 DB/Qdrant。
-- P2–P3：待實作與測試；公開資料搜尋品質尚未驗收。
+- P2：完成 `block-distance@1.0`（固定起始權重，不聲稱人工校準），STL 拓樸保護、
+  查詢輸入快照與 UI 中英驗證警語/幾何分項說明。後端目標測試 43 項、前端 7 項與
+  typecheck 通過。基本幾何控制：cube/cylinder 0.993→0.617、cube/plate 0.872→0.396；
+  這是 1024 點合成反例結果，不是公開模具準確度。
+- P3：待公開樣本實測與完整回歸；公開資料搜尋品質尚未驗收。

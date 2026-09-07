@@ -3,6 +3,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Reranking only: preserves the existing 32D v2 index and can be rolled back to cosine-v2.
+SIMILARITY_GEOMETRY_POLICY = os.getenv("SIMILARITY_GEOMETRY_POLICY", "block-distance@1.0")
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-development-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [
