@@ -203,6 +203,11 @@ SIMILARITY_V2_SHADOW_INDEX = os.getenv("SIMILARITY_V2_SHADOW_INDEX", "false").lo
 SIMILARITY_STL_APPROXIMATE_THICKNESS = (
     os.getenv("SIMILARITY_STL_APPROXIMATE_THICKNESS", "false").lower() == "true"
 )
+SIMILARITY_EXCLUDED_DATASETS = tuple(
+    value.strip()
+    for value in os.getenv("SIMILARITY_EXCLUDED_DATASETS", "curated-cad-demo-errors-v1").split(",")
+    if value.strip()
+)
 SIMILARITY_FEEDBACK_RETENTION_DAYS = int(os.getenv("SIMILARITY_FEEDBACK_RETENTION_DAYS", "365"))
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)

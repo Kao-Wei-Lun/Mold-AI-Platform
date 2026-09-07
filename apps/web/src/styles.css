@@ -2898,6 +2898,12 @@ button[aria-busy="true"]::before {
   text-transform: uppercase;
 }
 
+.evidence-coverage-note {
+  margin: 0.65rem 0 0;
+  color: #69758a;
+  font-size: 0.78rem;
+}
+
 .deviation-analysis {
   margin-top: 1rem;
   padding: 1rem;
@@ -2965,6 +2971,11 @@ button[aria-busy="true"]::before {
   color: #556175;
   font-size: 0.78rem;
   line-height: 1.55;
+}
+
+.evidence-empty {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
 }
 
 .limitation-note {

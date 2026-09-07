@@ -74,8 +74,8 @@ function optionLabel(option: MasterDataOption): string {
   return locale.value === "zh-TW" ? option.name_zh_tw : option.name_en;
 }
 
-function scorePercent(score: number | null): string {
-  return score === null ? "N/A" : `${(score * 100).toFixed(1)}%`;
+function scorePercent(score: number | null | undefined): string {
+  return score === null || score === undefined ? "N/A" : `${(score * 100).toFixed(1)}%`;
 }
 
 function emptyEngineeringProfile(): SimilarityEngineeringProfile {
@@ -460,7 +460,7 @@ onBeforeUnmount(() => {
           <strong>{{ t("{count} ranked candidates", { count: result.result_count }) }}</strong>
           <span>{{ result.profile }} · {{ result.index_version }}</span>
         </div>
-        <span>{{ t("Missing lanes are reweighted, never scored as zero.") }}</span>
+        <span>{{ t("Missing lanes reduce evidence coverage and the overall confidence score.") }}</span>
       </div>
 
       <p v-if="result.results.length === 0" class="muted">
@@ -499,10 +499,16 @@ onBeforeUnmount(() => {
 
           <div class="score-grid">
             <div v-for="(score, lane) in selectedMatch.sub_scores" :key="lane">
-              <span>{{ lane }}</span>
+              <span>{{ t(String(lane)) }}</span>
               <strong>{{ scorePercent(score) }}</strong>
             </div>
           </div>
+          <p v-if="selectedMatch.evidence_coverage !== undefined" class="evidence-coverage-note">
+            {{ t("Evidence coverage: {coverage}. Available-lane score before adjustment: {score}.", {
+              coverage: scorePercent(selectedMatch.evidence_coverage),
+              score: scorePercent(selectedMatch.available_lane_score),
+            }) }}
+          </p>
 
           <section class="deviation-analysis" aria-labelledby="deviation-analysis-title">
             <div class="deviation-heading">
@@ -547,18 +553,24 @@ onBeforeUnmount(() => {
             <div>
               <h3>{{ t("Major similarities") }}</h3>
               <ul>
-                <li v-for="item in selectedMatch.similarities" :key="item.evidence_ref">
-                  {{ item.message }}
+                <li v-for="item in (selectedMatch.similarities || [])" :key="item.evidence_ref">
+                  {{ t(item.message) }}
                 </li>
               </ul>
+              <p v-if="!selectedMatch.similarities?.length" class="muted evidence-empty">
+                {{ t("No similarity evidence was recorded for this result.") }}
+              </p>
             </div>
             <div>
               <h3>{{ t("Major differences") }}</h3>
               <ul>
-                <li v-for="item in selectedMatch.differences" :key="item.evidence_ref">
-                  {{ item.message }}
+                <li v-for="item in (selectedMatch.differences || [])" :key="item.evidence_ref">
+                  {{ t(item.message) }}
                 </li>
               </ul>
+              <p v-if="!selectedMatch.differences?.length" class="muted evidence-empty">
+                {{ t("No difference evidence was recorded for this result.") }}
+              </p>
             </div>
           </div>
 

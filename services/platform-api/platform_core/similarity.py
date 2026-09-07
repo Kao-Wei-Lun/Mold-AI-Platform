@@ -196,10 +196,7 @@ def extract_and_index_cad_model(cad_model: CADModel) -> FeatureSet:
     # v2 feature set. Keeping this invariant in the ingestion path prevents a
     # post-cutover upload from appearing generally indexed while remaining
     # unusable by the active similarity route.
-    if (
-        settings.SIMILARITY_V2_SHADOW_INDEX
-        or settings.SIMILARITY_INDEX_READ_VERSION == "v2"
-    ):
+    if settings.SIMILARITY_V2_SHADOW_INDEX or settings.SIMILARITY_INDEX_READ_VERSION == "v2":
         from .cad_similarity_v2 import extract_and_index_cad_model_v2
 
         extract_and_index_cad_model_v2(cad_model)
@@ -566,6 +563,9 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     matches = []
     for candidate in candidate_features:
         if candidate.id == query_feature.id:
+            continue
+        candidate_artifact = candidate.cad_model.artifact_version.artifact
+        if candidate_artifact.dataset_id in settings.SIMILARITY_EXCLUDED_DATASETS:
             continue
         if not matches_engineering_filters(candidate.cad_model.artifact_version, search.filters):
             continue

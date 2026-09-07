@@ -49,7 +49,7 @@ CAD/2D Input
 
 初始 Profile 可使用加權組合，例如 geometry 30%、topology 20%、dimension 15%、visual 15%、material/product 10%、manufacturing 10%。這只是可配置基線；每個產品線須以標註資料學習或校準。
 
-分數輸出須包含：Overall、sub-scores、weight version、feature availability、missing-lane treatment、major similarities/differences。缺少 feature 時不得默默以零分處理，必須依 Profile 規定重新正規化或標記不可比。
+分數輸出須包含：Overall、sub-scores、weight version、feature availability、missing-lane treatment、major similarities/differences。缺少 feature 時不得默默以零分處理，必須依 Profile 規定重新正規化或標記不可比。Demo V2 另外輸出 `available_lane_score`、`evidence_coverage` 與 `score_policy`；Overall 會套用證據覆蓋率調整，以免少數可用維度被重新正規化後形成誤導性高分。單位未知時不得比較絕對尺寸，不同 CAD 表示格式的面／邊數不得直接視為同一拓樸語意。
 
 ### 2.4 Search modes
 

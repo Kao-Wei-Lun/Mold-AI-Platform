@@ -198,3 +198,10 @@ class SimilarityProfileResolutionTests(TestCase):
         self.assertFalse(comparison["feature_availability"]["manufacturing"])
         self.assertNotIn("manufacturing", comparison["effective_weights"])
         self.assertAlmostEqual(sum(comparison["effective_weights"].values()), 1.0, places=5)
+        self.assertTrue(comparison["similarities"])
+        self.assertTrue(comparison["differences"])
+        self.assertFalse(
+            any(item["type"] == "manufacturing" for item in comparison["similarities"])
+        )
+        self.assertLess(comparison["evidence_coverage"], 1.0)
+        self.assertLess(comparison["overall_score"], comparison["available_lane_score"])

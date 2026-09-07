@@ -400,9 +400,9 @@ def compare_feature_sets_v2(
     query_dimension = query.features.get("dimension", {})
     candidate_dimension = candidate.features.get("dimension", {})
     dimension_score = None
-    if query_dimension.get("unit_system") and query_dimension.get(
-        "unit_system"
-    ) == candidate_dimension.get("unit_system"):
+    query_unit = str(query_dimension.get("unit_system", "")).strip().lower()
+    candidate_unit = str(candidate_dimension.get("unit_system", "")).strip().lower()
+    if query_unit not in {"", "unknown"} and query_unit == candidate_unit:
         dimension_score = _average(
             [
                 _ratio(first, second)
@@ -416,15 +416,22 @@ def compare_feature_sets_v2(
 
     query_topology = query.features.get("topology", {})
     candidate_topology = candidate.features.get("topology", {})
-    topology_score = _average(
-        [
-            _ratio(query_topology.get("face_count"), candidate_topology.get("face_count")),
-            _ratio(query_topology.get("edge_count"), candidate_topology.get("edge_count")),
-            _histogram_similarity(
-                query_topology.get("surface_type_histogram", {}),
-                candidate_topology.get("surface_type_histogram", {}),
-            ),
-        ]
+    query_format = query.cad_model.cad_format.strip().lower()
+    candidate_format = candidate.cad_model.cad_format.strip().lower()
+    topology_comparable = bool(query_format and query_format == candidate_format)
+    topology_score = (
+        _average(
+            [
+                _ratio(query_topology.get("face_count"), candidate_topology.get("face_count")),
+                _ratio(query_topology.get("edge_count"), candidate_topology.get("edge_count")),
+                _histogram_similarity(
+                    query_topology.get("surface_type_histogram", {}),
+                    candidate_topology.get("surface_type_histogram", {}),
+                ),
+            ]
+        )
+        if topology_comparable
+        else None
     )
     query_metadata = query.features.get("metadata", {})
     candidate_metadata = candidate.features.get("metadata", {})
@@ -450,12 +457,102 @@ def compare_feature_sets_v2(
     weight_total = sum(available_weights.values())
     if weight_total <= 0:
         raise ValueError("similarity profile has no weight for available lanes")
-    overall = (
+    profile_weight_total = sum(max(float(weight), 0.0) for weight in profile.weights.values())
+    available_lane_score = (
         sum(float(lane_scores[lane]) * weight for lane, weight in available_weights.items())
         / weight_total
     )
+    evidence_coverage = weight_total / profile_weight_total if profile_weight_total > 0 else 0.0
+    overall = available_lane_score * evidence_coverage
+
+    similarities: list[dict[str, object]] = []
+    differences: list[dict[str, object]] = []
+
+    def evidence(lane: str, message: str) -> dict[str, object]:
+        return {
+            "type": lane,
+            "message": message,
+            "evidence_ref": f"feature-set:{candidate.id}:{lane}",
+        }
+
+    if geometry_score >= 0.85:
+        similarities.append(
+            evidence(
+                "geometry",
+                "The global shape descriptor is close; confirm it with topology and 3D "
+                "deviation evidence.",
+            )
+        )
+    else:
+        differences.append(evidence("geometry", "The global shape descriptor differs materially."))
+
+    if dimension_score is None:
+        differences.append(
+            evidence(
+                "dimension",
+                "Absolute dimensions were not compared because a unit is unknown or the unit "
+                "systems differ.",
+            )
+        )
+    elif dimension_score >= 0.85:
+        similarities.append(evidence("dimension", "Overall dimensions are within a similar range."))
+    else:
+        differences.append(evidence("dimension", "Overall dimensions differ materially."))
+
+    if topology_score is None:
+        differences.append(
+            evidence(
+                "topology",
+                "Topology was not compared because the CAD representations use different formats.",
+            )
+        )
+    elif topology_score >= 0.85:
+        similarities.append(
+            evidence("topology", "Face, edge and surface-type distributions are similar.")
+        )
+    else:
+        differences.append(
+            evidence("topology", "Face, edge or surface-type distributions differ materially.")
+        )
+
+    if metadata_score is None:
+        differences.append(
+            evidence(
+                "metadata",
+                "Product type or material metadata is missing on one or both CAD records.",
+            )
+        )
+    elif metadata_score >= 0.5:
+        similarities.append(evidence("metadata", "Available product and material metadata match."))
+    else:
+        differences.append(evidence("metadata", "Available product or material metadata differs."))
+
+    if manufacturing_score is None:
+        differences.append(
+            evidence(
+                "manufacturing",
+                "Manufacturing evidence is unavailable or not comparable for one of the CAD "
+                "records.",
+            )
+        )
+    elif manufacturing_score >= 0.85:
+        similarities.append(
+            evidence("manufacturing", "Available manufacturing evidence is similar.")
+        )
+    else:
+        differences.append(evidence("manufacturing", "Manufacturing evidence differs materially."))
+    if evidence_coverage < 0.6:
+        differences.append(
+            evidence(
+                "evidence_coverage",
+                "Evidence coverage is limited, so the overall score has been reduced.",
+            )
+        )
     return {
         "overall_score": round(overall, 6),
+        "available_lane_score": round(available_lane_score, 6),
+        "evidence_coverage": round(evidence_coverage, 6),
+        "score_policy": "evidence-coverage-adjusted@1.0",
         "sub_scores": {
             lane: round(score, 6) if score is not None else None
             for lane, score in lane_scores.items()
@@ -464,6 +561,8 @@ def compare_feature_sets_v2(
             lane: round(weight / weight_total, 6) for lane, weight in available_weights.items()
         },
         "feature_availability": {lane: score is not None for lane, score in lane_scores.items()},
+        "similarities": similarities,
+        "differences": differences,
         "manufacturing_evidence": manufacturing_evidence,
         "profile_resolution": {
             "profile_key": profile.profile_key,

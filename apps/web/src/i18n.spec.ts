@@ -17,4 +17,14 @@ describe("i18n", () => {
     setLocale("zh-TW");
     expect(translate("Company rule source text")).toBe("Company rule source text");
   });
+
+  it("translates every CAD similarity score lane", () => {
+    setLocale("zh-TW");
+
+    expect(translate("geometry")).toBe("幾何形狀");
+    expect(translate("metadata")).toBe("產品與材料資料");
+    expect(translate("topology")).toBe("拓樸結構");
+    expect(translate("dimension")).toBe("外形尺寸");
+    expect(translate("manufacturing")).toBe("製造特徵");
+  });
 });

@@ -17,6 +17,9 @@ export type SimilarityMatch = {
   material_code: string;
   coarse_score: number;
   overall_score: number;
+  available_lane_score?: number;
+  evidence_coverage?: number;
+  score_policy?: string;
   sub_scores: Record<string, number | null>;
   effective_weights: Record<string, number>;
   feature_availability: Record<string, boolean>;
@@ -27,7 +30,7 @@ export type SimilarityMatch = {
 };
 
 export type SimilarityResult = {
-  schema_version: "1.0";
+  schema_version: "1.0" | "1.1";
   search_id: string;
   query_ref: {
     artifact_id: string;

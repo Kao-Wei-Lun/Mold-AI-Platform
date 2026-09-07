@@ -71,12 +71,13 @@ class SimilarityTests(TestCase):
         *,
         product_type: str = "housing",
         material_code: str = "PC_ABS",
+        dataset_id: str = "similarity-test-v1",
     ) -> FeatureSet:
         upload = SimpleUploadedFile(f"{name}.stl", tetrahedron(scale), content_type="model/stl")
         records = create_upload_records(
             upload,
             artifact_name=name,
-            dataset_id="similarity-test-v1",
+            dataset_id=dataset_id,
             product_type=product_type,
             material_code=material_code,
         )
@@ -198,16 +199,24 @@ class SimilarityTests(TestCase):
     def test_v2_route_pins_and_executes_cpu_manufacturing_profile(self, query_points) -> None:
         query_v1 = self.create_feature("query-v2", 10)
         near_v1 = self.create_feature("near-v2", 11)
+        error_v1 = self.create_feature(
+            "error-control-v2",
+            10,
+            dataset_id="curated-cad-demo-errors-v1",
+        )
         query = extract_feature_set_v2(query_v1.cad_model)
         near = extract_feature_set_v2(near_v1.cad_model)
-        FeatureSet.objects.filter(id__in=[query.id, near.id]).update(
+        error = extract_feature_set_v2(error_v1.cad_model)
+        FeatureSet.objects.filter(id__in=[query.id, near.id, error.id]).update(
             index_status=FeatureSet.IndexStatus.INDEXED
         )
         query.refresh_from_db()
         near.refresh_from_db()
+        error.refresh_from_db()
         records = create_similarity_records(query.cad_model.artifact_version, top_k=5)
         query_points.return_value = [
             VectorCandidate(str(query.id), 1.0),
+            VectorCandidate(str(error.id), 0.99),
             VectorCandidate(str(near.id), 0.98),
         ]
 
@@ -219,7 +228,14 @@ class SimilarityTests(TestCase):
         self.assertEqual(records.search.profile.schema_version, "2.0")
         self.assertEqual(records.job.input_snapshot["read_version"], "v2")
         self.assertEqual(records.search.result["index_version"], "cad-cpu-v2")
-        self.assertIn("manufacturing", records.search.result["results"][0]["sub_scores"])
+        match = records.search.result["results"][0]
+        self.assertEqual(records.search.result["result_count"], 1)
+        self.assertEqual(match["artifact_name"], "near-v2")
+        self.assertIn("manufacturing", match["sub_scores"])
+        self.assertTrue(match["similarities"])
+        self.assertTrue(match["differences"])
+        self.assertLess(match["evidence_coverage"], 1.0)
+        self.assertLess(match["overall_score"], match["available_lane_score"])
         query_points.assert_called_once()
 
     @patch("platform_core.views.run_similarity_job.apply_async", side_effect=ConnectionError)

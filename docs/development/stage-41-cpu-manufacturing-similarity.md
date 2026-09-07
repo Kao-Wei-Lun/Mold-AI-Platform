@@ -16,10 +16,22 @@ general fallback resolve from governed product metadata.
   undercut and parting evidence remain unavailable.
 - Ray casting uses a fixed seed and bounded sample count. The manifest records source format,
   watertightness, draw-axis policy and extractor version.
-- Profile resolution returns its reason code, selected profile and original weights. Missing lanes
-  are renormalized by the comparison engine and never silently scored as zero.
+- Profile resolution returns its reason code, selected profile and original weights. The comparison
+  engine still reports normalized effective weights for available lanes, but the published Overall
+  score is multiplied by `evidence_coverage` so sparse evidence cannot be presented as a
+  high-confidence match. `available_lane_score`, `evidence_coverage` and `score_policy` make this
+  treatment explicit rather than silently substituting zeroes.
+- Unknown units are not dimension evidence. STEP/B-Rep and STL triangle counts are also not treated
+  as comparable topology merely because both records contain face and edge counts.
+- Datasets configured by `SIMILARITY_EXCLUDED_DATASETS` are omitted from normal candidate results.
+  The Demo default excludes `curated-cad-demo-errors-v1`, whose intentionally broken open-shell
+  model remains available for validation tests but never appears as a recommended reference.
+- V2 results include localized major-similarity and major-difference evidence. Missing dimensions,
+  metadata, topology or manufacturing lanes produce an explicit explanation instead of an empty
+  panel.
 
 ## Verification
 
 Tests cover the STL downgrade, optional approximation, STEP evidence, planar parting classification,
-two-slide/planar evidence wording and deterministic connector-family resolution.
+two-slide/planar evidence wording, deterministic connector-family resolution, evidence-coverage
+scoring, V2 explanations and exclusion of error-control datasets.
