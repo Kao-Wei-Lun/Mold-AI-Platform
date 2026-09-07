@@ -2827,6 +2827,18 @@ button[aria-busy="true"]::before {
 .heatmap-legend .negative::before { background: #2463eb; }
 .heatmap-legend .within::before { background: #20a36a; }
 .heatmap-legend .positive::before { background: #dc3f38; }
+.engineering-constraints { margin: 0 0 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface-subtle); }
+.engineering-constraints > p { color: var(--color-text-muted); }
+.engineering-constraint-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; margin: 0.8rem 0; }
+.similarity-feedback { margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); }
+.similarity-feedback h3, .similarity-feedback p { margin: 0; }
+.feedback-actions { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: end; gap: 0.65rem; margin-top: 0.75rem; }
+
+@media (max-width: 900px) {
+  .engineering-constraint-grid,
+  .roi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feedback-actions { grid-template-columns: 1fr; }
+}
 
 .evidence-columns {
   display: grid;

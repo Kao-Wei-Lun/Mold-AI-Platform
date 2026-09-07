@@ -186,6 +186,18 @@ describe("SimilarityWorkspace", () => {
     expect(wrapper.text()).toContain("3D alignment and deviation");
     expect(wrapper.text()).toContain("0.01");
     expect(wrapper.findComponent({ name: "DeviationHeatmap" }).exists()).toBe(true);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { feedback_id: "feedback-1", created: true, action: "accept_reference" },
+        201,
+      ),
+    );
+    await wrapper.get(".feedback-actions button").trigger("click");
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(wrapper.text()).toContain("Feedback saved for offline evaluation.");
   });
 
   it("keeps search disabled when the query has no indexed feature", () => {

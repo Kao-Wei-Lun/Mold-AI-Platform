@@ -402,3 +402,7 @@ See [`stage-41-cpu-manufacturing-similarity.md`](stage-41-cpu-manufacturing-simi
 Stage 42 adds bounded CPU PCA/ICP registration, signed/unsigned deviation evidence, persisted ROI
 comparisons and an interactive Web heatmap guarded by authorized search-result membership. See
 [`stage-42-cpu-registration-deviation-roi.md`](stage-42-cpu-registration-deviation-roi.md).
+
+Stage 43 adds governed manual CTQ/CAE similarity constraints, optional cross-modal score fusion and
+explicit, retained engineer feedback without implicit labels or online learning. See
+[`stage-43-cpu-cross-modal-feedback.md`](stage-43-cpu-cross-modal-feedback.md).

@@ -7,8 +7,12 @@ import { emptyMasterDataOptions, type MasterDataOption, type MasterDataOptions }
 import {
   createSimilarityComparison,
   createSimilaritySearch,
+  fetchSimilarityEngineeringProfile,
   fetchSimilarityJob,
   fetchSimilaritySearch,
+  recordSimilarityFeedback,
+  saveSimilarityEngineeringProfile,
+  type SimilarityEngineeringProfile,
   type SimilarityJob,
   type SimilarityMatch,
   type SimilarityComparison,
@@ -50,6 +54,13 @@ const comparing = ref(false);
 const comparisonError = ref<string | null>(null);
 const roiEnabled = ref(false);
 const roi = ref({ minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 });
+const engineeringProfile = ref<SimilarityEngineeringProfile | null>(null);
+const engineeringProfileSaving = ref(false);
+const engineeringProfileError = ref<string | null>(null);
+const engineeringProfileLoaded = ref(false);
+const feedbackReason = ref("");
+const feedbackSending = ref(false);
+const feedbackRecorded = ref<string | null>(null);
 let pollTimer: number | null = null;
 
 const terminal = computed(() =>
@@ -65,6 +76,98 @@ function optionLabel(option: MasterDataOption): string {
 
 function scorePercent(score: number | null): string {
   return score === null ? "N/A" : `${(score * 100).toFixed(1)}%`;
+}
+
+function emptyEngineeringProfile(): SimilarityEngineeringProfile {
+  return {
+    artifact_version_id: props.query?.artifact_version_id || "",
+    tolerance_strictness: "standard",
+    ctq_count: 0,
+    surface_roughness_ra: null,
+    flow_length_ratio: null,
+    projected_area: null,
+    clamp_force_band: null,
+    gate_type: null,
+    source_mode: "manual_demo",
+    row_version: 0,
+    updated_by: "",
+    updated_at: "",
+  };
+}
+
+async function loadEngineeringProfile(): Promise<void> {
+  if (!props.query) {
+    engineeringProfile.value = null;
+    return;
+  }
+  engineeringProfileError.value = null;
+  try {
+    engineeringProfile.value =
+      (await fetchSimilarityEngineeringProfile(props.query.artifact_version_id)) ||
+      emptyEngineeringProfile();
+    engineeringProfileLoaded.value = true;
+  } catch (caught) {
+    engineeringProfileError.value =
+      caught instanceof Error ? caught.message : t("Unable to load engineering constraints.");
+  }
+}
+
+function openEngineeringProfile(event: Event): void {
+  if ((event.currentTarget as HTMLDetailsElement).open && !engineeringProfileLoaded.value) {
+    loadEngineeringProfile();
+  }
+}
+
+async function saveEngineeringProfile(): Promise<void> {
+  if (!props.query || !engineeringProfile.value) return;
+  engineeringProfileSaving.value = true;
+  engineeringProfileError.value = null;
+  try {
+    const profile = engineeringProfile.value;
+    engineeringProfile.value = await saveSimilarityEngineeringProfile(
+      props.query.artifact_version_id,
+      {
+        tolerance_strictness: profile.tolerance_strictness,
+        ctq_count: profile.ctq_count,
+        surface_roughness_ra: profile.surface_roughness_ra,
+        flow_length_ratio: profile.flow_length_ratio,
+        projected_area: profile.projected_area,
+        clamp_force_band: profile.clamp_force_band,
+        gate_type: profile.gate_type,
+        row_version: profile.row_version,
+      },
+    );
+    pushToast(t("Engineering constraints saved."), "success");
+  } catch (caught) {
+    engineeringProfileError.value =
+      caught instanceof Error ? caught.message : t("Unable to save engineering constraints.");
+  } finally {
+    engineeringProfileSaving.value = false;
+  }
+}
+
+async function sendFeedback(action: "accept_reference" | "not_relevant"): Promise<void> {
+  if (!result.value || !selectedMatch.value) return;
+  if (action === "not_relevant" && !feedbackReason.value) {
+    comparisonError.value = t("Select an engineering reason before marking this result not relevant.");
+    return;
+  }
+  feedbackSending.value = true;
+  comparisonError.value = null;
+  try {
+    await recordSimilarityFeedback(
+      result.value.search_id,
+      selectedMatch.value.artifact_version_id,
+      action,
+      feedbackReason.value,
+    );
+    feedbackRecorded.value = action;
+    pushToast(t("Similarity feedback recorded."), "success");
+  } catch (caught) {
+    comparisonError.value = caught instanceof Error ? caught.message : t("Unable to record feedback.");
+  } finally {
+    feedbackSending.value = false;
+  }
 }
 
 function resetComparison(): void {
@@ -178,12 +281,19 @@ watch(
     selectedMatch.value = null;
     error.value = null;
     if (pollTimer !== null) window.clearTimeout(pollTimer);
+    engineeringProfile.value = props.query ? emptyEngineeringProfile() : null;
+    engineeringProfileLoaded.value = false;
   },
+  { immediate: true },
 );
 
 watch(
   () => selectedMatch.value?.artifact_version_id,
-  resetComparison,
+  () => {
+    resetComparison();
+    feedbackReason.value = "";
+    feedbackRecorded.value = null;
+  },
 );
 
 watch(roiEnabled, (enabled) => {
@@ -274,6 +384,22 @@ onBeforeUnmount(() => {
           {{ t(query.similarity_index?.status || "not indexed") }}
         </span>
       </div>
+
+      <details v-if="engineeringProfile" class="engineering-constraints" @toggle="openEngineeringProfile">
+        <summary>{{ t("Engineering similarity constraints") }}</summary>
+        <p>{{ t("Manual CTQ and CAE summary fields are optional and only affect ranking when both records provide comparable evidence.") }}</p>
+        <div class="engineering-constraint-grid">
+          <FormField v-slot="{ fieldId }" :label="t('Tolerance strictness')"><select :id="fieldId" v-model="engineeringProfile.tolerance_strictness"><option value="standard">{{ t("Standard") }}</option><option value="precision">{{ t("Precision") }}</option></select></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('CTQ count')"><input :id="fieldId" v-model.number="engineeringProfile.ctq_count" type="number" min="0" max="10000" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Surface roughness Ra')"><input :id="fieldId" v-model.number="engineeringProfile.surface_roughness_ra" type="number" min="0" step="any" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Flow length ratio')"><input :id="fieldId" v-model.number="engineeringProfile.flow_length_ratio" type="number" min="0" step="any" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Projected area')"><input :id="fieldId" v-model.number="engineeringProfile.projected_area" type="number" min="0" step="any" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Clamp force band')"><input :id="fieldId" v-model="engineeringProfile.clamp_force_band" /></FormField>
+          <FormField v-slot="{ fieldId }" :label="t('Gate type')"><input :id="fieldId" v-model="engineeringProfile.gate_type" /></FormField>
+        </div>
+        <p v-if="engineeringProfileError" class="error-message">{{ engineeringProfileError }}</p>
+        <button type="button" :disabled="engineeringProfileSaving" @click="saveEngineeringProfile">{{ engineeringProfileSaving ? t("Saving...") : t("Save engineering constraints") }}</button>
+      </details>
 
       <form class="similarity-form" @submit.prevent="submit">
         <div v-if="masterDataError" class="master-data-error form-wide" role="alert">
@@ -435,6 +561,26 @@ onBeforeUnmount(() => {
               </ul>
             </div>
           </div>
+
+          <section class="similarity-feedback" aria-labelledby="similarity-feedback-title">
+            <div>
+              <h3 id="similarity-feedback-title">{{ t("Was this reference useful?") }}</h3>
+              <p>{{ t("Only explicit choices are retained as offline learning labels.") }}</p>
+            </div>
+            <div class="feedback-actions">
+              <button type="button" :disabled="feedbackSending" @click="sendFeedback('accept_reference')">{{ t("Accept as reference") }}</button>
+              <select v-model="feedbackReason" :aria-label="t('Not relevant reason')">
+                <option value="">{{ t("Select reason") }}</option>
+                <option value="different_function">{{ t("Different function") }}</option>
+                <option value="different_manufacturing_process">{{ t("Different manufacturing process") }}</option>
+                <option value="geometry_not_comparable">{{ t("Geometry is not comparable") }}</option>
+                <option value="wrong_scale">{{ t("Wrong scale") }}</option>
+                <option value="other_engineering_reason">{{ t("Other engineering reason") }}</option>
+              </select>
+              <button type="button" class="secondary-button" :disabled="feedbackSending || !feedbackReason" @click="sendFeedback('not_relevant')">{{ t("Mark not relevant") }}</button>
+            </div>
+            <p v-if="feedbackRecorded" class="success-message">{{ t("Feedback saved for offline evaluation.") }}</p>
+          </section>
         </article>
       </div>
 

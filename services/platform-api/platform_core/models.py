@@ -496,6 +496,63 @@ class SimilarityComparison(models.Model):
         return f"{self.search_id}:{self.candidate_feature_set_id} [{self.alignment_status}]"
 
 
+class CADCrossModalProfile(models.Model):
+    class ToleranceStrictness(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        PRECISION = "precision", "Precision"
+
+    artifact_version = models.OneToOneField(
+        ArtifactVersion, related_name="similarity_engineering_profile", on_delete=models.PROTECT
+    )
+    tolerance_strictness = models.CharField(
+        max_length=16, choices=ToleranceStrictness.choices, default=ToleranceStrictness.STANDARD
+    )
+    ctq_count = models.PositiveSmallIntegerField(default=0)
+    surface_roughness_ra = models.FloatField(null=True, blank=True)
+    flow_length_ratio = models.FloatField(null=True, blank=True)
+    projected_area = models.FloatField(null=True, blank=True)
+    clamp_force_band = models.CharField(max_length=64, blank=True)
+    gate_type = models.CharField(max_length=64, blank=True)
+    source_mode = models.CharField(max_length=32, default="manual_demo")
+    row_version = models.PositiveIntegerField(default=1)
+    updated_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Engineering profile {self.artifact_version_id}"
+
+
+class SimilarityFeedback(models.Model):
+    class Action(models.TextChoices):
+        ACCEPT_REFERENCE = "accept_reference", "Accept reference"
+        LINK_MOLD = "link_mold", "Link mold"
+        LOAD_TRIAL_PARAMETERS = "load_trial_parameters", "Load trial parameters"
+        NOT_RELEVANT = "not_relevant", "Not relevant"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    search = models.ForeignKey(SimilaritySearch, related_name="feedback", on_delete=models.PROTECT)
+    candidate_feature_set = models.ForeignKey(
+        FeatureSet, related_name="similarity_feedback", on_delete=models.PROTECT
+    )
+    action = models.CharField(max_length=32, choices=Action.choices)
+    reason_code = models.CharField(max_length=64, blank=True)
+    actor_id = models.CharField(max_length=128)
+    scope_id = models.CharField(max_length=128)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["action", "created_at"], name="similarity_feedback_action_idx")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.search_id}:{self.action}:{self.candidate_feature_set_id}"
+
+
 class RuleProfile(models.Model):
     class WorkflowStatus(models.TextChoices):
         DRAFT = "draft", "Draft"

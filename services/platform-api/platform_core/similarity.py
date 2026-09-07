@@ -16,6 +16,7 @@ from .models import (
     SimilarityProfile,
     SimilaritySearch,
 )
+from .similarity_feedback import compare_cross_modal, fuse_cross_modal, matches_engineering_filters
 from .vector_store import VECTOR_DIMENSION, query_similar_points, upsert_feature
 
 PROFILE_KEY = "demo-general@1.0"
@@ -247,7 +248,14 @@ def create_similarity_records(
                 )
             return SimilarityRecords(existing_job.similarity_search, existing_job, created=False)
 
-    allowed_filter_keys = {"dataset_ids", "product_types", "material_codes"}
+    allowed_filter_keys = {
+        "dataset_ids",
+        "product_types",
+        "material_codes",
+        "tolerance_strictness",
+        "clamp_force_bands",
+        "gate_types",
+    }
     raw_filters = filters or {}
     normalized_filters: dict[str, list[str]] = {}
     for key in allowed_filter_keys:
@@ -505,6 +513,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         index_version=search.profile.index_version,
     ).select_related(
         "cad_model__artifact_version__artifact",
+        "cad_model__artifact_version__similarity_engineering_profile",
         "cad_model__preview_artifact_version",
     )
 
@@ -512,7 +521,16 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     for candidate in candidate_features:
         if candidate.id == query_feature.id:
             continue
+        if not matches_engineering_filters(candidate.cad_model.artifact_version, search.filters):
+            continue
         comparison = compare_feature_sets(query_feature, candidate, search.profile)
+        comparison = fuse_cross_modal(
+            comparison,
+            compare_cross_modal(
+                query_feature.cad_model.artifact_version,
+                candidate.cad_model.artifact_version,
+            ),
+        )
         cad_model = candidate.cad_model
         artifact_version = cad_model.artifact_version
         artifact = artifact_version.artifact

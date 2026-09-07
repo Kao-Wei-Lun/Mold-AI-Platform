@@ -120,6 +120,8 @@ from .views import (
     ReviewFindingDecisionCreateView,
     SecurityPreflightView,
     SimilarityComparisonView,
+    SimilarityEngineeringProfileView,
+    SimilarityFeedbackView,
     SimilaritySearchDetailView,
     SimilaritySearchListCreateView,
     SystemInfoView,
@@ -498,6 +500,16 @@ urlpatterns = [
         "similarity-searches/<uuid:search_id>/candidates/<uuid:candidate_version_id>/comparison",
         SimilarityComparisonView.as_view(),
         name="similarity-comparison",
+    ),
+    path(
+        "similarity-searches/<uuid:search_id>/feedback",
+        SimilarityFeedbackView.as_view(),
+        name="similarity-feedback",
+    ),
+    path(
+        "artifact-versions/<uuid:artifact_version_id>/similarity-engineering-profile",
+        SimilarityEngineeringProfileView.as_view(),
+        name="similarity-engineering-profile",
     ),
     path(
         "artifact-versions/<uuid:artifact_version_id>/download",

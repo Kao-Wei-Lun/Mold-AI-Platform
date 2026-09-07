@@ -17,7 +17,7 @@ export type SimilarityMatch = {
   material_code: string;
   coarse_score: number;
   overall_score: number;
-  sub_scores: Record<"geometry" | "dimension" | "topology" | "metadata", number | null>;
+  sub_scores: Record<string, number | null>;
   effective_weights: Record<string, number>;
   feature_availability: Record<string, boolean>;
   similarities: SimilarityEvidence[];
@@ -90,6 +90,21 @@ export type SimilarityComparison = {
   lineage_ref: string;
 };
 
+export type SimilarityEngineeringProfile = {
+  artifact_version_id: string;
+  tolerance_strictness: "standard" | "precision";
+  ctq_count: number;
+  surface_roughness_ra: number | null;
+  flow_length_ratio: number | null;
+  projected_area: number | null;
+  clamp_force_band: string | null;
+  gate_type: string | null;
+  source_mode: string;
+  row_version: number;
+  updated_by: string;
+  updated_at: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
 async function errorMessage(response: Response): Promise<string> {
@@ -157,4 +172,51 @@ export async function createSimilarityComparison(
   );
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as SimilarityComparison;
+}
+
+export async function fetchSimilarityEngineeringProfile(
+  artifactVersionId: string,
+): Promise<SimilarityEngineeringProfile | null> {
+  const response = await apiFetch(
+    `${apiBaseUrl}/api/v1/artifact-versions/${artifactVersionId}/similarity-engineering-profile`,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return ((await response.json()) as { profile: SimilarityEngineeringProfile | null }).profile;
+}
+
+export async function saveSimilarityEngineeringProfile(
+  artifactVersionId: string,
+  profile: Omit<SimilarityEngineeringProfile, "artifact_version_id" | "source_mode" | "updated_by" | "updated_at">,
+): Promise<SimilarityEngineeringProfile> {
+  const response = await apiFetch(
+    `${apiBaseUrl}/api/v1/artifact-versions/${artifactVersionId}/similarity-engineering-profile`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(profile),
+    },
+  );
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return ((await response.json()) as { profile: SimilarityEngineeringProfile }).profile;
+}
+
+export async function recordSimilarityFeedback(
+  searchId: string,
+  candidateArtifactVersionId: string,
+  action: "accept_reference" | "not_relevant",
+  reasonCode = "",
+): Promise<{ feedback_id: string; created: boolean; action: string }> {
+  const response = await apiFetch(`${apiBaseUrl}/api/v1/similarity-searches/${searchId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      candidate_artifact_version_id: candidateArtifactVersionId,
+      action,
+      reason_code: reasonCode,
+      idempotency_key: `web-feedback-${searchId}-${candidateArtifactVersionId}-${action}-${Date.now()}`,
+    }),
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as { feedback_id: string; created: boolean; action: string };
 }

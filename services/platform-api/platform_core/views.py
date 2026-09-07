@@ -101,6 +101,12 @@ from .process_trial import (
 )
 from .security import security_preflight_payload
 from .similarity import PROFILE_KEY, SimilarityValidationError, create_similarity_records
+from .similarity_feedback import (
+    SimilarityFeedbackValidationError,
+    create_feedback,
+    engineering_profile_payload,
+    save_engineering_profile,
+)
 from .tasks import (
     mark_job_failed,
     process_cad_job,
@@ -1665,6 +1671,132 @@ class SimilarityComparisonView(APIView):
                 "lineage_ref": f"similarity-comparison:{comparison.id}",
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class SimilarityEngineeringProfileView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def _version(self, artifact_version_id: str) -> ArtifactVersion:
+        return get_object_or_404(
+            ArtifactVersion.objects.select_related("artifact"),
+            pk=artifact_version_id,
+            artifact__kind=Artifact.Kind.CAD_SOURCE,
+        )
+
+    def get(self, request: Request, artifact_version_id: str) -> Response:
+        version = self._version(artifact_version_id)
+        profile = (
+            version.similarity_engineering_profile
+            if hasattr(version, "similarity_engineering_profile")
+            else None
+        )
+        return Response(
+            {
+                "schema_version": "1.0",
+                "profile": engineering_profile_payload(profile) if profile else None,
+            }
+        )
+
+    def put(self, request: Request, artifact_version_id: str) -> Response:
+        version = self._version(artifact_version_id)
+        actor_id = str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+        try:
+            profile, created = save_engineering_profile(version, request.data, actor_id=actor_id)
+        except SimilarityFeedbackValidationError as exc:
+            response_status = (
+                status.HTTP_409_CONFLICT
+                if exc.code.startswith("CONFLICT_")
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return _error_response(exc.code, exc.user_message, response_status)
+        return Response(
+            {"schema_version": "1.0", "profile": engineering_profile_payload(profile)},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class SimilarityFeedbackView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request: Request, search_id: str) -> Response:
+        search = get_object_or_404(
+            SimilaritySearch.objects.select_related("query_feature_set"),
+            pk=search_id,
+            job__state=Job.State.SUCCEEDED,
+        )
+        candidate_version_id = str(request.data.get("candidate_artifact_version_id", ""))
+        match = next(
+            (
+                item
+                for item in search.result.get("results", [])
+                if item.get("artifact_version_id") == candidate_version_id
+            ),
+            None,
+        )
+        if match is None:
+            return _error_response(
+                "SIMILARITY_CANDIDATE_NOT_AUTHORIZED",
+                "The candidate is not part of this authorized search result.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        candidate = (
+            FeatureSet.objects.select_related("cad_model__artifact_version__artifact")
+            .filter(
+                cad_model__artifact_version_id=candidate_version_id,
+                index_version=search.query_feature_set.index_version,
+                index_status=FeatureSet.IndexStatus.INDEXED,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if candidate is None:
+            return _error_response(
+                "SIMILARITY_CANDIDATE_GEOMETRY_NOT_AVAILABLE",
+                "The candidate no longer has an indexed feature set.",
+                status.HTTP_409_CONFLICT,
+            )
+        idempotency_key = str(
+            request.data.get("idempotency_key") or request.headers.get("Idempotency-Key") or ""
+        ).strip()
+        if not idempotency_key or len(idempotency_key) > 255:
+            return _error_response(
+                "VALIDATION_IDEMPOTENCY_KEY",
+                "An idempotency key of at most 255 characters is required.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        actor_id = str(getattr(request._request, "mold_ai_actor_id", "anonymous"))
+        try:
+            result = create_feedback(
+                search,
+                candidate,
+                action=str(request.data.get("action", "")),
+                reason_code=str(request.data.get("reason_code", "")),
+                actor_id=actor_id,
+                scope_id=candidate.cad_model.artifact_version.artifact.classification,
+                idempotency_key=idempotency_key,
+            )
+        except SimilarityFeedbackValidationError as exc:
+            response_status = (
+                status.HTTP_409_CONFLICT
+                if exc.code.startswith("CONFLICT_")
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return _error_response(exc.code, exc.user_message, response_status)
+        feedback = result.feedback
+        return Response(
+            {
+                "schema_version": "1.0",
+                "feedback_id": str(feedback.id),
+                "created": result.created,
+                "action": feedback.action,
+                "reason_code": feedback.reason_code or None,
+                "expires_at": feedback.expires_at.isoformat(),
+                "training_policy": "explicit-label-offline-only",
+            },
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
         )
 
 
