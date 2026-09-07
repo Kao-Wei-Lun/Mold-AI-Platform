@@ -868,9 +868,10 @@ def search_knowledge(
     if use_v2 and authorized_chunks:
         fused_scores = [max(0.0, coarse[str(chunk.id)]) for chunk in authorized_chunks]
         reranked, reranker_detail = rerank_passages(
-            expanded_query,
+            query,
             [chunk.text for chunk in authorized_chunks],
             fused_scores,
+            fallback_queries=[query, *query_expansions],
         )
         calibration = load_abstention_calibration()
         threshold = float(calibration["threshold"])

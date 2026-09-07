@@ -21,7 +21,7 @@ RERANKER_MODEL = "ms-marco-MiniLM-L-12-v2"
 RERANKER_VERSION = "flashrank-onnx-cpu@approved-1"
 RERANKER_MODEL_FILE = "flashrank-MiniLM-L-12-v2_Q.onnx"
 FALLBACK_DENSE_MODEL = "feature-hash-fallback@2.0.0"
-FALLBACK_RERANKER = "governed-lexical-reranker@1.0.0"
+FALLBACK_RERANKER = "governed-lexical-reranker@1.1.0"
 
 DOMAIN_SYNONYM_GROUPS = (
     ("縮水", "凹痕", "收縮凹陷", "sink mark"),
@@ -66,6 +66,26 @@ def _tokens(text: str) -> list[str]:
         for run in re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+", raw):
             values.extend(run[index : index + 2] for index in range(len(run) - 1))
     return values
+
+
+def _fallback_rerank_tokens(text: str) -> set[str]:
+    """Return lexical tokens without artificial whole-sentence CJK terms.
+
+    The retrieval tokenizer remains unchanged because it is part of the
+    persisted dense/sparse index contract. This view is local to the
+    versioned fallback reranker, so improving overlap does not invalidate an
+    existing v2 collection.
+    """
+    import re
+
+    values: list[str] = []
+    for raw in re.findall(r"[^\W_]+", text.casefold(), re.UNICODE):
+        cjk_runs = re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+", raw)
+        if len(raw) > 1 and not cjk_runs:
+            values.append(raw)
+        for run in cjk_runs:
+            values.extend(run[index : index + 2] for index in range(len(run) - 1))
+    return set(values)
 
 
 def expand_domain_query(query: str) -> tuple[str, list[str]]:
@@ -152,8 +172,8 @@ def dense_encode(text: str) -> DenseEncoding:
 
 
 def _fallback_rerank_score(query: str, passage: str, fused_score: float) -> float:
-    query_tokens = set(_tokens(query))
-    passage_tokens = set(_tokens(passage))
+    query_tokens = _fallback_rerank_tokens(query)
+    passage_tokens = _fallback_rerank_tokens(passage)
     overlap = len(query_tokens & passage_tokens) / max(len(query_tokens), 1)
     phrase = 1.0 if query.casefold() in passage.casefold() else 0.0
     return round(min(1.0, 0.62 * overlap + 0.18 * phrase + 0.20 * min(fused_score, 1.0)), 8)
@@ -180,7 +200,11 @@ def _flashrank_is_packaged() -> bool:
 
 
 def rerank_passages(
-    query: str, passages: list[str], fused_scores: list[float]
+    query: str,
+    passages: list[str],
+    fused_scores: list[float],
+    *,
+    fallback_queries: list[str] | None = None,
 ) -> tuple[list[RerankResult], dict[str, str]]:
     if _flashrank_is_packaged():
         try:
@@ -202,12 +226,23 @@ def rerank_passages(
             "The approved CPU reranker is unavailable. Run scripts/download_models.py during "
             "the connected build/preparation step."
         )
+    governed_queries = list(dict.fromkeys(fallback_queries or [query]))
     results = [
-        RerankResult(index=index, score=_fallback_rerank_score(query, text, fused_scores[index]))
+        RerankResult(
+            index=index,
+            score=max(
+                _fallback_rerank_score(candidate_query, text, fused_scores[index])
+                for candidate_query in governed_queries
+            ),
+        )
         for index, text in enumerate(passages)
     ]
     results.sort(key=lambda item: (-item.score, item.index))
-    return results, {"model": FALLBACK_RERANKER, "version": "deterministic-cpu"}
+    return results, {
+        "model": FALLBACK_RERANKER,
+        "version": "deterministic-cpu",
+        "query_policy": "original-plus-expansion-max@1.0.0",
+    }
 
 
 def load_abstention_calibration() -> dict[str, object]:

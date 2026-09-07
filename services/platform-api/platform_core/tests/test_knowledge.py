@@ -414,6 +414,49 @@ class KnowledgeTests(TestCase):
         self.assertEqual(search.result["citations"], [])
         upsert_v1.assert_called()
 
+    @override_settings(
+        KNOWLEDGE_V2_SHADOW_INDEX=True,
+        KNOWLEDGE_INDEX_READ_VERSION="v2",
+        EMBEDDING_MODEL_PATH="/missing/embedding-model",
+        RERANKER_MODEL_PATH="/missing/reranker-model",
+        RAG_CPU_MODELS_REQUIRED=False,
+    )
+    @patch("platform_core.knowledge.query_hybrid_points")
+    @patch("platform_core.knowledge.upsert_hybrid_point")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_cpu_fallback_reranker_keeps_concise_zh_query_evidence(
+        self, upsert_v1, upsert_v2, query_hybrid
+    ) -> None:
+        records = self.create_document(
+            "# 短射排查\n\n射出成型短射是熔膠未完整充填模穴造成的局部缺料。".encode(),
+            name="short-shot.md",
+            language="zh-Hant",
+        )
+        process_knowledge_job.run(str(records.job.id))
+        chunk = records.document.chunks.first()
+        assert chunk is not None
+        query_hybrid.return_value = [VectorCandidate(str(chunk.id), 1.0)]
+
+        search = search_knowledge(
+            "短射如何排查",
+            top_k=5,
+            document_types=[],
+            authority_levels=[],
+        )
+
+        self.assertFalse(search.abstained)
+        self.assertEqual(len(search.result["citations"]), 1)
+        self.assertGreaterEqual(
+            search.result["results"][0]["score_breakdown"]["reranker"],
+            search.retrieval_config["calibration"]["threshold"],
+        )
+        self.assertEqual(
+            search.retrieval_config["reranker"]["query_policy"],
+            "original-plus-expansion-max@1.0.0",
+        )
+        upsert_v1.assert_called()
+        upsert_v2.assert_called()
+
     def test_upload_rejects_unsupported_format_and_effective_date_order(self) -> None:
         malformed_pdf = self.client.post(
             "/api/v1/knowledge-documents",
