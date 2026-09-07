@@ -15,11 +15,15 @@ class Command(BaseCommand):
         parser.add_argument("--root", type=Path, required=True)
         parser.add_argument("--split", choices=["development", "holdout"], default="holdout")
         parser.add_argument(
-            "--policy", choices=["cosine-v2", "block-distance@1.0"], default="cosine-v2"
+            "--policy",
+            choices=["cosine-v2", "block-distance@1.0", "cpu-surface-verification@2.0"],
+            default="cosine-v2",
         )
         parser.add_argument("--top-k", type=int, default=5)
         parser.add_argument("--sample-count", type=int, default=1024)
         parser.add_argument("--threshold", type=float)
+        parser.add_argument("--query-limit", type=int)
+        parser.add_argument("--coarse-limit", type=int, default=25)
         parser.add_argument("--output", type=Path, help="Create a new JSON report; never overwrite")
 
     def handle(self, *args, **options):
@@ -33,6 +37,8 @@ class Command(BaseCommand):
                 k=options["top_k"],
                 sample_count=options["sample_count"],
                 threshold=options["threshold"],
+                query_limit=options["query_limit"],
+                coarse_limit=options["coarse_limit"],
             )
         except (ValueError, OSError, TypeError, KeyError) as exc:
             raise CommandError(str(exc)) from exc
@@ -47,4 +53,4 @@ class Command(BaseCommand):
         else:
             self.stdout.write(rendered)
         if report["failures"]:
-            raise CommandError("Evaluation incomplete; see parse failures in report")
+            raise CommandError("Evaluation incomplete; see parse/comparison failures in report")

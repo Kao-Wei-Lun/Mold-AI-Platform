@@ -5,6 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Reranking only: preserves the existing 32D v2 index and can be rolled back to cosine-v2.
 SIMILARITY_GEOMETRY_POLICY = os.getenv("SIMILARITY_GEOMETRY_POLICY", "block-distance@1.0")
+SIMILARITY_CALIBRATION_BUNDLE = os.getenv("SIMILARITY_CALIBRATION_BUNDLE", "")
 SIMILARITY_SURFACE_VERIFICATION_ENABLED = (
     os.getenv("SIMILARITY_SURFACE_VERIFICATION_ENABLED", "1") == "1"
 )

@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from .cad_calibration import apply_calibration, load_calibration
 from .cad_local_geometry import ALGORITHM as DETAIL_SURFACE_ALGORITHM
 from .cad_local_geometry import unit_multiplier
 from .cad_surface_verification import ALGORITHM as SURFACE_ALGORITHM
@@ -359,6 +360,7 @@ def create_similarity_records(
                     else "disabled"
                 ),
                 "comparison_mode": comparison_mode,
+                "calibration": load_calibration(),
                 "tolerance_mm": tolerance_mm,
                 "feature_set_id": str(feature_set.id),
                 "feature_schema_version": feature_set.schema_version,
@@ -680,6 +682,9 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     matches = matches[: search.top_k]
     for rank, match in enumerate(matches, start=1):
         match["rank"] = rank
+    decision = apply_calibration(
+        matches, search.job.input_snapshot.get("calibration", {}), query_artifact.dataset_id
+    )
 
     query_preview = query_feature.cad_model.preview_artifact_version
     return {
@@ -703,6 +708,7 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         "index_version": search.profile.index_version,
         "filters": search.filters,
         "result_count": len(matches),
+        "match_assessment": decision,
         "results": matches,
         "limitations": (
             [

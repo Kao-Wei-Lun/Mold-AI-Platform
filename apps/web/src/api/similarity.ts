@@ -17,6 +17,7 @@ export type SimilarityMatch = {
   material_code: string;
   coarse_score: number;
   overall_score: number;
+  match_decision?: "candidate" | "below_threshold" | "not_evaluated";
   baseline_overall_score?: number;
   ranking_basis?: "surface_adjusted" | "reference_only";
   geometric_verification?: {
@@ -74,6 +75,7 @@ export type SimilarityResult = {
   index_version: string;
   filters: Record<string, string[]>;
   result_count: number;
+  match_assessment?: { status: string; decision: string; scope: string; qualified_count: number };
   results: SimilarityMatch[];
   limitations: string[];
   lineage_ref: string;

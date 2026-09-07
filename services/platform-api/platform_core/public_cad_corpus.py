@@ -34,8 +34,9 @@ def _store_verified(root: Path, name: str, expected: str, url: str, client: http
         target.write(payload)
 
 
-def prepare_mfcad_corpus(root: Path, *, transport=None) -> dict:
-    lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+def prepare_mfcad_corpus(root: Path, *, transport=None, extended=False) -> dict:
+    path = LOCK_PATH.with_name("mfcad-extended-lock.json") if extended else LOCK_PATH
+    lock = json.loads(path.read_text(encoding="utf-8"))
     revision = lock["revision"]
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("Source must pin a full commit")

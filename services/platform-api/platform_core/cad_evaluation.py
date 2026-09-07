@@ -12,6 +12,9 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import trimesh
 
+from .cad_brep_structure import compare_structure
+from .cad_local_geometry import ALGORITHM as SURFACE_POLICY
+from .cad_local_geometry import sample_payload, verify_payloads
 from .cad_processing import parse_cad_file
 from .cad_shape_scoring import compare_shape
 from .cad_similarity_v2 import EXTRACTOR_VERSION, RANDOM_SEED, extract_shape_descriptor
@@ -129,6 +132,11 @@ def ranking_metrics(ranked: list[str], judgments: dict[str, int], k: int) -> dic
         else None,
         "judged_coverage_at_k": sum(key in judgments for key in top) / len(top) if top else 0.0,
         "unjudged_at_k": [key for key in top if key not in judgments],
+        "precision_at_k": (
+            sum(judgments[key] >= 2 for key in top) / k
+            if len(top) == k and all(key in judgments for key in top)
+            else None
+        ),
     }
 
 
@@ -147,6 +155,8 @@ def evaluate_corpus(
     sample_count: int = 1024,
     policy: str = "cosine-v2",
     threshold: float | None = None,
+    query_limit: int | None = None,
+    coarse_limit: int = 25,
 ) -> dict:
     if split not in SPLITS or not 1 <= k <= 50 or not 128 <= sample_count <= 4096:
         raise ValueError("Invalid split, K or sample count")
@@ -155,9 +165,16 @@ def evaluate_corpus(
     paths = validate_manifest(manifest, root)
     models = [item for item in manifest["models"] if item["split"] == split]
     queries = [item for item in manifest["queries"] if item["split"] == split]
+    if query_limit is not None:
+        if not 1 <= query_limit <= 500:
+            raise ValueError("Invalid query limit")
+        queries = queries[:query_limit]
+    if not 1 <= coarse_limit <= 500:
+        raise ValueError("Invalid coarse limit")
     if not queries:
         raise ValueError("Selected split contains no queries")
     features, transformed_features, failures, parsed = {}, {}, [], []
+    surfaces, transformed_surfaces, structures = {}, {}, {}
     with TemporaryDirectory(prefix="mold-cad-eval-") as directory:
         for index, model in enumerate(models):
             started = time.perf_counter()
@@ -169,12 +186,19 @@ def evaluate_corpus(
                 if len(mesh.faces) > 1_000_000:
                     raise ValueError("Preview exceeds evaluation face budget")
                 features[model["id"]] = extract_shape_descriptor(mesh, sample_count=sample_count)
+                structures[model["id"]] = result.brep_structure
+                if policy == SURFACE_POLICY:
+                    surfaces[model["id"]] = sample_payload(mesh, sample_count=sample_count)
                 # A fresh extraction from a rigidly transformed mesh; never reuse its vector.
                 mesh.apply_transform(trimesh.transformations.rotation_matrix(0.73, [1, 2, 3]))
                 mesh.apply_translation([23, -17, 9])
                 transformed_features[model["id"]] = extract_shape_descriptor(
                     mesh, sample_count=sample_count
                 )
+                if policy == SURFACE_POLICY:
+                    transformed_surfaces[model["id"]] = sample_payload(
+                        mesh, sample_count=sample_count
+                    )
                 parsed.append(
                     {
                         "model_id": model["id"],
@@ -200,12 +224,62 @@ def evaluate_corpus(
         left = (transformed_features if controlled else features)[query["model_id"]]
         ranked = sorted(
             [
-                (key, geometry_comparison(left, value, policy))
+                (
+                    key,
+                    geometry_comparison(
+                        left, value, "block-distance@1.0" if policy == SURFACE_POLICY else policy
+                    ),
+                )
                 for key, value in features.items()
                 if controlled or key != query["model_id"]
             ],
             key=lambda item: (-item[1], item[0]),
         )
+        # Offline exact cosine coarse recall is a diagnostic, not live Qdrant ANN recall.
+        coarse = sorted(
+            [
+                (key, geometry_comparison(left, value, "cosine-v2"))
+                for key, value in features.items()
+                if controlled or key != query["model_id"]
+            ],
+            key=lambda item: (-item[1], item[0]),
+        )[:coarse_limit]
+        positives = {key for key, grade in query["judgments"].items() if grade > 0}
+        coarse_recall = (
+            len(positives & {key for key, _ in coarse}) / len(positives) if positives else None
+        )
+        pair_scores = []
+        if policy == SURFACE_POLICY:
+            base_scores = dict(ranked)
+            refined = []
+            source_points = (transformed_surfaces if controlled else surfaces)[query["model_id"]]
+            for key, _ in ranked:
+                try:
+                    evidence = verify_payloads(
+                        source_points, surfaces[key], deadline=time.monotonic() + 10
+                    )
+                except Exception as exc:
+                    failures.append(
+                        {
+                            "query_id": query["id"],
+                            "model_id": key,
+                            "code": getattr(exc, "code", type(exc).__name__),
+                        }
+                    )
+                    continue
+                structure = compare_structure(structures[query["model_id"]], structures[key])
+                factor = evidence["score_factor"]
+                if structure.get("status") == "computed":
+                    factor *= math.sqrt(structure["agreement"])
+                refined.append((key, base_scores[key] * factor))
+                pair_scores.append(
+                    {
+                        "model_id": key,
+                        "grade": query["judgments"].get(key),
+                        "surface_score_factor": factor,
+                    }
+                )
+            ranked = sorted(refined, key=lambda item: (-item[1], item[0]))
         timings.append(time.perf_counter() - started)
         metrics = ranking_metrics([key for key, _ in ranked], query["judgments"], k)
         rows.append(
@@ -213,9 +287,17 @@ def evaluate_corpus(
                 "query_id": query["id"],
                 "kind": query["kind"],
                 "status": "incomplete" if failures else "evaluated",
+                "reviewer": query.get("reviewer"),
+                "expected_no_match": bool(query.get("expected_no_match")),
                 **metrics,
+                "offline_coarse_recall": coarse_recall,
+                "pair_scores": pair_scores,
                 "top_k": [{"model_id": key, "score": score} for key, score in ranked[:k]],
-                "no_match_false_acceptance": bool(ranked and ranked[0][1] >= threshold)
+                "no_match_false_acceptance": (
+                    any(p["surface_score_factor"] >= threshold for p in pair_scores)
+                    if policy == SURFACE_POLICY
+                    else bool(ranked and ranked[0][1] >= threshold)
+                )
                 if query.get("expected_no_match") and threshold is not None and not failures
                 else None,
             }
@@ -230,6 +312,8 @@ def evaluate_corpus(
             "ndcg_at_k_provisional",
             "judged_coverage_at_k",
             "no_match_false_acceptance",
+            "precision_at_k",
+            "offline_coarse_recall",
         ):
             values = [row[metric] for row in group if row.get(metric) is not None]
             metrics[metric] = sum(values) / len(values) if values else None
@@ -244,9 +328,11 @@ def evaluate_corpus(
         "extractor_version": EXTRACTOR_VERSION,
         "seed": RANDOM_SEED,
         "sample_count": sample_count,
+        "coarse_limit": coarse_limit,
         "split": split,
         "k": k,
         "threshold": threshold,
+        "threshold_metric": "surface_score_factor" if policy == SURFACE_POLICY else "ranking_score",
         "model_count": len(models),
         "query_count": len(queries),
         "status": "incomplete" if failures else "evaluated",
@@ -257,6 +343,10 @@ def evaluate_corpus(
         "queries": rows,
         "parsed_models": parsed,
         "failures": failures,
+        "model_provenance": [
+            {"model_id": m["id"], "family_id": m["family_id"], "sha256": m["sha256"]}
+            for m in models
+        ],
         "ranking_seconds": {
             "p50": float(np.percentile(timings, 50)) if timings else None,
             "p95": float(np.percentile(timings, 95)) if timings else None,

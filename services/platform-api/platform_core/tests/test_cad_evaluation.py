@@ -153,3 +153,26 @@ def test_no_match_metric_and_unknown_threshold(corpus, tmp_path):
 def test_invalid_manifest_type(manifest, tmp_path):
     with pytest.raises(ValueError, match="JSON object"):
         validate_manifest(manifest, tmp_path)
+
+
+def test_surface_policy_evaluation_and_failed_pair(corpus, tmp_path, monkeypatch):
+    from platform_core import cad_evaluation
+
+    report = evaluate_corpus(
+        corpus, tmp_path, policy=cad_evaluation.SURFACE_POLICY, sample_count=1536, k=1
+    )
+    assert report["status"] == "evaluated"
+    assert report["queries"][0]["top_k"][0]["model_id"] == "0"
+    assert len(report["queries"][0]["pair_scores"]) == 2
+    assert report["threshold_metric"] == "surface_score_factor"
+
+    def fail(*args, **kwargs):
+        raise ValueError("test failure")
+
+    monkeypatch.setattr(cad_evaluation, "verify_payloads", fail)
+    report = evaluate_corpus(
+        corpus, tmp_path, policy=cad_evaluation.SURFACE_POLICY, sample_count=1536
+    )
+    assert report["status"] == "incomplete"
+    assert len(report["failures"]) == 2
+    assert report["queries"][0]["pair_scores"] == []

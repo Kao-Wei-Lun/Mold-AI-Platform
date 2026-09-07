@@ -525,6 +525,7 @@ onBeforeUnmount(() => {
         {{ t("Public CAD geometry ranking has not yet passed independent human-labelled evaluation.") }}
       </p>
 
+      <p v-if="result.match_assessment" class="limitation-note" data-testid="match-assessment">{{ result.match_assessment.decision === 'no_reliable_match' ? t("No returned candidate passed the calibrated threshold. This does not prove the whole database has no match.") : result.match_assessment.status !== 'validated_holdout' ? t("Human calibration is not active. Scores are experimental; no reliable-match threshold is applied.") : t("A dataset-scoped calibrated threshold was evaluated; inspect each candidate decision.") }}</p>
       <p v-if="result.results.length === 0" class="muted">
         {{ t("No indexed candidates matched the active dataset and metadata filters.") }}
       </p>
@@ -540,6 +541,7 @@ onBeforeUnmount(() => {
               <span class="rank">#{{ match.rank }}</span>
               <span>
                 <strong>{{ match.artifact_name }}</strong>
+                <small v-if="match.match_decision === 'below_threshold'">{{ t("Below calibrated threshold") }}</small>
                 <small>{{ match.product_type || t("Unspecified product") }} · {{ match.dataset_id }}</small>
               </span>
               <strong class="overall-score">{{ match.ranking_basis === "reference_only"

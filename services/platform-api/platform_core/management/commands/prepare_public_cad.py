@@ -12,10 +12,13 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--root", type=Path, required=True)
+        parser.add_argument(
+            "--extended", action="store_true", help="Use the separate 100-model pinned corpus"
+        )
 
     def handle(self, *args, **options):
         try:
-            result = prepare_mfcad_corpus(options["root"])
+            result = prepare_mfcad_corpus(options["root"], extended=options["extended"])
         except (ValueError, OSError, httpx.HTTPError) as exc:
             raise CommandError(str(exc)) from exc
         self.stdout.write(f"Prepared {len(result['models'])} controlled-only public CAD models.")
