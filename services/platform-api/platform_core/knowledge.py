@@ -618,7 +618,13 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
         )
         chunk.index_status = KnowledgeChunk.IndexStatus.INDEXED
         chunk.save(update_fields=["index_status"])
-        if settings.KNOWLEDGE_V2_SHADOW_INDEX:
+        # A v2 read route requires new documents to enter the v2 collection
+        # immediately. The shadow flag is only optional while v1 remains the
+        # active route.
+        if (
+            settings.KNOWLEDGE_V2_SHADOW_INDEX
+            or settings.KNOWLEDGE_INDEX_READ_VERSION == "v2"
+        ):
             dense = dense_encode(chunk.text)
             sparse = sparse_encode(chunk.text)
             upsert_hybrid_point(

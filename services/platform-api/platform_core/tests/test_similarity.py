@@ -10,6 +10,7 @@ from platform_core.models import CADModel, FeatureSet, Job, SimilaritySearch
 from platform_core.similarity import (
     compare_feature_sets,
     create_similarity_records,
+    extract_and_index_cad_model,
     extract_feature_set,
     get_demo_profile,
     index_feature_set,
@@ -99,6 +100,25 @@ class SimilarityTests(TestCase):
         self.assertEqual(indexed.schema_version, "1.0")
         self.assertEqual(indexed.index_status, FeatureSet.IndexStatus.INDEXED)
         upsert_feature.assert_called_once()
+
+    @override_settings(
+        SIMILARITY_INDEX_READ_VERSION="v2",
+        SIMILARITY_V2_SHADOW_INDEX=False,
+    )
+    @patch("platform_core.cad_similarity_v2.extract_and_index_cad_model_v2")
+    @patch("platform_core.similarity.index_feature_set")
+    @patch("platform_core.similarity.extract_feature_set")
+    def test_active_v2_route_indexes_new_cad_without_shadow_flag(
+        self, extract_v1, index_v1, index_v2
+    ) -> None:
+        feature_set = self.create_feature("post-cutover-upload", 10)
+        extract_v1.return_value = feature_set
+        index_v1.return_value = feature_set
+
+        result = extract_and_index_cad_model(feature_set.cad_model)
+
+        self.assertEqual(result, feature_set)
+        index_v2.assert_called_once_with(feature_set.cad_model)
 
     def test_deterministic_reranking_prefers_closer_geometry_and_explains_lanes(self) -> None:
         query = self.create_feature("query", 10)

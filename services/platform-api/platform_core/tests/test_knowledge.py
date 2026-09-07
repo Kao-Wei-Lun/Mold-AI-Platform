@@ -389,6 +389,29 @@ class KnowledgeTests(TestCase):
         self.assertIn("reranker", search.result["results"][0]["score_breakdown"])
 
     @override_settings(
+        KNOWLEDGE_V2_SHADOW_INDEX=False,
+        KNOWLEDGE_INDEX_READ_VERSION="v2",
+        EMBEDDING_MODEL_PATH="/missing/embedding-model",
+        RERANKER_MODEL_PATH="/missing/reranker-model",
+        RAG_CPU_MODELS_REQUIRED=False,
+    )
+    @patch("platform_core.knowledge.upsert_hybrid_point")
+    @patch("platform_core.knowledge.upsert_named_vector")
+    def test_active_v2_route_indexes_new_document_without_shadow_flag(
+        self, upsert_v1, upsert_v2
+    ) -> None:
+        records = self.create_document()
+
+        process_knowledge_job.run(str(records.job.id))
+
+        chunks = list(records.document.chunks.order_by("ordinal"))
+        self.assertEqual(len(chunks), 2)
+        self.assertTrue(all(chunk.embedding_v2_dimension == 512 for chunk in chunks))
+        self.assertTrue(all(chunk.embedding_v2_checksum for chunk in chunks))
+        upsert_v1.assert_called()
+        self.assertEqual(upsert_v2.call_count, len(chunks))
+
+    @override_settings(
         KNOWLEDGE_INDEX_READ_VERSION="v2",
         EMBEDDING_MODEL_PATH="/missing/embedding-model",
         RERANKER_MODEL_PATH="/missing/reranker-model",
