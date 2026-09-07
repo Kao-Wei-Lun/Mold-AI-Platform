@@ -55,6 +55,10 @@ Typed validation errors:
   uploads.
 - After successful processing, action cards offer Revision linking, similarity search and design
   review without losing the active CAD context.
+- The selected local file summary remains visible after a successful upload. The App-level session
+  keeps the selected `File`, accepted upload metadata and parsed CAD result together, so leaving the
+  CAD route and returning restores the preview and the “What would you like to do next?” actions.
+  Choosing a catalog CAD clears the local upload context to prevent mixed identities.
 - Revision linking requires a selected revision and a human-entered reason, and submits the
   `row_version` returned by the upload response.
 - If no active revisions exist, the UI directs the user to Mold Registry and the submit action
@@ -66,8 +70,9 @@ Typed validation errors:
 
 Automated coverage verifies default quick uploads omit `mold_revision_id`, a new version sends the
 existing `artifact_id`, the accepted response includes `row_version`, post-upload linking submits
-the authoritative version and reason, the API persists each mode correctly, invalid combinations
-fail without creating records, and the existing CAD processing suite remains compatible.
+the authoritative version and reason, selected-file and post-upload actions survive SPA route
+round trips, the API persists each mode correctly, invalid combinations fail without creating
+records, and the existing CAD processing suite remains compatible.
 
 The external Demo acceptance gate remains:
 

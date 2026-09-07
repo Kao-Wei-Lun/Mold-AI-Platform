@@ -443,6 +443,7 @@ Dry Run 不得建立 Domain Entity；只允許建立匯入工作、原始 Artifa
 - `RDI-MOLD-10`：API 必須保存使用者選擇的 `ingestion_mode` 與 `governance_status`，Idempotency Replay 不得改變原始治理語意。
 - `RDI-MOLD-11`：簡化的新 CAD 上傳不得移除版本化能力；使用者可在進階選項將檔案新增為既有 CAD Artifact 的下一個 immutable ArtifactVersion，並沿用該 Artifact 的資料集、Revision 與治理邊界。
 - `RDI-MOLD-12`：CAD accepted response 必須回傳 Artifact 目前的 `row_version`；後續 Revision 關聯須使用該值並要求人工輸入關聯原因，禁止固定理由或猜測版本號。
+- `RDI-MOLD-13`：成功上傳後應保留目前選取的本機檔案名稱與大小，不得自動把 FileDropZone 清空；在同一 SPA Session 切換至相似搜尋／設計審查再返回 CAD 頁時，所選檔案、本次 accepted metadata、預覽及「下一步」動作區必須保持一致。載入另一筆既有 CAD 時才清除本機上傳選取與 accepted metadata，避免混用 Context。
 
 ### 13.2 Trial／Process
 

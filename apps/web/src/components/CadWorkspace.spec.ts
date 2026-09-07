@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 
 import type { CADModelResult } from "../api/cad";
 import * as registryApi from "../api/registry";
+import { setLocale } from "../i18n";
 import CadWorkspace from "./CadWorkspace.vue";
 
 const stlFile = new File(["solid test\nfacet normal 0 0 1\nendsolid test"], "part.stl", {
@@ -88,6 +89,7 @@ const succeededResult = {
 
 describe("CadWorkspace", () => {
   beforeEach(() => {
+    setLocale("en");
     vi.stubGlobal("XMLHttpRequest", FetchBackedXMLHttpRequest);
     vi.spyOn(registryApi, "fetchRegistry").mockResolvedValue({
       projects: [],
@@ -173,7 +175,8 @@ describe("CadWorkspace", () => {
     expect(wrapper.text()).toContain("4 / 6");
     expect(wrapper.text()).toContain("UNIT_UNCERTAIN");
     expect(wrapper.get('[role="progressbar"]').attributes("aria-valuenow")).toBe("100");
-    expect(wrapper.find(".file-drop-zone .selected-file-summary").exists()).toBe(false);
+    expect(wrapper.find(".file-drop-zone .selected-file-summary").exists()).toBe(true);
+    expect(wrapper.find(".file-drop-zone .selected-file-summary").text()).toContain("part.stl");
     expect((wrapper.get('input[placeholder="Housing revision A"]').element as HTMLInputElement).value)
       .toBe("");
   });
@@ -214,7 +217,7 @@ describe("CadWorkspace", () => {
           artifact_version_id: "version-post",
           correlation_id: "correlation-post",
           error: null,
-          result: succeededResult,
+          result: { ...succeededResult, artifact_version_id: "version-post" },
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -232,6 +235,37 @@ describe("CadWorkspace", () => {
     expect(wrapper.text()).toContain("Link to mold revision");
     expect(wrapper.text()).toContain("Find similar molds");
     expect(wrapper.text()).toContain("Run design review");
+  });
+
+  it("renders all post-upload actions in Traditional Chinese", async () => {
+    setLocale("zh-TW");
+    const wrapper = mount(CadWorkspace, {
+      props: {
+        activeResult: succeededResult as CADModelResult,
+        activeUpload: {
+          status: "accepted",
+          artifact_id: "artifact-zh",
+          row_version: 1,
+          artifact_version_id: "version-1",
+          version_number: 1,
+          version_action: "new_artifact",
+          job_id: "job-zh",
+          ingestion_mode: "quick_analysis",
+          governance_status: "unassigned",
+          mold_revision_id: null,
+          idempotent_replay: false,
+          warnings: [],
+          links: { artifact: "", status: "", ui: "" },
+        },
+      },
+      global: { stubs: { CadPreview: true } },
+    });
+
+    expect(wrapper.text()).toContain("接下來要進行什麼操作？");
+    expect(wrapper.text()).toContain("關聯至模具版本");
+    expect(wrapper.text()).toContain("尋找相似模具");
+    expect(wrapper.text()).toContain("執行設計審查");
+    expect(wrapper.text()).not.toContain("Link to mold revision");
   });
 
   it("links to a mold revision via post-upload action", async () => {
@@ -270,7 +304,7 @@ describe("CadWorkspace", () => {
           artifact_version_id: "version-link",
           correlation_id: "correlation-link",
           error: null,
-          result: succeededResult,
+          result: { ...succeededResult, artifact_version_id: "version-link" },
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -358,7 +392,7 @@ describe("CadWorkspace", () => {
           artifact_version_id: "version-nav",
           correlation_id: "correlation-nav",
           error: null,
-          result: succeededResult,
+          result: { ...succeededResult, artifact_version_id: "version-nav" },
         }),
       );
     vi.stubGlobal("fetch", fetchMock);

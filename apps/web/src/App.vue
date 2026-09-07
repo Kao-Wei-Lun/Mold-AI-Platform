@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import type { AssistantContext, UIAction } from "./api/assistant";
-import type { CADModelResult } from "./api/cad";
+import type { CADModelResult, CADUploadAccepted } from "./api/cad";
 import type { LocalAccount } from "./api/identity";
 import { emptyMasterDataOptions, fetchMasterDataOptions, type MasterDataOptions } from "./api/masterData";
 import { fetchReadiness, type ReadinessResponse } from "./api/system";
@@ -45,6 +45,8 @@ const readiness = ref<ReadinessResponse | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const activeCAD = ref<CADModelResult | null>(null);
+const activeCADUpload = ref<CADUploadAccepted | null>(null);
+const activeCADFile = ref<File | null>(null);
 const pendingUIAction = ref<UIAction | null>(null);
 const accessReady = ref(false);
 const currentAccount = ref<LocalAccount | null>(null);
@@ -353,11 +355,15 @@ onBeforeUnmount(() => window.removeEventListener("popstate", onPopState));
         <CadWorkspace
           v-else-if="currentRoute.id === 'cad' && accessReady"
           :active-result="activeCAD"
+          :active-upload="activeCADUpload"
+          :active-file="activeCADFile"
           :master-data-options="masterDataOptions"
           :master-data-loading="masterDataLoading"
           :master-data-error="masterDataError"
           @retry-master-data="refreshMasterData"
           @ready="activeCAD = $event"
+          @accepted="activeCADUpload = $event"
+          @file-selected="activeCADFile = $event"
           @navigate="navigate"
         />
         <SimilarityWorkspace

@@ -1,6 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 
-import type { CADModelResult } from "./api/cad";
+import type { CADModelResult, CADUploadAccepted } from "./api/cad";
 import App from "./App.vue";
 import { setLocale } from "./i18n";
 
@@ -74,6 +74,21 @@ const activeCADResult: CADModelResult = {
     download_url: "/preview-persistent",
   },
   similarity_index: null,
+};
+const activeCADUpload: CADUploadAccepted = {
+  status: "accepted",
+  artifact_id: "artifact-persistent",
+  row_version: 1,
+  artifact_version_id: "version-persistent",
+  version_number: 1,
+  version_action: "new_artifact",
+  job_id: "job-persistent",
+  ingestion_mode: "quick_analysis",
+  governance_status: "unassigned",
+  mold_revision_id: null,
+  idempotent_replay: false,
+  warnings: [],
+  links: { artifact: "/artifact-persistent", status: "/job-persistent", ui: "/engineering/cad" },
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -159,8 +174,15 @@ describe("App", () => {
     await flushPromises();
 
     wrapper.findComponent({ name: "CadWorkspace" }).vm.$emit("ready", activeCADResult);
+    wrapper.findComponent({ name: "CadWorkspace" }).vm.$emit("accepted", activeCADUpload);
+    wrapper.findComponent({ name: "CadWorkspace" }).vm.$emit(
+      "fileSelected",
+      new File(["solid persistent"], "persistent.stl", { type: "model/stl" }),
+    );
     await flushPromises();
     expect(wrapper.text()).toContain("160.00 x 160.00 x 5.00 mm");
+    expect(wrapper.text()).toContain("What would you like to do next?");
+    expect(wrapper.text()).toContain("persistent.stl");
 
     await wrapper.get('a[href="/engineering/similarity"]').trigger("click");
     await flushPromises();
@@ -170,6 +192,8 @@ describe("App", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("160.00 x 160.00 x 5.00 mm");
     expect(wrapper.text()).toContain("79558 / 119337");
+    expect(wrapper.text()).toContain("What would you like to do next?");
+    expect(wrapper.text()).toContain("persistent.stl");
   });
 
   it("restores an administrator session before loading a direct identity route", async () => {

@@ -25,17 +25,23 @@ const { locale, t } = useI18n();
 
 const props = withDefaults(defineProps<{
   activeResult?: CADModelResult | null;
+  activeUpload?: CADUploadAccepted | null;
+  activeFile?: File | null;
   masterDataOptions?: MasterDataOptions;
   masterDataLoading?: boolean;
   masterDataError?: string | null;
 }>(), {
   activeResult: null,
+  activeUpload: null,
+  activeFile: null,
   masterDataOptions: emptyMasterDataOptions,
   masterDataLoading: false,
   masterDataError: null,
 });
 const emit = defineEmits<{
   ready: [result: NonNullable<CADJob["result"]>];
+  accepted: [upload: CADUploadAccepted | null];
+  fileSelected: [file: File | null];
   retryMasterData: [];
   navigate: [route: WorkspaceRouteId];
 }>();
@@ -43,7 +49,7 @@ const emit = defineEmits<{
 const CadPreview = defineAsyncComponent(() => import("./CadPreview.vue"));
 
 // ── Upload form state ──
-const selectedFile = ref<File | null>(null);
+const selectedFile = ref<File | null>(props.activeFile);
 const artifactName = ref("");
 const datasetId = ref("");
 const productType = ref("");
@@ -60,7 +66,7 @@ const restoreActiveResult = ref(true);
 let pollTimer: number | null = null;
 
 // ── Post-upload action state ──
-const lastAccepted = ref<CADUploadAccepted | null>(null);
+const lastAccepted = ref<CADUploadAccepted | null>(props.activeUpload);
 const linkRevisionOpen = ref(false);
 const linkRevisionId = ref("");
 const linkReason = ref("");
@@ -115,7 +121,20 @@ watch(existingArtifactId, (id) => {
   materialCode.value = artifact.material_code;
 });
 const showPostActions = computed(
-  () => result.value && job.value?.state === "succeeded" && lastAccepted.value,
+  () => Boolean(
+    result.value &&
+    lastAccepted.value &&
+    result.value.artifact_version_id === lastAccepted.value.artifact_version_id,
+  ),
+);
+
+watch(
+  () => props.activeUpload,
+  (upload) => { lastAccepted.value = upload; },
+);
+watch(
+  () => props.activeFile,
+  (file) => { selectedFile.value = file; },
 );
 
 function optionLabel(option: MasterDataOption): string {
@@ -156,6 +175,7 @@ function selectFile(candidate: File): void {
     return;
   }
   selectedFile.value = candidate;
+  emit("fileSelected", candidate);
   error.value = null;
   if (selectedFile.value && !artifactName.value) {
     artifactName.value = selectedFile.value.name.replace(/\.(step|stp|stl)$/i, "");
@@ -191,6 +211,7 @@ async function submit(): Promise<void> {
   warning.value = null;
   job.value = null;
   lastAccepted.value = null;
+  emit("accepted", null);
   linkRevisionOpen.value = false;
   linkVersionOpen.value = false;
   restoreActiveResult.value = false;
@@ -212,11 +233,11 @@ async function submit(): Promise<void> {
       { onProgress: (progress) => { uploadProgress.value = progress; } },
     );
     lastAccepted.value = accepted;
+    emit("accepted", accepted);
     warning.value = accepted.warnings.map((message) => t(message)).join(" ") || null;
     job.value = await fetchCADJob(accepted.job_id);
     if (job.value.state === "succeeded" && job.value.result) emit("ready", job.value.result);
     schedulePoll();
-    selectedFile.value = null;
     artifactName.value = "";
     pushToast(t("CAD processing started."), "success");
   } catch (caught) {
@@ -294,6 +315,9 @@ function activateRecent(): void {
   restoreActiveResult.value = false;
   job.value = selected.job;
   lastAccepted.value = null;
+  emit("accepted", null);
+  selectedFile.value = null;
+  emit("fileSelected", null);
   emit("ready", selected.job.result);
 }
 
