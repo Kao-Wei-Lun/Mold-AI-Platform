@@ -13,6 +13,8 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils import timezone
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
@@ -70,6 +72,10 @@ SUPPORTED_EXTENSIONS = {
     ".docx": (
         "docx",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
+    ".xlsx": (
+        "xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ),
 }
 EICAR_MARKER = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
@@ -163,38 +169,46 @@ def _extract_pdf(data: bytes) -> str:
         ) from exc
 
 
-def _extract_docx(data: bytes) -> str:
+def _screen_office_container(data: bytes, document_format: str, required_member: str) -> None:
+    label = document_format.upper()
     if not data.startswith(b"PK"):
-        raise KnowledgeValidationError("VALIDATION_SIGNATURE", "DOCX signature is invalid.")
+        raise KnowledgeValidationError("VALIDATION_SIGNATURE", f"{label} signature is invalid.")
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
             if len(entries) > 1_000 or sum(item.file_size for item in entries) > 25 * 1024 * 1024:
                 raise KnowledgeValidationError(
-                    "VALIDATION_ARCHIVE_BOMB", "The DOCX container exceeds safe complexity limits."
+                    "VALIDATION_ARCHIVE_BOMB",
+                    f"The {label} container exceeds safe complexity limits.",
                 )
             for item in entries:
                 if item.file_size > max(item.compress_size, 1) * 100:
                     raise KnowledgeValidationError(
-                        "VALIDATION_ARCHIVE_BOMB", "The DOCX compression ratio is unsafe."
+                        "VALIDATION_ARCHIVE_BOMB", f"The {label} compression ratio is unsafe."
                     )
                 name = item.filename.lower()
                 if "vbaproject.bin" in name:
                     raise KnowledgeValidationError(
-                        "VALIDATION_DOCX_MACRO", "Macro-enabled Office content is not accepted."
+                        f"VALIDATION_{label}_MACRO", "Macro-enabled Office content is not accepted."
                     )
                 if name.endswith(".rels") and b'TargetMode="External"' in archive.read(item):
                     raise KnowledgeValidationError(
-                        "VALIDATION_DOCX_EXTERNAL_LINK",
-                        "External DOCX relationships are not accepted.",
+                        f"VALIDATION_{label}_EXTERNAL_LINK",
+                        f"External {label} relationships are not accepted.",
                     )
-            document = archive.read("word/document.xml")
+            archive.getinfo(required_member)
     except KnowledgeValidationError:
         raise
     except (zipfile.BadZipFile, KeyError, OSError) as exc:
         raise KnowledgeValidationError(
-            "VALIDATION_DOCX_PARSE", "The DOCX is not safely readable."
+            f"VALIDATION_{label}_PARSE", f"The {label} is not safely readable."
         ) from exc
+
+
+def _extract_docx(data: bytes) -> str:
+    _screen_office_container(data, "docx", "word/document.xml")
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        document = archive.read("word/document.xml")
     try:
         root = ElementTree.fromstring(document)
     except ElementTree.ParseError as exc:
@@ -210,11 +224,72 @@ def _extract_docx(data: bytes) -> str:
     return "\n\n".join(paragraphs)
 
 
+def _extract_xlsx(data: bytes) -> str:
+    _screen_office_container(data, "xlsx", "xl/workbook.xml")
+    try:
+        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True, keep_links=False)
+        if len(workbook.worksheets) > 100:
+            raise KnowledgeValidationError(
+                "VALIDATION_DOCUMENT_COMPLEXITY", "XLSX files may contain at most 100 sheets."
+            )
+        sections: list[str] = []
+        total_cells = 0
+        for sheet in workbook.worksheets:
+            rows: list[list[str]] = []
+            for row_number, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if row_number > 10_000:
+                    raise KnowledgeValidationError(
+                        "VALIDATION_DOCUMENT_COMPLEXITY",
+                        "Each XLSX sheet may contain at most 10,000 rows.",
+                    )
+                values = [str(value).strip() if value is not None else "" for value in row[:200]]
+                while values and not values[-1]:
+                    values.pop()
+                if values:
+                    total_cells += len(values)
+                    if total_cells > 50_000:
+                        raise KnowledgeValidationError(
+                            "VALIDATION_DOCUMENT_COMPLEXITY",
+                            "XLSX files may contain at most 50,000 populated cells.",
+                        )
+                    rows.append(values)
+            if not rows:
+                continue
+            width = max(len(row) for row in rows)
+            escaped = [
+                [value.replace("|", "\\|").replace("\n", " ") for value in row]
+                + [""] * (width - len(row))
+                for row in rows
+            ]
+            table = ["| " + " | ".join(escaped[0]) + " |"]
+            table.append("| " + " | ".join(["---"] * width) + " |")
+            table.extend("| " + " | ".join(row) + " |" for row in escaped[1:])
+            sections.append(f"# Sheet: {sheet.title}\n\n" + "\n".join(table))
+        workbook.close()
+    except KnowledgeValidationError:
+        raise
+    except (
+        ElementTree.ParseError,
+        InvalidFileException,
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise KnowledgeValidationError(
+            "VALIDATION_XLSX_PARSE", "The XLSX is not safely readable."
+        ) from exc
+    return "\n\n".join(sections)
+
+
 def extract_knowledge_text(data: bytes, document_format: str) -> str:
     if document_format == "pdf":
         text = _extract_pdf(data)
     elif document_format == "docx":
         text = _extract_docx(data)
+    elif document_format == "xlsx":
+        text = _extract_xlsx(data)
     else:
         try:
             text = data.decode("utf-8-sig", errors="strict")
@@ -244,7 +319,7 @@ def validate_knowledge_upload(upload: UploadedFile) -> tuple[str, str, str, str]
     except KeyError as exc:
         raise KnowledgeValidationError(
             "VALIDATION_UNSUPPORTED_FORMAT",
-            "Only TXT, Markdown, PDF, and DOCX knowledge files are supported.",
+            "Only TXT, Markdown, PDF, DOCX, and XLSX knowledge files are supported.",
         ) from exc
     sha256 = _hash_and_screen(upload)
     upload.seek(0)
@@ -444,7 +519,14 @@ def text_vector(text: str) -> list[float]:
 
 
 def chunk_document(text: str, document_format: str) -> list[dict[str, object]]:
-    parsed = parse_structured_document(text.encode("utf-8"), document_format, text)
+    parsed = parse_structured_document(
+        text.encode("utf-8"),
+        document_format,
+        text,
+        prefer_docling=settings.DOCLING_CPU_ENABLED,
+        docling_required=settings.DOCLING_REQUIRED,
+        max_pages=settings.DOCLING_MAX_PAGES,
+    )
     return hierarchical_chunks(parsed)
 
 
@@ -467,7 +549,14 @@ def index_knowledge_document(document: KnowledgeDocument) -> dict[str, object]:
         document.save()
         return {"status": "obsolete", "findings": [], "chunk_count": 0}
 
-    structured = parse_structured_document(source_bytes, document.artifact_version.format, text)
+    structured = parse_structured_document(
+        source_bytes,
+        document.artifact_version.format,
+        text,
+        prefer_docling=settings.DOCLING_CPU_ENABLED,
+        docling_required=settings.DOCLING_REQUIRED,
+        max_pages=settings.DOCLING_MAX_PAGES,
+    )
     raw_chunks = hierarchical_chunks(structured)
     if not raw_chunks:
         raise KnowledgeValidationError(

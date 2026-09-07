@@ -12,11 +12,15 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 from xml.etree import ElementTree
 
 from pypdf import PdfReader
 
 PARSER_VERSION = "structured-cpu@3.0.0"
+DOCLING_PARSER_VERSION = "docling-native-cpu@2.126.0"
 CHUNKER_VERSION = "hierarchical-semantic@2.0.0"
 CHUNK_CONTRACT_VERSION = "2.0"
 PROSE_LIMIT = 900
@@ -254,16 +258,153 @@ def _pdf_blocks(data: bytes) -> tuple[list[DocumentBlock], list[str]]:
     return blocks, warnings
 
 
+def _docling_version() -> str:
+    try:
+        return version("docling-slim")
+    except PackageNotFoundError:
+        return "unavailable"
+
+
+@lru_cache(maxsize=1)
+def _docling_converter() -> Any:
+    """Build the model-free converter once; URL inputs and model pipelines stay disabled."""
+    from docling.datamodel.base_models import InputFormat
+    from docling.document_converter import DocumentConverter, NativePdfFormatOption
+
+    return DocumentConverter(
+        allowed_formats=[InputFormat.PDF, InputFormat.DOCX, InputFormat.XLSX, InputFormat.MD],
+        format_options={InputFormat.PDF: NativePdfFormatOption()},
+    )
+
+
+def _docling_bbox(
+    provenance: Any, document: Any
+) -> tuple[
+    int | None,
+    float | None,
+    float | None,
+    tuple[float, float, float, float] | None,
+]:
+    page_no = getattr(provenance, "page_no", None)
+    if not isinstance(page_no, int) or page_no < 1:
+        return None, None, None, None
+    page = getattr(document, "pages", {}).get(page_no)
+    size = getattr(page, "size", None)
+    width = float(getattr(size, "width", 0.0) or 0.0) or None
+    height = float(getattr(size, "height", 0.0) or 0.0) or None
+    bbox = getattr(provenance, "bbox", None)
+    if bbox is None or height is None:
+        return page_no, width, height, None
+    try:
+        top_left = bbox.to_top_left_origin(page_height=height)
+    except (AttributeError, TypeError, ValueError):
+        top_left = bbox
+    try:
+        coordinates = tuple(float(getattr(top_left, field)) for field in ("l", "t", "r", "b"))
+    except (AttributeError, TypeError, ValueError):
+        return page_no, width, height, None
+    anchor = validated_anchor(
+        page_no=page_no,
+        page_width=width,
+        page_height=height,
+        bbox=coordinates,
+        bbox_precision="docling-native",
+    )
+    safe_bbox = anchor["bbox"]
+    return page_no, width, height, tuple(safe_bbox) if isinstance(safe_bbox, list) else None
+
+
+def _docling_blocks(
+    data: bytes, document_format: str, max_pages: int
+) -> tuple[str, list[DocumentBlock]]:
+    from docling.datamodel.base_models import DocumentStream
+
+    result = _docling_converter().convert(
+        DocumentStream(name=f"knowledge-source.{document_format}", stream=io.BytesIO(data)),
+        max_num_pages=max_pages,
+        max_file_size=len(data),
+    )
+    document = result.document
+    markdown = document.export_to_markdown()
+    if document_format != "pdf":
+        return markdown, _text_blocks(markdown, markdown=True)
+
+    blocks: list[DocumentBlock] = []
+    headings: list[str] = []
+    paragraph = 0
+    for item, level in document.iterate_items():
+        raw_label = getattr(item, "label", "")
+        label = str(getattr(raw_label, "value", raw_label))
+        text = str(getattr(item, "text", "") or "").strip()
+        if label in {"title", "section_header"} and text:
+            heading_level = max(1, min(int(level or 1), 6))
+            headings = headings[: heading_level - 1] + [text[:255]]
+            continue
+        if label == "table" or item.__class__.__name__ == "TableItem":
+            try:
+                text = str(item.export_to_markdown(document) or "").strip()
+            except (AttributeError, TypeError, ValueError):
+                text = ""
+            content_type = "table"
+        else:
+            content_type = "prose"
+        if not text:
+            continue
+        paragraph += 1
+        provenance = next(iter(getattr(item, "prov", []) or []), None)
+        page_no, width, height, bbox = (
+            _docling_bbox(provenance, document)
+            if provenance is not None
+            else (None, None, None, None)
+        )
+        blocks.append(
+            DocumentBlock(
+                text=text,
+                content_type=content_type,
+                section_path=tuple(headings)
+                or ((f"Page {page_no}",) if page_no else ("Document",)),
+                paragraph_number=paragraph,
+                page_no=page_no,
+                page_width=width,
+                page_height=height,
+                bbox=bbox,
+                bbox_precision="docling-native" if bbox else "unavailable",
+            )
+        )
+    return markdown, blocks
+
+
 def parse_structured_document(
-    data: bytes, document_format: str, plain_text: str
+    data: bytes,
+    document_format: str,
+    plain_text: str,
+    *,
+    prefer_docling: bool = True,
+    docling_required: bool = False,
+    max_pages: int = 200,
 ) -> StructuredDocument:
     warnings: list[str] = []
+    if prefer_docling and document_format in {"pdf", "docx", "xlsx", "md"}:
+        try:
+            parsed_text, blocks = _docling_blocks(data, document_format, max_pages)
+            if blocks:
+                return StructuredDocument(
+                    text=parsed_text or plain_text,
+                    blocks=tuple(blocks),
+                    parser_version=f"docling-native-cpu@{_docling_version()}",
+                )
+            raise ValueError("Docling returned no indexable blocks.")
+        except Exception as exc:  # Docling backends expose several typed parse failures.
+            if docling_required:
+                raise
+            warnings.append(f"DOCLING_FALLBACK:{exc.__class__.__name__}")
     if document_format == "pdf":
-        blocks, warnings = _pdf_blocks(data)
+        blocks, pdf_warnings = _pdf_blocks(data)
+        warnings.extend(pdf_warnings)
     elif document_format == "docx":
         blocks = _docx_blocks(data)
     else:
-        blocks = _text_blocks(plain_text, markdown=document_format == "md")
+        blocks = _text_blocks(plain_text, markdown=document_format in {"md", "xlsx"})
     return StructuredDocument(
         text=plain_text,
         blocks=tuple(blocks),

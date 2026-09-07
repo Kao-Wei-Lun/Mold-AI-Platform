@@ -3,6 +3,7 @@ import zipfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
+from openpyxl import Workbook
 
 from platform_core.knowledge import (
     KnowledgeValidationError,
@@ -60,6 +61,18 @@ def _simple_pdf(text: str) -> bytes:
     return bytes(result)
 
 
+def _simple_xlsx() -> bytes:
+    stream = io.BytesIO()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Process limits"
+    sheet.append(["Parameter", "Limit"])
+    sheet.append(["Pressure", "80 MPa"])
+    workbook.save(stream)
+    workbook.close()
+    return stream.getvalue()
+
+
 @override_settings(MAX_KNOWLEDGE_UPLOAD_BYTES=5 * 1024 * 1024)
 class KnowledgeSecureParserTests(SimpleTestCase):
     def test_pdf_and_docx_extract_safe_text(self):
@@ -85,6 +98,63 @@ class KnowledgeSecureParserTests(SimpleTestCase):
         relationships = b'<Relationships><Relationship TargetMode="External" Target="https://example.com"/></Relationships>'
         with self.assertRaisesMessage(KnowledgeValidationError, "External DOCX"):
             extract_knowledge_text(_docx(xml, relationships), "docx")
+
+    def test_xlsx_extracts_tables_and_passes_the_governed_upload_policy(self):
+        xlsx = _simple_xlsx()
+
+        text = extract_knowledge_text(xlsx, "xlsx")
+        validated = validate_knowledge_upload(
+            SimpleUploadedFile(
+                "limits.xlsx",
+                xlsx,
+                content_type=("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            )
+        )
+        chunks = hierarchical_chunks(
+            parse_structured_document(xlsx, "xlsx", text, prefer_docling=False)
+        )
+
+        self.assertIn("# Sheet: Process limits", text)
+        self.assertIn("| Pressure | 80 MPa |", text)
+        self.assertEqual(validated[1], "xlsx")
+        self.assertEqual(chunks[0]["content_type"], "table")
+        self.assertEqual(chunks[0]["locator"]["section_path"], ["Sheet: Process limits"])
+
+    def test_docling_model_free_xlsx_adapter_preserves_table_structure(self):
+        xlsx = _simple_xlsx()
+
+        parsed = parse_structured_document(
+            xlsx,
+            "xlsx",
+            extract_knowledge_text(xlsx, "xlsx"),
+            docling_required=True,
+        )
+
+        self.assertEqual(parsed.parser_version, "docling-native-cpu@2.126.0")
+        self.assertEqual(parsed.blocks[0].content_type, "table")
+        self.assertIn("Pressure", parsed.blocks[0].text)
+        self.assertIn("80 MPa", parsed.blocks[0].text)
+
+    def test_xlsx_external_relationship_is_rejected(self):
+        xlsx = _simple_xlsx()
+        source = io.BytesIO(xlsx)
+        target = io.BytesIO()
+        with (
+            zipfile.ZipFile(source) as original,
+            zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as changed,
+        ):
+            for item in original.infolist():
+                payload = original.read(item)
+                if item.filename.endswith(".rels"):
+                    payload = payload.replace(
+                        b"</Relationships>",
+                        b'<Relationship TargetMode="External" Target="https://example.com"/>'
+                        b"</Relationships>",
+                    )
+                changed.writestr(item, payload)
+
+        with self.assertRaisesMessage(KnowledgeValidationError, "External XLSX"):
+            extract_knowledge_text(target.getvalue(), "xlsx")
 
     def test_signature_spoof_and_prompt_injection_are_detected(self):
         with self.assertRaisesMessage(KnowledgeValidationError, "PDF signature"):

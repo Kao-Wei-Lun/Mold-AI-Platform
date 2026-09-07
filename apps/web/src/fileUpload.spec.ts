@@ -1,8 +1,8 @@
 import { fileExtension, formatFileSize, uploadPolicies, validateUploadFile } from "./fileUpload";
 
 describe("upload file policy", () => {
-  it("accepts the governed Knowledge formats including PDF and DOCX", () => {
-    for (const name of ["guide.txt", "guide.MD", "guide.pdf", "guide.docx"]) {
+  it("accepts the governed Knowledge formats including PDF, DOCX and XLSX", () => {
+    for (const name of ["guide.txt", "guide.MD", "guide.pdf", "guide.docx", "guide.xlsx"]) {
       expect(validateUploadFile({ name, size: 1024 }, uploadPolicies.knowledge)).toBeNull();
     }
   });

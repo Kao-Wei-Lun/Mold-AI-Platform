@@ -66,13 +66,13 @@ describe("KnowledgeWorkspace", () => {
     await wrapper.get(".knowledge-upload-form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Choose a TXT, Markdown, PDF or DOCX file");
+    expect(wrapper.text()).toContain("Choose a TXT, Markdown, PDF, DOCX or XLSX file");
     expect(wrapper.text()).toContain("Enter a title with at least 3 characters");
     expect(wrapper.text()).toContain("Required fields remaining: 2");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts PDF and DOCX in the governed picker and shows a file summary", async () => {
+  it("accepts PDF, DOCX and XLSX in the governed picker and shows a file summary", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       jsonResponse({ schema_version: "1.0", items: [indexedDocument] }),
     ));
@@ -85,6 +85,7 @@ describe("KnowledgeWorkspace", () => {
 
     expect(input.attributes("accept")).toContain(".pdf");
     expect(input.attributes("accept")).toContain(".docx");
+    expect(input.attributes("accept")).toContain(".xlsx");
     expect(wrapper.text()).toContain("mold-guide.pdf");
     expect(wrapper.text()).toContain("Ready for security screening");
     expect((wrapper.get('.knowledge-upload-form input[type="text"]').element as HTMLInputElement).value)

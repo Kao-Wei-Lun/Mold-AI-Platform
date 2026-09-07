@@ -61,7 +61,7 @@ const filteredDocuments = computed(() => {
 });
 const fileError = computed(() =>
   fileSelectionError.value || (uploadAttempted.value && !file.value
-    ? t("Choose a TXT, Markdown, PDF or DOCX file.")
+    ? t("Choose a TXT, Markdown, PDF, DOCX or XLSX file.")
     : ""),
 );
 const titleError = computed(() =>
@@ -77,11 +77,11 @@ function selectFile(candidate: File): void {
     file.value = null;
     fileSelectionError.value = validation === "too_large"
       ? t("File size exceeds the {limit} MB limit.", { limit: 5 })
-      : t("File type is not supported. Allowed: {formats}.", { formats: "TXT, MD, PDF, DOCX" });
+      : t("File type is not supported. Allowed: {formats}.", { formats: "TXT, MD, PDF, DOCX, XLSX" });
     return;
   }
   file.value = candidate;
-  if (!title.value) title.value = candidate.name.replace(/\.(md|txt|pdf|docx)$/i, "");
+  if (!title.value) title.value = candidate.name.replace(/\.(md|txt|pdf|docx|xlsx)$/i, "");
 }
 
 async function loadDocuments(): Promise<void> {
@@ -261,8 +261,8 @@ onBeforeUnmount(() => {
       <section v-if="canAuthor" class="knowledge-import-workspace">
         <div class="knowledge-import-intro"><span>1</span><div><h3>{{ t("Import a governed knowledge document") }}</h3><p>{{ t("Select the source and describe how it may be used. Security screening and indexing run after submission.") }}</p></div></div>
         <form class="knowledge-upload-form" @submit.prevent="submitUpload">
-          <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('Knowledge source file')" required :helper="t('TXT, Markdown, PDF or DOCX · maximum 5 MB · security screened')" :error="fileError">
-            <FileDropZone :id="fieldId" accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" :prompt="t('Drop TXT, Markdown, PDF or DOCX here')" :ready-text="t('Ready for security screening')" :selected-file="file" :described-by="describedBy" :invalid="invalid" :disabled="uploading" @select="selectFile" />
+          <FormField v-slot="{ fieldId, describedBy, invalid }" class="file-field" :label="t('Knowledge source file')" required :helper="t('TXT, Markdown, PDF, DOCX or XLSX · maximum 5 MB · security screened')" :error="fileError">
+            <FileDropZone :id="fieldId" accept=".txt,.md,.pdf,.docx,.xlsx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :prompt="t('Drop TXT, Markdown, PDF, DOCX or XLSX here')" :ready-text="t('Ready for security screening')" :selected-file="file" :described-by="describedBy" :invalid="invalid" :disabled="uploading" @select="selectFile" />
           </FormField>
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Title')" required :helper="t('Use at least 3 characters so the source is recognizable.')" :error="titleError"><input :id="fieldId" v-model="title" type="text" maxlength="255" minlength="3" required :placeholder="t('Demo molding SOP')" :aria-describedby="describedBy" :aria-invalid="invalid" /></FormField>
           <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Document type')" required><select :id="fieldId" v-model="documentType" required :aria-describedby="describedBy" :aria-invalid="invalid"><option value="demo_sop">{{ t("Demo SOP") }}</option><option value="design_guideline">{{ t("Design guideline") }}</option><option value="trial_report">{{ t("Trial report") }}</option><option value="case_note">{{ t("Case note") }}</option></select></FormField>

@@ -113,7 +113,10 @@ class KnowledgeTests(TestCase):
         self.assertEqual(chunks[0].content_type, "prose")
         self.assertTrue(chunks[0].parent_ref)
         self.assertEqual(chunks[0].citation_anchor["coordinate_origin"], "top-left")
-        self.assertEqual(records.document.parser_version, "structured-cpu@3.0.0")
+        self.assertTrue(
+            records.document.parser_version.startswith("docling-native-cpu@"),
+            records.document.parser_version,
+        )
         self.assertEqual(records.document.pipeline_manifest["schema_version"], "2.0")
         self.assertEqual(upsert.call_count, 2)
         self.assertEqual(upsert.call_args.kwargs["payload"]["acl_scopes"], ["public-demo"])

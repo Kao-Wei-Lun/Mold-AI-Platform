@@ -2,7 +2,7 @@ export const MEBIBYTE = 1024 * 1024;
 
 export const uploadPolicies = {
   cad: { maxBytes: 200 * MEBIBYTE, extensions: ["step", "stp", "stl"] },
-  knowledge: { maxBytes: 5 * MEBIBYTE, extensions: ["txt", "md", "pdf", "docx"] },
+  knowledge: { maxBytes: 5 * MEBIBYTE, extensions: ["txt", "md", "pdf", "docx", "xlsx"] },
   hmi: { maxBytes: 10 * MEBIBYTE, extensions: ["png", "jpg", "jpeg"] },
 } as const;
 

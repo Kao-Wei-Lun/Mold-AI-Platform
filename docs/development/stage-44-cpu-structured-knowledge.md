@@ -47,12 +47,12 @@ Retirement is deliberately two-layered: the database publication state blocks re
 Qdrant is delayed, while explicitly named points are deleted and chunks are marked with a
 tombstone timestamp. Publishing a replacement also tombstones any previously published version.
 
-## Deliberate rollout boundary
+## Stage 45C implementation update
 
-The contract is parser-neutral so the approved Docling CPU adapter can populate the same fields.
-Docling model packaging and the hybrid 384-dimensional collection are delivered with the Stage 45
-offline-model and shadow-index work. Until that package is present and verified, the system records
-the deterministic native parser identity and does not claim Docling-derived or exact coordinates.
+The parser-neutral contract is now populated by the pinned model-free Docling CPU adapter for PDF,
+DOCX, XLSX and Markdown. The native parser remains a recorded fallback and can be selected with a
+feature flag. The adapter does not install Torch, CUDA, OCR or VLM models. Existing indexed versions
+are not mutated automatically; Stage 46 owns controlled reindex and alias cutover.
 
 ## Verification
 

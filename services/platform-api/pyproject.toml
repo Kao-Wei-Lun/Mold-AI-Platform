@@ -25,6 +25,7 @@ dependencies = [
   "pypdf>=6.0,<7",
   "fastembed>=0.7,<0.8",
   "flashrank>=0.2.10,<0.3",
+  "docling-slim[convert-core,format-pdf,format-docx,format-xlsx,format-markdown]==2.126.0",
 ]
 
 [project.optional-dependencies]

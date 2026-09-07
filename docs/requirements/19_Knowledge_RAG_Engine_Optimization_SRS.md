@@ -56,6 +56,10 @@ flowchart TD
 ### 3.2 功能需求清單
 
 #### 1. 結構化文檔解析器（IBM Docling on CPU）
+> 實作狀態（2026-09-07）：已完成 Stage 45C。採用 `docling-slim` 2.126.0 的 model-free
+> Native PDF／DOCX／XLSX／Markdown CPU 管線，不安裝 Torch、CUDA、OCR 或 VLM 模型；XLSX
+> 上傳、Office 安全篩檢、表格 Markdown、解析器 provenance 與可稽核 fallback 已納入。
+
 * **技術方案**：整合開源 `docling` 套件，採用 CPU 最佳化模式。
 * **解析能力**：
   * 將 PDF、DOCX、XLSX 中的表格精確轉換為標準 Markdown 表格（保留 Header、Row、Column 邏輯）。

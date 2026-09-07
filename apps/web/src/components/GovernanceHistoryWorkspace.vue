@@ -22,6 +22,7 @@ import {
   type RuleProfileDiff,
 } from "../api/rules";
 import { useI18n } from "../i18n";
+import { uploadPolicies, validateUploadFile } from "../fileUpload";
 import DataTable from "./DataTable.vue";
 import DetailTabs from "./DetailTabs.vue";
 import PropertyGrid from "./PropertyGrid.vue";
@@ -154,12 +155,19 @@ function transitionDocument(action: "submit" | "approve" | "publish" | "retire")
 }
 
 function chooseVersionFile(event: Event): void {
-  versionFile.value = (event.target as HTMLInputElement).files?.[0] || null;
+  const candidate = (event.target as HTMLInputElement).files?.[0] || null;
+  if (candidate && validateUploadFile(candidate, uploadPolicies.knowledge)) {
+    versionFile.value = null;
+    error.value = t("Choose a TXT, Markdown, PDF, DOCX or XLSX file.");
+    return;
+  }
+  error.value = null;
+  versionFile.value = candidate;
 }
 
 function createKnowledgeVersion(): Promise<void> {
   if (!document.value || !versionFile.value) {
-    error.value = t("Choose a UTF-8 TXT or Markdown file.");
+    error.value = t("Choose a TXT, Markdown, PDF, DOCX or XLSX file.");
     return Promise.resolve();
   }
   return mutate(async () => {
@@ -222,7 +230,7 @@ watch(() => [props.domain, recordId.value, activeTab.value, against.value], load
       <DetailTabs :tabs="[{ id: 'overview', label: t('Overview') }, { id: 'chunks', label: t('Chunks'), count: document.chunks.length }, { id: 'versions', label: t('Versions'), count: document.versions.length }, { id: 'citations', label: t('Citations'), count: document.citations.length }, { id: 'governance', label: t('Governance') }]" :active="activeTab" @update:active="setTab" />
       <PropertyGrid v-if="activeTab === 'overview'" :items="[{ label: t('Document type'), value: document.document_type }, { label: t('Authority'), value: document.authority_level }, { label: t('Language'), value: document.language }, { label: 'SHA-256', value: document.sha256, copyable: true }, { label: t('Parser'), value: document.parser_version }, { label: t('Chunker'), value: document.chunker_version }, { label: t('Injection scan'), value: document.injection_scan_status }, { label: t('Indexed'), value: document.indexed_at }]" />
       <div v-else-if="activeTab === 'chunks'" class="history-stack"><article v-for="chunk in document.chunks" :key="chunk.chunk_id" class="history-detail-card"><h3>#{{ chunk.ordinal }} <span class="status-chip">{{ chunk.index_status }}</span></h3><pre class="history-json">{{ chunk.text }}</pre><PropertyGrid :items="[{ label: t('Locator'), value: JSON.stringify(chunk.locator) }, { label: t('Text hash'), value: chunk.text_hash, copyable: true }, { label: t('Embedding model'), value: chunk.embedding_model }]" /></article></div>
-      <div v-else-if="activeTab === 'versions'" class="history-stack"><DataTable :columns="[{ key: 'version', label: t('Version') }, { key: 'file', label: t('File') }, { key: 'sha', label: 'SHA-256' }, { key: 'status', label: t('Status') }, { key: 'created', label: t('Created') }]" :items="document.versions.map((item) => ({ id: item.document_id, version: item.version_number, file: item.original_filename, sha: item.sha256, status: item.publication_status, created: new Date(item.created_at).toLocaleString() }))" @select="emit('navigate', `/data/knowledge/${$event.id}?tab=versions`)" /><details v-if="canKnowledgeAuthor" class="history-mutation-panel"><summary>{{ t("Create superseding knowledge version") }}</summary><p class="history-impact">{{ t("The current file and chunks remain immutable. The uploaded file becomes a new version linked by supersedes.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Title") }}</span><input v-model="versionTitle" /></label><label><span>{{ t("TXT or Markdown file") }}</span><input type="file" accept=".txt,.md,text/plain,text/markdown" @change="chooseVersionFile" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" /></label></div><button type="button" :disabled="busy || !versionFile" @click="createKnowledgeVersion">{{ t("Start version ingestion") }}</button><p v-if="acceptedJobId"><code>{{ acceptedJobId }}</code> · {{ t("Track this ingestion in Jobs & queue.") }}</p></details></div>
+      <div v-else-if="activeTab === 'versions'" class="history-stack"><DataTable :columns="[{ key: 'version', label: t('Version') }, { key: 'file', label: t('File') }, { key: 'sha', label: 'SHA-256' }, { key: 'status', label: t('Status') }, { key: 'created', label: t('Created') }]" :items="document.versions.map((item) => ({ id: item.document_id, version: item.version_number, file: item.original_filename, sha: item.sha256, status: item.publication_status, created: new Date(item.created_at).toLocaleString() }))" @select="emit('navigate', `/data/knowledge/${$event.id}?tab=versions`)" /><details v-if="canKnowledgeAuthor" class="history-mutation-panel"><summary>{{ t("Create superseding knowledge version") }}</summary><p class="history-impact">{{ t("The current file and chunks remain immutable. The uploaded file becomes a new version linked by supersedes.") }}</p><div class="history-mutation-grid"><label><span>{{ t("Title") }}</span><input v-model="versionTitle" /></label><label><span>{{ t("Knowledge source file") }}</span><input type="file" accept=".txt,.md,.pdf,.docx,.xlsx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="chooseVersionFile" /></label><label class="form-wide"><span>{{ t("Change reason") }} *</span><input v-model="reason" /></label></div><button type="button" :disabled="busy || !versionFile" @click="createKnowledgeVersion">{{ t("Start version ingestion") }}</button><p v-if="acceptedJobId"><code>{{ acceptedJobId }}</code> · {{ t("Track this ingestion in Jobs & queue.") }}</p></details></div>
       <DataTable v-else-if="activeTab === 'citations'" :columns="[{ key: 'locator', label: t('Locator') }, { key: 'authority', label: t('Authority') }, { key: 'search', label: t('Search') }, { key: 'created', label: t('Created') }]" :items="document.citations.map((item) => ({ id: item.citation_id, locator: item.locator, authority: item.authority, search: item.search_id, created: new Date(item.search_created_at).toLocaleString() }))" :empty-text="t('No citations currently reference this version.')" />
       <div v-else class="history-stack"><PropertyGrid :items="[{ label: t('Owner'), value: document.owner }, { label: t('Classification'), value: document.classification }, { label: t('ACL scopes'), value: document.acl_scopes.join(', ') }, { label: t('Submitted by'), value: document.submitted_by }, { label: t('Reviewed by'), value: document.reviewed_by }, { label: t('Approved by'), value: document.approved_by }, { label: t('Published'), value: document.published_at }, { label: t('Retired'), value: document.retired_at }]" /><button type="button" class="secondary-button" @click="downloadProtectedArtifact(document.download_url, document.original_filename)">{{ t("Download source") }}</button></div>
     </template>
