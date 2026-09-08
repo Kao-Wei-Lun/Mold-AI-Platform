@@ -35,3 +35,14 @@
 
 測試通過後提交 Git，再更新既有外網 Demo 共用 app image；不另建 Sites、不變更私人存取權限。
 發布後補記實際外網 JS/CSS 與已測 build 的 SHA 校驗結果。
+
+### 實際發布驗證（2026-09-08）
+
+- 程式提交：`817354e`。更新既有 `mold-ai-platform-sites-demo` 的 api、worker、worker-cad、web、mcp-gateway，五項服務共用單一 app image。
+- 外網入口：`https://neck-rap-chocolate-extensive.trycloudflare.com`；既有私人 Sites 入口與存取權限不變。
+- 已從外網下載發布資產，SHA-256 均與本機通過建置的檔案一致：
+  - `/assets/index-Dr6r0FSz.js`：`9221E56A0A1B0FA9B437CA6E63E966404E944D630D42A6BD659208891E2AF2E1`
+  - `/assets/index-DvioUC22.css`：`1251F73DF9FC3F8A109CBABFFE5DFC450D9BEDCA99879ACC7B84E111BF2F1098`
+- 發布後狀態：Containers ready、API ok、兩個 Worker 回應、Core Demo ready、Sites entry ready、Web tunnel ready；資料與搜尋演算法未變更。
+- 整體狀態仍顯示既有 optional Assistant fallback 的 degraded，不影響此次排版修正或核心 Demo。
+- 使用者可按 `Ctrl+F5` 重新整理以載入最新前端。
