@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Similarity layout regression fixture</title></head>
+<body><div id="fixture"></div><pre id="layout-results">pending</pre>
+<script type="module">
+import { createApp, h, nextTick } from "vue";
+import SimilarityWorkspace from "../../src/components/SimilarityWorkspace.vue";
+import { setLocale } from "../../src/i18n";
+import "../../src/styles.css";
+
+// Synthetic UI-only fixture: no production identity, CAD contents or backend writes.
+window.fetch = async () => new Response(JSON.stringify({ error: { message: "UI fixture only" } }), { status: 404 });
+const params = new URLSearchParams(location.search);
+setLocale(params.get("locale") || "en");
+const query = { artifact_version_id: "layout-fixture", unit_system: "mm", cad_format: "step",
+  similarity_index: { status: "indexed" }, quality_flags: [] };
+createApp({ render: () => h(SimilarityWorkspace, { query }) }).mount("#fixture");
+await nextTick();
+const mode = document.querySelector('[data-testid="comparison-mode"]');
+mode.value = params.get("mode") || "engineering_size";
+mode.dispatchEvent(new Event("change", { bubbles: true }));
+await nextTick();
+setTimeout(() => {
+  const fields = [...document.querySelectorAll('.similarity-filter-grid > .form-field')];
+  const rect = el => { const r = el.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, right:r.right, bottom:r.bottom }; };
+  const rows = fields.map(field => ({ field: rect(field), label: rect(field.querySelector('.form-field-label')), control: rect(field.querySelector('input, select')) }));
+  const errors = [];
+  const expected = mode.value === 'engineering_size' ? 6 : 5;
+  if (rows.length !== expected) errors.push('Wrong field count');
+  for (const [i, row] of rows.entries()) {
+    if (row.label.bottom > row.control.y + 1) errors.push(`Label overlaps input ${i}`);
+    if (row.control.right > innerWidth + 1 || row.control.x < 0) errors.push(`Input outside viewport ${i}`);
+    if (row.control.right > row.field.right + 1) errors.push(`Input overflows field ${i}`);
+    for (const other of rows.slice(i + 1)) {
+      if (Math.abs(row.field.y - other.field.y) < 1 && Math.abs(row.control.y - other.control.y) > 1) errors.push('Inputs in the same row are misaligned');
+      const overlapX = Math.min(row.control.right, other.control.right) - Math.max(row.control.x, other.control.x);
+      const overlapY = Math.min(row.control.bottom, other.control.bottom) - Math.max(row.control.y, other.control.y);
+      if (overlapX > 1 && overlapY > 1) errors.push('Inputs overlap');
+    }
+  }
+  const form = document.querySelector('.similarity-form');
+  const contentWidth = form.clientWidth - parseFloat(getComputedStyle(form).paddingLeft) - parseFloat(getComputedStyle(form).paddingRight);
+  if (contentWidth > 72 * parseFloat(getComputedStyle(document.documentElement).fontSize) && new Set(rows.map(r=>Math.round(r.control.y))).size !== 1) errors.push('Wide desktop filters must share one row');
+  const action = rect(document.querySelector('.similarity-form-actions'));
+  if (action.y < Math.max(...rows.map(r=>r.field.bottom))) errors.push('Action overlaps fields or helper');
+  if (document.documentElement.scrollWidth > innerWidth) errors.push('Horizontal page overflow');
+  document.querySelector('#layout-results').textContent = JSON.stringify({ errors, width:innerWidth, locale:params.get('locale'), mode:mode.value, rows });
+}, 300);
+</script>
+<style>
+body { margin: 0; padding: 16px; }
+#fixture { width: 100%; }
+.similarity-workspace > :not(.similarity-form) { display: none; }
+#layout-results { white-space: pre-wrap; font-size: 10px; overflow-wrap: anywhere; }
+</style>
+</body></html>

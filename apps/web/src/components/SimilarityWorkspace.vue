@@ -452,41 +452,43 @@ onBeforeUnmount(() => {
           <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>
           <button type="button" class="text-button" @click="emit('retryMasterData')">{{ t("Retry") }}</button>
         </div>
-        <div class="form-wide score-grid" data-testid="comparison-mode-controls">
+        <div class="similarity-filter-grid" :class="{ 'has-size-tolerance': comparisonMode === 'engineering_size' }" data-testid="comparison-mode-controls">
           <FormField v-slot="{ fieldId }" :label="t('Geometry comparison mode')">
             <select :id="fieldId" v-model="comparisonMode" data-testid="comparison-mode">
               <option value="normalized_shape">{{ t("Shape only (uniform scale allowed)") }}</option>
               <option value="engineering_size">{{ t("Actual size (known units required)") }}</option>
             </select>
           </FormField>
-          <FormField v-if="comparisonMode === 'engineering_size'" v-slot="{ fieldId }" :label="t('Surface tolerance (mm)')">
-            <input :id="fieldId" v-model.number="toleranceMm" type="number" min="0.001" max="10" step="0.001" required />
+          <FormField v-if="comparisonMode === 'engineering_size'" v-slot="{ fieldId }" :label="t('Surface tolerance (mm)')" required>
+            <input :id="fieldId" v-model.number="toleranceMm" data-testid="surface-tolerance" type="number" min="0.001" max="10" step="0.001" required />
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset filter')">
+            <select :id="fieldId" v-model="datasetId" :aria-describedby="describedBy" :aria-invalid="invalid">
+              <option value="">{{ t("Any") }}</option>
+              <option v-for="option in governedOptions.dataset" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
+            </select>
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
+            <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
+              <option value="">{{ t("Any") }}</option>
+              <option v-for="option in governedOptions.product_type" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
+            </select>
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
+            <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
+              <option value="">{{ t("Any") }}</option>
+              <option v-for="option in governedOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
+            </select>
+          </FormField>
+          <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 20 ranked candidates.')">
+            <input :id="fieldId" v-model.number="topK" type="number" min="1" max="20" required :aria-describedby="describedBy" :aria-invalid="invalid" />
           </FormField>
         </div>
-        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Dataset filter')">
-          <select :id="fieldId" v-model="datasetId" :aria-describedby="describedBy" :aria-invalid="invalid">
-            <option value="">{{ t("Any") }}</option>
-            <option v-for="option in governedOptions.dataset" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
-          </select>
-        </FormField>
-        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Product type')">
-          <select :id="fieldId" v-model="productType" :aria-describedby="describedBy" :aria-invalid="invalid">
-            <option value="">{{ t("Any") }}</option>
-            <option v-for="option in governedOptions.product_type" :key="option.id" :value="option.code">{{ optionLabel(option) }}</option>
-          </select>
-        </FormField>
-        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Material')">
-          <select :id="fieldId" v-model="materialCode" :aria-describedby="describedBy" :aria-invalid="invalid">
-            <option value="">{{ t("Any") }}</option>
-            <option v-for="option in governedOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
-          </select>
-        </FormField>
-        <FormField v-slot="{ fieldId, describedBy, invalid }" :label="t('Maximum results')" required :helper="t('Choose between 1 and 20 ranked candidates.')">
-          <input :id="fieldId" v-model.number="topK" type="number" min="1" max="20" required :aria-describedby="describedBy" :aria-invalid="invalid" />
-        </FormField>
-        <button type="submit" :disabled="submitting || !indexed" :aria-busy="submitting">
-          {{ submitting ? t("Starting...") : t("Search similar CAD") }}
-        </button>
+        <div class="similarity-form-actions">
+          <button type="submit" :disabled="submitting || !indexed" :aria-busy="submitting">
+            {{ submitting ? t("Starting...") : t("Search similar CAD") }}
+          </button>
+        </div>
       </form>
       <p v-if="!indexed" class="warning-message">
         {{ t("This CAD is not indexed. Reprocess it while Qdrant is available before searching.") }}
@@ -717,3 +719,88 @@ onBeforeUnmount(() => {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* Filters are not score cards. Isolate their layout from the global score-grid rules. */
+.similarity-form {
+  display: block;
+  container-type: inline-size;
+}
+
+.similarity-form > .master-data-error {
+  margin-bottom: 1rem;
+}
+
+.similarity-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.similarity-filter-grid.has-size-tolerance {
+  grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr));
+}
+
+.similarity-filter-grid > .form-field {
+  margin: 0;
+  align-content: start;
+}
+
+.similarity-filter-grid :deep(.form-field-label) {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  column-gap: 0.25em;
+  min-height: 2.8em;
+  line-height: 1.4;
+}
+
+.similarity-filter-grid input,
+.similarity-filter-grid select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 3rem;
+  min-height: 3rem;
+  margin: 0;
+}
+
+.similarity-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.similarity-form-actions button {
+  min-height: 3rem;
+  min-width: 12rem;
+}
+
+@container (max-width: 72rem) {
+  .similarity-filter-grid,
+  .similarity-filter-grid.has-size-tolerance {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 48rem) {
+  .similarity-filter-grid,
+  .similarity-filter-grid.has-size-tolerance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 32rem) {
+  .similarity-filter-grid,
+  .similarity-filter-grid.has-size-tolerance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .similarity-filter-grid :deep(.form-field-label) {
+    min-height: 0;
+  }
+
+  .similarity-form-actions button { width: 100%; min-width: 0; }
+}
+</style>

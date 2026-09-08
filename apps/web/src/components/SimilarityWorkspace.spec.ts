@@ -48,6 +48,25 @@ function jsonResponse(payload: object, status = 200): Response {
 describe("SimilarityWorkspace", () => {
   afterEach(() => { vi.restoreAllMocks(); setLocale("en"); });
 
+  it("keeps all filters as peer fields and separates the search action from helper text", async () => {
+    const wrapper = mount(SimilarityWorkspace, { props: { query } });
+    const filters = wrapper.get('.similarity-filter-grid');
+    expect(filters.findAll(':scope > .form-field')).toHaveLength(5);
+    expect(filters.classes()).not.toContain('score-grid');
+    expect(filters.find('button[type="submit"]').exists()).toBe(false);
+    expect(wrapper.get('.similarity-form-actions button').attributes('type')).toBe('submit');
+    await wrapper.get('[data-testid="comparison-mode"]').setValue('engineering_size');
+    expect(filters.classes()).toContain('has-size-tolerance');
+    expect(filters.findAll(':scope > .form-field')).toHaveLength(6);
+    expect(wrapper.get('[data-testid="surface-tolerance"]').attributes('required')).toBeDefined();
+    setLocale('zh-TW');
+    await flushPromises();
+    expect(filters.text()).toContain('表面比對容差');
+    await wrapper.get('[data-testid="comparison-mode"]').setValue('normalized_shape');
+    expect(filters.findAll(':scope > .form-field')).toHaveLength(5);
+    expect(wrapper.find('[data-testid="surface-tolerance"]').exists()).toBe(false);
+  });
+
   it.each(["computed", "unavailable"])("shows %s surface evidence without presenting unverified scores", async (status) => {
     const fetchMock = vi
       .fn()
