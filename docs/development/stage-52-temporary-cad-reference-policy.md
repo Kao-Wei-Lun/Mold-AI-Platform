@@ -55,3 +55,10 @@ TTL、自助清理臨時檔及歷史結果即時資格標示為後續獨立需�
 - 前端 39 files／174 tests、typecheck、production build 通過；既有 bundle 大小警告仍存在，非建置失敗。
 - 16 組真實 Chrome 排版檢查通過；證據 `.runtime/similarity-layout/2026-09-09T00-31-50.090Z/`。
 - 部署前唯讀盤點：curated CAD 16 筆且均已關聯；手動 CAD 6 筆均未關聯；另有未關聯錯誤控制 1 筆。無 queued/running 工作。未刪除任何資料。
+- 程式提交 `04b3681` 後重建並更新既有 `mold-ai-platform-sites-demo`：api、worker、worker-cad、web、mcp-gateway 共用同一 app image，未另建 Docker 專案或變更 Sites 入口。
+- 外網 `https://neck-rap-chocolate-extensive.trycloudflare.com` 的前端 JS/CSS 與本機測試 build SHA-256 相同：
+  - `index-DTxfSe70.js`：`2B7CC18718EC7A62C2D5D5D2C61FE44CAAD885DA73E47F5D9D0A957D63430DE1`
+  - `index-D0LI4K9-.css`：`B42CECA03956726635AF80EEB4D2902CABA355AC226FDADF8278DE04495B6599`
+- 發布後唯讀實測：取既有未關聯的手動 CAD V2 向量發起真實 Qdrant 查詢，16 筆合格資料、回傳 16 筆，未關聯候選 0 筆；未建立新檔或搜尋紀錄。
+- 發布後 Core Demo／Sites entry／Web tunnel ready；API、資料庫、Redis、Qdrant 正常，2/2 Workers 回應。既有 optional Assistant fallback 仍使總狀態為 degraded，與此次修改無關。
+- 使用者需重新整理前端並重新送出搜尋；舊結果快照不會被改寫。
