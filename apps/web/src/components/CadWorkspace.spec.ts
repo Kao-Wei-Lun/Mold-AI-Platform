@@ -169,6 +169,7 @@ describe("CadWorkspace", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
     expect(uploadBody.get("ingestion_mode")).toBe("quick_analysis");
+    expect(wrapper.get('[data-testid="temporary-cad-policy"]').text()).toContain("not similarity candidates until linked");
     expect(uploadBody.has("mold_revision_id")).toBe(false);
     expect(wrapper.text()).toContain("succeeded");
     expect(wrapper.text()).toContain("1.00 x 1.00 x 1.00");

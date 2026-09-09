@@ -447,6 +447,7 @@ onBeforeUnmount(() => {
         <button type="button" :disabled="engineeringProfileSaving" @click="saveEngineeringProfile">{{ engineeringProfileSaving ? t("Saving...") : t("Save engineering constraints") }}</button>
       </details>
 
+      <p class="limitation-note" data-testid="reference-cad-policy">{{ t("Only active CAD linked to a project's mold revision can appear as candidates. Temporary uploads can be used as queries, not as reference data.") }}</p>
       <form class="similarity-form" @submit.prevent="submit">
         <div v-if="masterDataError" class="master-data-error form-wide" role="alert">
           <span>{{ t("Governed choices are unavailable: {message}", { message: masterDataError }) }}</span>

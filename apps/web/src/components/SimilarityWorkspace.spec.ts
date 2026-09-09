@@ -62,6 +62,7 @@ describe("SimilarityWorkspace", () => {
     setLocale('zh-TW');
     await flushPromises();
     expect(filters.text()).toContain('表面比對容差');
+    expect(wrapper.get('[data-testid="reference-cad-policy"]').text()).toContain('臨時上傳檔可用來發起查詢');
     await wrapper.get('[data-testid="comparison-mode"]').setValue('normalized_shape');
     expect(filters.findAll(':scope > .form-field')).toHaveLength(5);
     expect(wrapper.find('[data-testid="surface-tolerance"]').exists()).toBe(false);

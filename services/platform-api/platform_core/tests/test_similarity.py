@@ -6,7 +6,16 @@ from django.test import TestCase, override_settings
 
 from platform_core.cad_similarity_v2 import extract_feature_set_v2
 from platform_core.ingestion import create_upload_records
-from platform_core.models import CADModel, FeatureSet, Job, SimilaritySearch
+from platform_core.models import (
+    CADModel,
+    DataScope,
+    FeatureSet,
+    Job,
+    Mold,
+    MoldRevision,
+    Project,
+    SimilaritySearch,
+)
 from platform_core.similarity import (
     compare_feature_sets,
     create_similarity_records,
@@ -72,6 +81,7 @@ class SimilarityTests(TestCase):
         product_type: str = "housing",
         material_code: str = "PC_ABS",
         dataset_id: str = "similarity-test-v1",
+        reference: bool = True,
     ) -> FeatureSet:
         upload = SimpleUploadedFile(f"{name}.stl", tetrahedron(scale), content_type="model/stl")
         records = create_upload_records(
@@ -86,7 +96,124 @@ class SimilarityTests(TestCase):
         feature_set = extract_feature_set(cad_model)
         feature_set.index_status = FeatureSet.IndexStatus.INDEXED
         feature_set.save(update_fields=["index_status"])
+        if reference:
+            self.link_reference(feature_set)
         return feature_set
+
+    def link_reference(self, feature):
+        project, _ = Project.objects.get_or_create(
+            code="REFERENCE-TEST",
+            scope=DataScope.objects.get(code="public-demo"),
+            defaults={"name": "Reference project"},
+        )
+        mold, _ = Mold.objects.get_or_create(
+            project=project, mold_code="REFERENCE", defaults={"name": "Reference mold"}
+        )
+        revision, _ = MoldRevision.objects.get_or_create(mold=mold, revision_code="A")
+        artifact = feature.cad_model.artifact_version.artifact
+        artifact.mold_revision = revision
+        artifact.save(update_fields=["mold_revision"])
+
+    def test_temporary_query_is_allowed_but_only_linked_files_are_candidates(self):
+        from platform_core.similarity import run_similarity
+
+        for read_version in ("v1", "v2"):
+            with (
+                self.subTest(read_version=read_version),
+                override_settings(
+                    SIMILARITY_INDEX_READ_VERSION=read_version,
+                    SIMILARITY_SURFACE_VERIFICATION_ENABLED=False,
+                ),
+            ):
+                query = self.create_feature(f"temporary-query-{read_version}", 10, reference=False)
+                temporary = self.create_feature(
+                    f"temporary-other-{read_version}", 10, reference=False
+                )
+                linked = self.create_feature(f"linked-{read_version}", 11)
+                if read_version == "v2":
+                    query, temporary, linked = [
+                        extract_feature_set_v2(item.cad_model)
+                        for item in (query, temporary, linked)
+                    ]
+                    FeatureSet.objects.filter(id__in=[query.id, temporary.id, linked.id]).update(
+                        index_status=FeatureSet.IndexStatus.INDEXED
+                    )
+                records = create_similarity_records(query.cad_model.artifact_version)
+                target = "query_named_vectors" if read_version == "v2" else "query_similar_points"
+                with patch(f"platform_core.similarity.{target}") as coarse:
+                    # Even a stale/misbehaving index cannot return temporary data downstream.
+                    coarse.return_value = [
+                        VectorCandidate(str(item.id), 0.99) for item in (query, temporary, linked)
+                    ]
+                    result = run_similarity(records.search)
+                    self.assertEqual(result["result_count"], 1)
+                    self.assertEqual(
+                        result["results"][0]["artifact_name"], f"linked-{read_version}"
+                    )
+                    allowed = coarse.call_args.kwargs["filters"]["artifact_version_id"]
+                    self.assertNotIn(str(temporary.cad_model.artifact_version_id), allowed)
+                    self.assertNotIn(str(query.cad_model.artifact_version_id), allowed)
+                    self.assertIn(str(linked.cad_model.artifact_version_id), allowed)
+                    # Existing linkage becomes effective immediately, without vector reindexing.
+                    self.link_reference(temporary)
+                    result = run_similarity(records.search)
+                    self.assertEqual(result["result_count"], 2)
+                    artifact = temporary.cad_model.artifact_version.artifact
+                    artifact.lifecycle_status = "archived"
+                    artifact.save(update_fields=["lifecycle_status"])
+                    self.assertEqual(run_similarity(records.search)["result_count"], 1)
+
+    @patch("platform_core.similarity.query_similar_points")
+    def test_temporary_only_pool_returns_empty_without_unfiltered_vector_search(self, coarse):
+        from platform_core.similarity import run_similarity
+
+        query = self.create_feature("temporary-query", 10, reference=False)
+        self.create_feature("temporary-candidate", 10, reference=False)
+        records = create_similarity_records(query.cad_model.artifact_version)
+        self.assertEqual(run_similarity(records.search)["result_count"], 0)
+        coarse.assert_not_called()
+
+    @patch("platform_core.similarity.query_similar_points")
+    def test_reference_governance_is_rechecked_after_coarse_search(self, coarse):
+        from platform_core.similarity import run_similarity
+
+        query = self.create_feature("temporary-query", 10, reference=False)
+        candidate = self.create_feature("linked-reference", 11)
+        records = create_similarity_records(query.cad_model.artifact_version)
+        artifact = candidate.cad_model.artifact_version.artifact
+
+        def archive_during_search(**kwargs):
+            artifact.lifecycle_status = "archived"
+            artifact.save(update_fields=["lifecycle_status"])
+            return [VectorCandidate(str(candidate.id), 1.0)]
+
+        coarse.side_effect = archive_during_search
+        self.assertEqual(run_similarity(records.search)["result_count"], 0)
+        coarse.assert_called_once()
+
+    def test_linkage_does_not_override_inactive_or_restricted_reference_status(self):
+        from platform_core.similarity import reference_features
+
+        query = self.create_feature("temporary-query", 10, reference=False)
+        candidate = self.create_feature("linked-reference", 11)
+        records = create_similarity_records(query.cad_model.artifact_version)
+        artifact = candidate.cad_model.artifact_version.artifact
+        revision = artifact.mold_revision
+        for obj, field, invalid_value in (
+            (artifact, "lifecycle_status", "quarantined"),
+            (artifact, "classification", "company_confidential"),
+            (revision, "status", "archived"),
+            (revision.mold, "status", "retired"),
+            (revision.mold.project, "status", "archived"),
+        ):
+            with self.subTest(field=field, invalid_value=invalid_value):
+                original = getattr(obj, field)
+                setattr(obj, field, invalid_value)
+                obj.save(update_fields=[field])
+                self.assertFalse(reference_features(records.search).exists())
+                setattr(obj, field, original)
+                obj.save(update_fields=[field])
+                self.assertTrue(reference_features(records.search).exists())
 
     @patch("platform_core.similarity.upsert_feature")
     def test_extract_and_index_persists_versioned_vector_contract(self, upsert_feature) -> None:
@@ -330,6 +457,7 @@ class SimilarityTests(TestCase):
         from platform_core.similarity import create_similarity_records, run_similarity
 
         query = self.create_feature("budget-query", 10)
+        self.create_feature("budget-reference", 11)
         records = create_similarity_records(query.cad_model.artifact_version, top_k=5)
         self.assertEqual(
             records.job.input_snapshot["verification_limits"],

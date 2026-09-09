@@ -579,6 +579,32 @@ def compare_feature_sets(
     }
 
 
+def reference_features(search: SimilaritySearch):
+    """Use live relational governance, never upload metadata or stale vector payloads."""
+    return (
+        FeatureSet.objects.filter(
+            index_status=FeatureSet.IndexStatus.INDEXED,
+            index_version=search.profile.index_version,
+            cad_model__artifact_version__artifact__mold_revision__isnull=False,
+            cad_model__artifact_version__artifact__lifecycle_status="active",
+            cad_model__artifact_version__artifact__classification=(
+                search.query_feature_set.cad_model.artifact_version.artifact.classification
+            ),
+            cad_model__artifact_version__artifact__mold_revision__mold__status="active",
+            cad_model__artifact_version__artifact__mold_revision__mold__project__status="active",
+        )
+        .exclude(
+            cad_model__artifact_version__artifact__mold_revision__status="archived",
+        )
+        .exclude(
+            cad_model__artifact_version__artifact__dataset_id__in=settings.SIMILARITY_EXCLUDED_DATASETS,
+        )
+        .exclude(
+            cad_model__artifact_version_id=search.query_feature_set.cad_model.artifact_version_id
+        )
+    )
+
+
 def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     started = time.perf_counter()
     limits = search.job.input_snapshot.get("verification_limits", {})
@@ -598,12 +624,24 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
         if values:
             qdrant_filters[payload_name] = values
 
+    # Filter BEFORE coarse top-k so temporary uploads cannot crowd out references.
+    # Existing indexes need no migration: artifact_version_id already exists in V1/V2.
+    reference_version_ids = list(
+        reference_features(search)
+        .values_list("cad_model__artifact_version_id", flat=True)
+        .distinct()
+    )
+    qdrant_filters["artifact_version_id"] = [str(value) for value in reference_version_ids]
+
     query_arguments = {
         "vector": [float(value) for value in query_feature.vector],
         "limit": limits.get("coarse", min(max(search.top_k * 5, 20), 200)),
         "filters": qdrant_filters,
     }
-    if query_feature.schema_version == "2.0":
+    if not reference_version_ids:
+        # An empty Qdrant match-any list is omitted by the vector adapter: fail closed.
+        coarse_candidates = []
+    elif query_feature.schema_version == "2.0":
         coarse_candidates = query_named_vectors(
             collection_name=search.profile.candidate_collection,
             **query_arguments,
@@ -614,14 +652,16 @@ def run_similarity(search: SimilaritySearch) -> dict[str, object]:
     coarse_by_id = {
         candidate.feature_set_id: candidate.coarse_score for candidate in coarse_candidates
     }
-    candidate_features = FeatureSet.objects.filter(
-        id__in=coarse_by_id,
-        index_status=FeatureSet.IndexStatus.INDEXED,
-        index_version=search.profile.index_version,
-    ).select_related(
-        "cad_model__artifact_version__artifact",
-        "cad_model__artifact_version__similarity_engineering_profile",
-        "cad_model__preview_artifact_version",
+    candidate_features = (
+        reference_features(search)
+        .filter(
+            id__in=coarse_by_id,
+        )
+        .select_related(
+            "cad_model__artifact_version__artifact",
+            "cad_model__artifact_version__similarity_engineering_profile",
+            "cad_model__preview_artifact_version",
+        )
     )
 
     matches = []

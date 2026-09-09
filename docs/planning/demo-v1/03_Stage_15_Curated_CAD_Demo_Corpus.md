@@ -40,7 +40,7 @@ Stage 15建立 `curated-cad-demo-v1`，使 Demo不依賴歷史 volume或臨時�
 |---|---|---:|
 | `curated-cad-demo-v1` | 正式 Demo corpus | 是 |
 | `automated-cad-smoke-v1` | 每次 smoke產生的暫時 artifacts | 否 |
-| `manual-cad-upload-v1` | Demo使用者臨時上傳 | 是，但與 curated標示分開 |
+| `manual-cad-upload-v1` | Demo使用者臨時上傳 | 僅能作查詢；關聯專案模具版本且符合啟用／索引資格後才可作候選（Stage 52） |
 
 - **CAD-DATA-001**：所有 CAD Artifact 必須有 dataset ID；沒有值不得進 curated index。
 - **CAD-DATA-002**：預設 Demo catalog與 MCP只列出 curated/manual user-visible datasets。

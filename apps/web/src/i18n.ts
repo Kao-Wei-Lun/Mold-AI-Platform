@@ -1666,6 +1666,8 @@ const zhTW: Record<string, string> = {
   "Select a mold revision": "選擇模具版本",
   "Upload purpose": "上傳用途",
   "Quick analysis": "快速分析",
+  "Only active CAD linked to a project's mold revision can appear as candidates. Temporary uploads can be used as queries, not as reference data.": "候選資料僅包含已關聯至專案模具版本且仍啟用的 CAD；臨時上傳檔可用來發起查詢，但不會列入比對資料庫。",
+  "Unlinked uploads are temporary analysis files: you can preview and search with them, but they are not similarity candidates until linked to a project's mold revision. Files are not automatically deleted.": "尚未關聯的上傳檔僅供臨時分析，可預覽及用來搜尋；關聯至專案下的模具版本後，才會成為相似度搜尋的候選資料。檔案不會自動刪除。",
   "Upload now for preview, similarity and generic review. Link it to a mold revision later.": "立即上傳以進行預覽、相似度搜尋與通用審查，稍後再關聯模具設計版次。",
   "Governed archive": "正式歸檔",
   "Attach this CAD to an existing mold design revision for formal traceability.": "將此 CAD 關聯到既有模具設計版次，建立正式追溯紀錄。",

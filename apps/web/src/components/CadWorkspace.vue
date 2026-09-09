@@ -416,6 +416,9 @@ onBeforeUnmount(() => {
           <option v-for="option in masterDataOptions.material" :key="option.id" :value="option.code">{{ optionLabel(option) }} · {{ option.code }}</option>
         </select>
       </FormField>
+      <p class="form-wide" data-testid="temporary-cad-policy">
+        {{ t("Unlinked uploads are temporary analysis files: you can preview and search with them, but they are not similarity candidates until linked to a project's mold revision. Files are not automatically deleted.") }}
+      </p>
       <p v-if="missingUploadFields" class="form-validation-summary" aria-live="polite">
         {{ t("Required fields remaining: {count}", { count: missingUploadFields }) }}
       </p>

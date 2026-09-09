@@ -14,9 +14,11 @@ audited post-upload action, while the API continues to preserve both modes for c
 | `quick_analysis` | Not accepted | Preview, geometry extraction, similarity and generic design review | `unassigned` |
 | `governed_archive` | Required | Formal mold history, mold-specific rules, Trial/CAE linkage and release evidence | `governed` |
 
-Quick analysis is the default. It does not mean temporary or untracked: the platform still creates
-an immutable ArtifactVersion, Job, checksum and processing lineage. It only means the Artifact has
-not yet been assigned to a governed MoldRevision. The post-upload assignment workflow adds that
+Quick analysis is the default. As of Stage 52, an unassigned CAD is a temporary analysis file:
+it may initiate similarity searches but cannot appear as another search's reference candidate.
+Temporary does not imply automatic deletion: the platform still creates an immutable ArtifactVersion,
+Job, checksum and processing lineage. It has not yet been assigned to a governed MoldRevision.
+The post-upload assignment workflow adds that
 relationship with authorization, optimistic locking, an operator-entered reason and AuditEvent
 evidence; it does not rewrite the original file.
 
